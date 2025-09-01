@@ -13,7 +13,8 @@ LinkerHand Dexterous Hand ROS SDK is a software tool developed by CHIUS INC to d
 3. Please take good care of the dexterous hand.
 
 # 2. **Version Information**
-
+V2.1.9
+1. Support L6\L6P\O6 dexterous hands
 V2.1.8
 1. Fix occasional frame collision issues
 
@@ -60,7 +61,7 @@ V1.3.1
 ```python
 $ mkdir -p Linker_Hand_SDK_ROS/src    #Make directory
 $ cd Linker_Hand_SDK_ROS/src    #Navigate to the directory 
-$ git clone https://github.com/linkerbotai/linker_hand_sdk.git    #Get SDK
+$ git clone https://github.com/linker-bot/linkerhand-ros-sdk.git   #Get SDK
 ```
 
 ## 3.3 Install dependencies and compile
@@ -809,7 +810,7 @@ pip install -r requirements.txt
 ```css
 mkdir -p your_ws/src
 cd your_ws/src
-git clone https://github.com/linkerbotai/human-dex.git
+git clone https://github.com/linker-bot/human-dex.git
 cd ..
 catkin_make
 source ./devel/setup.bash

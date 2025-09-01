@@ -242,7 +242,7 @@ class LinkerHand:
             if count % 2 == 0:
                 self._get_hand_state_v2()
             if count % 5 == 0:
-                if self.hand_force == True:
+                if self.hand_force == True and self.touch_type == 2:
                     self._get_matrix_touch_v2()
             if count % 15 == 0:
                 self._get_hand_info_v2()
@@ -257,7 +257,8 @@ class LinkerHand:
             self.pub_hand_state(hand_state=self.last_hand_state)
             self.pub_hand_info(dic=self.last_hand_info)
             m_t.data = json.dumps(self.last_matrix_dic)
-            self.matrix_touch_pub.publish(m_t)
+            if self.touch_type == 2 and self.hand_force == True:
+                self.matrix_touch_pub.publish(m_t)
             time.sleep(0.033)
 
     def _get_hand_state(self):
@@ -342,24 +343,24 @@ class LinkerHand:
     def _get_matrix_touch(self):
         while True:
             with self.lock:
-                if self.matrix_touch_pub.get_num_connections() > 0:
-                    if self.hand_force == True:
-                        if self.touch_type == 2:
-                            thumb_matrix, index_matrix , middle_matrix , ring_matrix , little_matrix = self.api.get_matrix_touch()
-                            self.last_matrix_dic["thumb_matrix"] = thumb_matrix.tolist()
-                            self.last_matrix_dic["index_matrix"] = index_matrix.tolist()
-                            self.last_matrix_dic["middle_matrix"] = middle_matrix.tolist()
-                            self.last_matrix_dic["ring_matrix"] = ring_matrix.tolist()
-                            self.last_matrix_dic["little_matrix"] = little_matrix.tolist()
-                            m_t = String()
-                            m_t.data = json.dumps(self.last_matrix_dic)
-                            self.matrix_touch_pub.publish(m_t)
+                if self.touch_type == 2:
+                    if self.matrix_touch_pub.get_num_connections() > 0:
+                        if self.hand_force == True:
+                                thumb_matrix, index_matrix , middle_matrix , ring_matrix , little_matrix = self.api.get_matrix_touch()
+                                self.last_matrix_dic["thumb_matrix"] = thumb_matrix.tolist()
+                                self.last_matrix_dic["index_matrix"] = index_matrix.tolist()
+                                self.last_matrix_dic["middle_matrix"] = middle_matrix.tolist()
+                                self.last_matrix_dic["ring_matrix"] = ring_matrix.tolist()
+                                self.last_matrix_dic["little_matrix"] = little_matrix.tolist()
+                                m_t = String()
+                                m_t.data = json.dumps(self.last_matrix_dic)
+                                self.matrix_touch_pub.publish(m_t)
             time.sleep(0.02)
 
     def _get_matrix_touch_v2(self):
-        if self.matrix_touch_pub.get_num_connections() > 0:
-            if self.hand_force == True:
-                if self.touch_type == 2:
+        if self.touch_type == 2:
+            if self.matrix_touch_pub.get_num_connections() > 0:
+                if self.hand_force == True:
                     thumb_matrix, index_matrix , middle_matrix , ring_matrix , little_matrix = self.api.get_matrix_touch_v2()
                     self.last_matrix_dic["thumb_matrix"] = thumb_matrix.tolist()
                     self.last_matrix_dic["index_matrix"] = index_matrix.tolist()
@@ -423,24 +424,8 @@ class LinkerHand:
         if len(pose) == 0:
             return
         else:
-            if self.embedded_version[0] == 6 and self.embedded_version[4] == 16:
-                tmp_pose[0] = pose[0]
-                tmp_pose[1] = pose[2]
-                tmp_pose[2] = pose[3]
-                tmp_pose[3] = pose[4]
-                tmp_pose[4] = pose[5]
-                tmp_pose[5] = pose[1]
-                tmp_vel[0] = vel[0]
-                tmp_vel[1] = vel[2]
-                tmp_vel[2] = vel[3]
-                tmp_vel[3] = vel[4]
-                tmp_vel[4] = vel[5]
-                tmp_vel[5] = vel[1]
-                self.last_left_hand_position = tmp_pose
-                self.last_left_hand_velocity = tmp_vel
-            else:
-                self.last_left_hand_position = pose
-                self.last_left_hand_velocity = vel
+            self.last_left_hand_position = pose
+            self.last_left_hand_velocity = vel
         # if self.last_left_hand_position == position:
         #     return
     def action_left_hand(self,position,velocity):
@@ -521,24 +506,8 @@ class LinkerHand:
         if len(pose) == 0:
             return
         else:
-            if self.embedded_version[0] == 6 and self.embedded_version[4] == 16:
-                tmp_pose[0] = pose[0]
-                tmp_pose[1] = pose[2]
-                tmp_pose[2] = pose[3]
-                tmp_pose[3] = pose[4]
-                tmp_pose[4] = pose[5]
-                tmp_pose[5] = pose[1]
-                tmp_vel[0] = vel[0]
-                tmp_vel[1] = vel[2]
-                tmp_vel[2] = vel[3]
-                tmp_vel[3] = vel[4]
-                tmp_vel[4] = vel[5]
-                tmp_vel[5] = vel[1]
-                self.last_right_hand_position = tmp_pose
-                self.last_right_hand_velocity = tmp_vel
-            else:
-                self.last_right_hand_position = pose
-                self.last_right_hand_velocity = vel
+            self.last_right_hand_position = pose
+            self.last_right_hand_velocity = vel
 
     def action_right_hand(self, position, velocity):
         now = time.time()

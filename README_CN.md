@@ -14,7 +14,7 @@ LinkerHand 灵巧手 ROS SDK 是由灵心巧手（北京）科技有限公司开
 
 # 2. **版本说明**
 V2.1.9
-1、支持O6灵巧手
+1、支持L6\L6P\O6灵巧手
 
 V2.1.8
 1. 修复偶发撞帧问题
@@ -108,7 +108,7 @@ V1.3.1
 ```python
 $ mkdir -p Linker_Hand_SDK_ROS/src    #创建目录
 $ cd Linker_Hand_SDK_ROS/src    #进入目录
-$ git clone https://github.com/linkerbotai/linker_hand_sdk.git    #获取SDK
+$ git clone https://github.com/linker-bot/linkerhand-ros-sdk.git    #获取SDK
 ```
 
 ## 3.3 安装依赖与编译
@@ -707,7 +707,7 @@ pip install -r requirements.txt
 ```css
 mkdir -p your_ws/src
 cd your_ws/src
-git clone https://github.com/linkerbotai/human-dex.git
+git clone https://github.com/linker-bot/human-dex.git
 cd ..
 catkin_make
 source ./devel/setup.bash

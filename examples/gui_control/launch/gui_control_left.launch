@@ -2,6 +2,6 @@
 <launch>
     <!-- 左手节点 -->
     <node pkg="gui_control" type="gui_control_left.py" name="gui_control$(anon left)" output="screen">
-        <param name="hand_joint" type="string" value="O6"/> <!-- O6|L7|L10|L20|L21|L25 灵巧手型号  -->
+        <param name="hand_joint" type="string" value="L6"/> <!-- O6|L7|L10|L20|L21|L25 灵巧手型号  -->
     </node>
 </launch>
