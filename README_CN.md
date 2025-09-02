@@ -209,7 +209,7 @@ $ sudo vim linker_hand_double.launch    #启动左右双手，按照注释编辑
 # 如果报错
 ERROR: cannot launch node of type [linker_hand_sdk_ros/linker_hand.py]: Cannot locate node of type [linker_hand.py] in package [linker_hand_sdk_ros]. Make sure file exists in package path and permission is set to executable (chmod +x)
 # 需要给执行文件权限
-$ sudo chmod a+x src/linker_hand_sdk/linker_hand_sdk_ros/scripts/linker_hand.py
+$ sudo chmod a+x src/linkerhand-ros-sdk/linker_hand_sdk_ros/scripts/linker_hand.py
 # 然后在执行
 $ sudo vim linker_hand.launch    #启动左or右单手，按照注释编辑配置文件
 $ sudo vim linker_hand_double.launch    #启动左右双手，按照注释编辑配置文
