@@ -5,7 +5,7 @@ import rospy, signal, rospkg, sys, os, math, time, threading, json
 import numpy as np
 from std_msgs.msg import String, Header, Float32MultiArray
 from sensor_msgs.msg import JointState
-from common.mapping import *
+from LinkerHand.utils.mapping import *
 from LinkerHand.linker_hand_api import LinkerHandApi
 from LinkerHand.utils.init_linker_hand import InitLinkerHand
 from LinkerHand.utils.load_write_yaml import LoadWriteYaml
@@ -285,7 +285,7 @@ class LinkerHand:
             time.sleep(0.01)
     
     def _get_hand_state_v2(self):
-        if self.hand_state_pub.get_num_connections() > 0:
+        if self.hand_state_pub.get_num_connections() > 0 or self.hand_state_arc_pub.get_num_connections() > 0:
             state = self.api.get_state()
             vel = self.api.get_joint_speed()
             self.last_hand_state['state'] = state
@@ -296,9 +296,10 @@ class LinkerHand:
         if state[0] == -1 or state == None or len(state)==0:
             return
         if self.hand_type == "left":
-            state_arc = range_to_arc_left(state,self.hand_joint)
+            s_a = range_to_arc_left(state,self.hand_joint)
         if self.hand_type == "right":
-            state_arc = range_to_arc_right(state,self.hand_joint)
+            s_a = range_to_arc_right(state,self.hand_joint)
+        state_arc = [round(x, 2) for x in s_a]
         vel = hand_state['vel']
         if state == None:
             return

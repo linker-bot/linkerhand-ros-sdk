@@ -168,7 +168,7 @@ class MainWindow(QMainWindow):
             self.init_pos = [250] * 7
             self.joint_name = ["大拇指弯曲", "大拇指横摆","食指弯曲", "中指弯曲", "无名指弯曲","小拇指弯曲","拇指旋转"]
         elif self.hand_joint == "L6":
-            # L6
+            # L7
             self.init_pos = [250] * 6
             self.joint_name = ["大拇指弯曲", "大拇指横摆","食指弯曲", "中指弯曲", "无名指弯曲","小拇指弯曲"]
         
