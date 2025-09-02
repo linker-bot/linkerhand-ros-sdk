@@ -270,7 +270,7 @@ class LinkerHand:
         t = String()
         while True:
             #if self.hand_state_pub.get_num_connections() > 0:
-            if self.hand_cmd_sub.get_num_connections() > 0 or self.hand_cmd_sub_arc.get_num_connections() > 0:
+            if (self.hand_cmd_sub.get_num_connections() > 0 or self.hand_cmd_sub_arc.get_num_connections() > 0) and self.hand_joint != "L20": # L20不包含此功能
                 state = self.api.get_state_for_pub()
             else:
                 state = self.api.get_state()
