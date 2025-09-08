@@ -231,24 +231,27 @@ class LinkerHand:
     def get_all_state_v2(self):
         count = 0
         while True:
-            if len(self.last_left_hand_position) > 0:
-                self.action_left_hand(position=self.last_left_hand_position, velocity=self.last_left_hand_velocity)
-            if len(self.last_left_hand_position_arc) > 0:
-                self.action_left_hand_arc(position=self.last_left_hand_position_arc, velocity=self.last_left_hand_velocity_arc)
-            if len(self.last_right_hand_position) > 0:
-                self.action_right_hand(position=self.last_right_hand_position, velocity=self.last_right_hand_velocity)
-            if len(self.last_right_hand_position_arc) > 0:
-                self.action_right_hand_arc(position=self.last_right_hand_position_arc, velocity=self.last_right_hand_velocity_arc)
-            if count % 2 == 0:
-                self._get_hand_state_v2()
-            if count % 5 == 0:
-                if self.hand_force == True and self.touch_type == 2:
-                    self._get_matrix_touch_v2()
-            if count % 15 == 0:
-                self._get_hand_info_v2()
-            if count == 16:
-                count = 0
-            count += 1
+            try:
+                if len(self.last_left_hand_position) > 0:
+                    self.action_left_hand(position=self.last_left_hand_position, velocity=self.last_left_hand_velocity)
+                if len(self.last_left_hand_position_arc) > 0:
+                    self.action_left_hand_arc(position=self.last_left_hand_position_arc, velocity=self.last_left_hand_velocity_arc)
+                if len(self.last_right_hand_position) > 0:
+                    self.action_right_hand(position=self.last_right_hand_position, velocity=self.last_right_hand_velocity)
+                if len(self.last_right_hand_position_arc) > 0:
+                    self.action_right_hand_arc(position=self.last_right_hand_position_arc, velocity=self.last_right_hand_velocity_arc)
+                if count % 2 == 0:
+                    self._get_hand_state_v2()
+                if count % 5 == 0:
+                    if self.hand_force == True and self.touch_type == 2:
+                        self._get_matrix_touch_v2()
+                if count % 15 == 0:
+                    self._get_hand_info_v2()
+                if count == 16:
+                    count = 0
+                count += 1
+            except e:
+                pass
 
 
     def get_pub_state_v2(self):
