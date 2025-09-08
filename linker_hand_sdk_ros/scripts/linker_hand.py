@@ -252,6 +252,7 @@ class LinkerHand:
                 count += 1
             except e:
                 pass
+            time.sleep(0.001)
 
 
     def get_pub_state_v2(self):
