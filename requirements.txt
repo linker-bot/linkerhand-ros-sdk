@@ -1,3 +1,5 @@
+empy
+catkin_pkg
 python-can
 dm_env
 pexpect
@@ -10,7 +12,8 @@ PyYAML
 tqdm
 wandb
 mediapipe
-pyqt5
+PyQt5==5.15.4
+PyQt5-sip==12.9.0
 pyqtgraph
 dm_control
 uvicorn

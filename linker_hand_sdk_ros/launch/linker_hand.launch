@@ -2,7 +2,7 @@
 <launch>
     <!-- 参数定义（可外部传入） -->
     <arg name="hand_type" default="right"/>
-    <arg name="hand_joint" default="L6"/>   <!--  O6\L7\L10\L20\L21  -->
+    <arg name="hand_joint" default="L6P"/>   <!--  O6\L6\L6P\L7\L10\L20\L21  -->
     <arg name="touch" default="true"/>
     <arg name="modbus" default="None"/> <!-- None or RML  only L10 -->
 

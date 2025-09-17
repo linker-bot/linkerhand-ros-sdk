@@ -118,7 +118,7 @@ class LinkerHand:
         pose = None
         torque = [200, 200, 200, 200, 200]
         speed = [80, 200, 200, 200, 200]
-        if self.hand_joint.upper() == "O6" or self.hand_joint.upper() == "L6":
+        if self.hand_joint.upper() == "O6" or self.hand_joint.upper() == "L6" or self.hand_joint.upper() == "L6P":
             pose = [255, 200, 255, 255, 255, 255]
             torque = [250, 250, 250, 250, 250, 250]
             speed = [255, 255, 255, 255, 255, 255]
@@ -431,7 +431,7 @@ class LinkerHand:
         if all(x == 0 for x in vel):
             return
         else:
-            if (self.hand_joint == "O6" or self.hand_joint == "L6") and len(vel) == 6:
+            if (self.hand_joint == "O6" or self.hand_joint == "L6" or self.hand_joint.upper() == "L6P") and len(vel) == 6:
                 speed = vel
                 self.api.set_joint_speed(speed=speed)
             elif self.hand_joint == "L7" and len(vel) == 7:
@@ -512,7 +512,7 @@ class LinkerHand:
         if all(x == 0 for x in vel):
             return
         else:
-            if (self.hand_joint == "O6" or self.hand_joint == "L6") and len(vel) == 6:
+            if (self.hand_joint == "O6" or self.hand_joint == "L6" or self.hand_joint.upper() == "L6P") and len(vel) == 6:
                 speed = vel
                 self.api.set_joint_speed(speed=speed)
             elif self.hand_joint == "L7" and len(vel) == 7:
@@ -592,7 +592,10 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, linker_hand.signal_handler)  # Ctrl+C
     signal.signal(signal.SIGTERM, linker_hand.signal_handler)  # kill command
     embedded_version = linker_hand.embedded_version
-    if len(embedded_version) > 4 and ((embedded_version[0]==10 and embedded_version[4]>35) or (embedded_version[0]==7 and embedded_version[4]>50) or (embedded_version[0] == 6)):
+    if len(embedded_version) == 3:
+        ColorMsg(msg=f"New Matrix Touch For SDK V2", color="green")
+        linker_hand.run_v2()
+    elif len(embedded_version) > 4 and ((embedded_version[0]==10 and embedded_version[4]>35) or (embedded_version[0]==7 and embedded_version[4]>50) or (embedded_version[0] == 6)):
         ColorMsg(msg=f"New Matrix Touch For SDK V2", color="green")
         linker_hand.run_v2()
     else:

@@ -66,7 +66,7 @@ class MainWindow(QMainWindow):
             # 要发布的最后动作序列
             self.last_position = [255] * 7
             self.set_speed(speed=[180,250,250,250,250,250,250])
-        elif self.hand_joint == "L6":
+        elif self.hand_joint == "L6" or self.hand_joint == "L6P" or self.hand_joint == "O6":
             self.add_button_position = [255] * 6 # 记录添加按钮的位置
             # 要发布的最后动作序列
             self.last_position = [255] * 6
@@ -167,8 +167,8 @@ class MainWindow(QMainWindow):
             # L7
             self.init_pos = [250] * 7
             self.joint_name = ["大拇指弯曲", "大拇指横摆","食指弯曲", "中指弯曲", "无名指弯曲","小拇指弯曲","拇指旋转"]
-        elif self.hand_joint == "L6":
-            # L7
+        elif self.hand_joint == "L6" or self.hand_joint == "L6P" or self.hand_joint == "O6":
+            # L6
             self.init_pos = [250] * 6
             self.joint_name = ["大拇指弯曲", "大拇指横摆","食指弯曲", "中指弯曲", "无名指弯曲","小拇指弯曲"]
         
