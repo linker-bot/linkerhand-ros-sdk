@@ -396,6 +396,29 @@ $ roslaunch gui_control gui_control.launch # 控制左手，需要修改launch�
 
 <img  src="resource/gui.png" width="550">
 
+
+- 增加或修改动作示例。在[constants.py](https://github.com/linker-bot/linkerhand-ros-sdk/blob/main/examples/gui_control/scripts/config/constants.py)文件中可增加或修改动作。
+```python
+# 例如增加L6的动作序列
+"L6": HandConfig(
+        joint_names_en=["thumb_cmc_pitch", "thumb_cmc_yaw", "index_mcp_pitch", "middle_mcp_pitch", "pinky_mcp_pitch", "ring_mcp_pitch"],
+        joint_names=["大拇指弯曲", "大拇指横摆", "食指弯曲", "中指弯曲", "无名指弯曲", "小拇指弯曲"],
+        init_pos=[250] * 6,
+        preset_actions={
+            "张开": [250, 250, 250, 250, 250, 250],
+            "壹": [0, 31, 255, 0, 0, 0],
+            "贰": [0, 31, 255, 255, 0, 0],
+            "叁": [0, 30, 255, 255, 255, 0], 
+            "肆": [0, 30, 255, 255, 255, 255],
+            "伍": [250, 250, 250, 250, 250, 250],
+            "OK": [54, 41, 164, 250, 250, 250],
+            "点赞": [255, 31, 0, 0, 0, 0],
+            "握拳": [49, 61, 0, 0, 0, 0],
+            # 增加自定义动作......
+        }
+    )
+```
+
 **参数说明**
 
 无
