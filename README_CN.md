@@ -397,7 +397,8 @@ $ roslaunch gui_control gui_control.launch # 控制左手，需要修改launch�
 <img  src="resource/gui.png" width="550">
 
 
-- 增加或修改动作示例。在[constants.py](https://github.com/linker-bot/linkerhand-ros-sdk/blob/main/examples/gui_control/scripts/config/constants.py)文件中可增加或修改动作。
+- 增加或修改动作示例。在[examples/gui_control/scripts/config
+/constants.py](https://github.com/linker-bot/linkerhand-ros-sdk/blob/main/examples/gui_control/scripts/config/constants.py)文件中可增加或修改动作。
 ```python
 # 例如增加L6的动作序列
 "L6": HandConfig(
