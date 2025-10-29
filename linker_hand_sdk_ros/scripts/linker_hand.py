@@ -145,6 +145,7 @@ class LinkerHand:
 
     def _hand_setting_cb(self, msg):
         data = json.loads(msg.data)
+        print(data)
         print(f"Received setting command: {data['setting_cmd']}")
         if data["params"]["hand_type"] == "left" and self.hand == True:
             hand = self.api
@@ -250,7 +251,7 @@ class LinkerHand:
                 if count == 16:
                     count = 0
                 count += 1
-            except e:
+            except:
                 pass
             time.sleep(0.001)
 

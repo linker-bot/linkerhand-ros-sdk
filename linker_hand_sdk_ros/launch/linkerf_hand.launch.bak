@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<launch>
-  <include file="$(find range_to_arc)/launch/range_to_arc.launch"/>  <!--  弧度范围互转  -->
-  <!--include file="$(find graphic_display_status)/launch/graphic_display_status.launch" /--> <!-- 压感波形图  -->
-  <node pkg="linker_hand_sdk_ros" type="linker_hand.py" name="linker_hand_sdk_ros" output="screen" >  <!--  L10/L20主系统  -->
-  </node>
-</launch>

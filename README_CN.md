@@ -226,7 +226,7 @@ $ sudo vim linker_hand_double.launch    #启动左右双手，按照注释编辑
 </launch>
 ```
 
-### 单USB转CAN控制双手控制 注：首先保证没有其他CAN设备接入控制电脑，将USB转CAN线按照同颜色接在一起即可 支持L20|L21|L25
+### 单USB转CAN控制双手控制 注：首先保证没有其他CAN设备接入控制电脑，将USB转CAN线按照同颜色接在一起即可 支持CAN通讯所有型号Linker Hand
 - 修改linker_hand_double.launch
 ```html
     <arg name="left_hand_joint" default="L10"/> <!-- 左手型号  L20 | L21 | L25-->
@@ -237,7 +237,7 @@ $ sudo vim linker_hand_double.launch    #启动左右双手，按照注释编辑
     <arg name="right_can" default="can0"/> <!-- 右手USB转CAN编号 can0-->
 ```
 
-### 双USB转CAN控制双手控制 注：首先保证没有其他CAN设备接入控制电脑，先插入左手USB转CAN为can0，再插入右手USB转CAN为can1 支持L7 | L10 | L20 | L21 | L25
+### 双USB转CAN控制双手控制 注：首先保证没有其他CAN设备接入控制电脑，先插入左手USB转CAN为can0，再插入右手USB转CAN为can1 支持CAN通讯所有型号Linker Hand
 - 修改linker_hand_double.launch
 ```html
     <arg name="left_hand_joint" default="L10"/> <!-- 左手型号 L7 | L10 | L20 | L21 | L25-->
@@ -276,16 +276,19 @@ $ sudo chmod a+x src/linker_hand_sdk/linker_hand_sdk_ros/scripts/linker_hand.py
 $ roslaunch linker_hand_sdk_ros linker_hand.launch
 ```
 
-### 4.4 通过RML机械臂485接口控制L10灵巧手 注：睿尔曼的官方API2只支持Python3.9以上版本，否则无法使用
-- 修改linker_hand.launch文件
+### 4.4 RS485 协议切换 当前支持O6，其他型号灵巧手请参考MODBUS RS485协议文档
+
+编辑[scripts/LinkerHand/config/setting.yaml](https://github.com/linker-bot/linkerhand-ros-sdk/blob/main/linker_hand_sdk_ros/scripts/LinkerHand/config/setting.yaml)配置文件，按照配置文件内注释说明进行参数修改,将MODBUS:"/dev/ttyUSB0"，并且[linker_hand.launch.py](https://github.com/linker-bot/linkerhand-ros-sdk/blob/main/linker_hand_sdk_ros/launch/linker_hand.launch)配置文件中"modbus"参数为"/dev/ttyUSB0"。USB-RS485转换器在Ubuntu上一般显示为/dev/ttyUSB* or /dev/ttyACM*
+modbus: "None" or "/dev/ttyUSB0"  注:modbus的参数为string类型，当modbus参数不为"None"时，参数can失效
 ```bash
-修改参数 <arg name="modbus" default="None"/> <!-- None or RML  only L10 --> 
-# 开启CAN端口
-$ sudo /usr/sbin/ip link set can0 up type can bitrate 1000000 #USB转CAN设备蓝色灯常亮状态 在按照要求修改setting.ymal配置文件后，Ubuntu系统可以不做此步
-$ cd ~/Linker_Hand_SDK_ROS/
-$ source ./devel/setup.bash
-$ roslaunch linker_hand_sdk_ros linker_hand.launch #左or右单手启动
-向topic /cb_left_hand_control_cmd or /cb_right_hand_control_cmd 发送控制消息即可
+# 确保requirements.txt安装依赖
+# 安装系统级相关驱动
+$ pip install minimalmodbus
+$ pip install pyserial
+# 查看USB-RS485端口号
+$ ls /dev
+# 可以看到类似ttyUSB0端口后给端口执行权限
+$ sudo chmod 777 /dev/ttyUSB0
 ```
 
 - position与手指关节对照表
@@ -359,12 +362,13 @@ $ rosrun linker_hand_pybullet linker_hand_pybullet.py _hand_type:=L20
 
 ## 6.2 **图形界面控制**
 
-已支持的LinkerHand灵巧手产品：L7/O7/L10/O10/L20/O20/L25/O25/T25
+已支持的LinkerHand灵巧手产品：O6/L6/L7/L10/O10/L20/O20/L25
 图形界面可控制[Mujoco仿真和PyBullet仿真](https://github.com/linkerbotai/linker_hand_sim)内的灵巧手
 
-图形界面控制可以通过滑动块控制LinkerHand灵巧手L7/O7/L10/O10/L20/O20/L25/O25/T25各个关节独立运动。也可以通过添加按钮记录当前所有滑动块的数值，保存LinkerHand灵巧手当前各个关节运动状态。通过功能性按钮进行动作复现。
+图形界面控制可以通过滑动块控制LinkerHand灵巧手O6/L6/L7/L10/O10/L20/O20/L25各个关节独立运动。也可以通过添加按钮记录当前所有滑动块的数值，保存LinkerHand灵巧手当前各个关节运动状态。通过功能性按钮进行动作复现。
 
 使用gui_control控制LinkerHand灵巧手: gui_control界面控制灵巧手需要启动linker_hand_sdk_ros，以topic的形式对LinkerHand灵巧手进行操作。
+- 编辑[gui_control.launch](https://github.com/linker-bot/linkerhand-ros-sdk/blob/main/examples/gui_control/launch/gui_control.launch)配置文件，按照配置文件内注释说明进行参数修改
 1. 开启一个新终端，启动ROS
 
 ```shell
@@ -384,14 +388,13 @@ $ roslaunch linker_hand_sdk_ros linker_hand.launch # 启动灵巧手 SDK
 ```shell
 $ cd Linker_Hand_SDK_ROS
 $ source ./devel/setup.bash
-$ roslaunch gui_control gui_control_left.launch # 控制左手，需要修改launch文件内的配置参数，按照自身需求即可
-or
-$ roslaunch gui_control gui_control_right.launch # 控制右手，需要修改launch文件内的配置参数，按照自身需求即可
-or 
-$ roslaunch gui_control gui_control_double.launch # 控制双手，需要修改launch文件内的配置参数，按照自身需求即可
+$ roslaunch gui_control gui_control.launch # 控制左手，需要修改launch文件内的配置参数，按照自身需求即可
+
 ```
 
 开启后会弹出UI界面。通过滑动条可控制相应LinkerHand灵巧手关节运动。并可通过右侧添加按钮对当前滑动条数据进行保存，以便用于复现使用。
+
+<img  src="resource/gui.png" width="550">
 
 **参数说明**
 

@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<launch>    
-    <!-- 右手节点 -->
-    <node pkg="gui_control" type="gui_control_right.py" name="gui_control$(anon right)" output="screen">
-        <param name="hand_joint" type="string" value="L6P"/> <!--  O6\L6\L6P\L7\L10\L20\L21  -->
-    </node>
-</launch>
