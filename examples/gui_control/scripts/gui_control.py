@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os,sys, time, json, threading
+import os, sys, time, json, threading
 from dataclasses import dataclass
 from typing import List, Dict
 
@@ -11,6 +11,7 @@ from sensor_msgs.msg import JointState
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from utils.mapping import *
 from config.constants import _HAND_CONFIGS

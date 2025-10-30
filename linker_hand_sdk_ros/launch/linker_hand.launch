@@ -2,10 +2,10 @@
 <launch>
     <!-- 参数定义（可外部传入） -->
     <arg name="hand_type" default="right"/>
-    <arg name="hand_joint" default="L7"/>   <!--  O6\L6\L7\L10\L20\L21  -->
+    <arg name="hand_joint" default="L6"/>   <!--  O6\L6\L7\L10\L20\L21  -->
     <arg name="touch" default="true"/>
     <arg name="can" default="can0"/>
-    <arg name="modbus" default="None"/> <!-- "None" or "/dev/ttyUSB*"  only O6 -->
+    <arg name="modbus" default="/dev/ttyUSB0"/> <!-- "None" or "/dev/ttyUSB*"  only O6 -->
 
     <!-- linker_hand 节点 -->
     <node pkg="linker_hand_sdk_ros" type="linker_hand.py" name="linker_hand_sdk" output="screen">

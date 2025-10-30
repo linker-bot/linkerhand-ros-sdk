@@ -13,6 +13,9 @@ LinkerHand 灵巧手 ROS SDK 是由灵心巧手（北京）科技有限公司开
 3. 请保护好灵巧手。
 
 # 2. **版本说明**
+v2.2.3
+1、支持L6\L6P RS485通讯协议
+
 V2.1.9
 1、支持L6\L6P\O6灵巧手
 
@@ -276,7 +279,7 @@ $ sudo chmod a+x src/linker_hand_sdk/linker_hand_sdk_ros/scripts/linker_hand.py
 $ roslaunch linker_hand_sdk_ros linker_hand.launch
 ```
 
-### 4.4 RS485 协议切换 当前支持O6，其他型号灵巧手请参考MODBUS RS485协议文档
+### 4.4 RS485 协议切换 当前支持O6/L6，其他型号灵巧手请参考MODBUS RS485协议文档
 
 编辑[scripts/LinkerHand/config/setting.yaml](https://github.com/linker-bot/linkerhand-ros-sdk/blob/main/linker_hand_sdk_ros/scripts/LinkerHand/config/setting.yaml)配置文件，按照配置文件内注释说明进行参数修改,将MODBUS:"/dev/ttyUSB0"，并且[linker_hand.launch.py](https://github.com/linker-bot/linkerhand-ros-sdk/blob/main/linker_hand_sdk_ros/launch/linker_hand.launch)配置文件中"modbus"参数为"/dev/ttyUSB0"。USB-RS485转换器在Ubuntu上一般显示为/dev/ttyUSB* or /dev/ttyACM*
 modbus: "None" or "/dev/ttyUSB0"  注:modbus的参数为string类型，当modbus参数不为"None"时，参数can失效
@@ -395,30 +398,6 @@ $ roslaunch gui_control gui_control.launch # 控制左手，需要修改launch�
 开启后会弹出UI界面。通过滑动条可控制相应LinkerHand灵巧手关节运动。并可通过右侧添加按钮对当前滑动条数据进行保存，以便用于复现使用。
 
 <img  src="resource/gui.png" width="550">
-
-
-- 增加或修改动作示例。在[examples/gui_control/scripts/config
-/constants.py](https://github.com/linker-bot/linkerhand-ros-sdk/blob/main/examples/gui_control/scripts/config/constants.py)文件中可增加或修改动作。
-```python
-# 例如增加L6的动作序列
-"L6": HandConfig(
-        joint_names_en=["thumb_cmc_pitch", "thumb_cmc_yaw", "index_mcp_pitch", "middle_mcp_pitch", "pinky_mcp_pitch", "ring_mcp_pitch"],
-        joint_names=["大拇指弯曲", "大拇指横摆", "食指弯曲", "中指弯曲", "无名指弯曲", "小拇指弯曲"],
-        init_pos=[250] * 6,
-        preset_actions={
-            "张开": [250, 250, 250, 250, 250, 250],
-            "壹": [0, 31, 255, 0, 0, 0],
-            "贰": [0, 31, 255, 255, 0, 0],
-            "叁": [0, 30, 255, 255, 255, 0], 
-            "肆": [0, 30, 255, 255, 255, 255],
-            "伍": [250, 250, 250, 250, 250, 250],
-            "OK": [54, 41, 164, 250, 250, 250],
-            "点赞": [255, 31, 0, 0, 0, 0],
-            "握拳": [49, 61, 0, 0, 0, 0],
-            # 增加自定义动作......
-        }
-    )
-```
 
 **参数说明**
 
