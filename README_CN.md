@@ -408,7 +408,26 @@ $ roslaunch gui_control gui_control.launch # 控制左手，需要修改launch�
 **输出结果示例**
 
 无
-
+- 增加GUI中动作示例，修改[gui_control/scripts/config/constants.py](https://github.com/linker-bot/linkerhand-ros-sdk/blob/main/examples/gui_control/scripts/config/constants.py)文件，根据提示可自行增加对应Linker Hand灵巧手动作示例。
+```python
+"L6": HandConfig(
+        joint_names_en=["thumb_cmc_pitch", "thumb_cmc_yaw", "index_mcp_pitch", "middle_mcp_pitch", "pinky_mcp_pitch", "ring_mcp_pitch"],
+        joint_names=["大拇指弯曲", "大拇指横摆", "食指弯曲", "中指弯曲", "无名指弯曲", "小拇指弯曲"],
+        init_pos=[250] * 6,
+        preset_actions={
+            "张开": [250, 250, 250, 250, 250, 250],
+            "壹": [125, 18, 255, 0, 0, 0],
+            "贰": [92, 87, 255, 255, 0, 0],
+            "叁": [92, 87, 255, 255, 255, 0],
+            "肆": [92, 87, 255, 255, 255, 255],
+            "伍": [255, 255, 255, 255, 255, 255],
+            "OK": [96, 100, 118, 250, 250, 250],
+            "点赞": [250, 79, 0, 0, 0, 0],
+            "握拳": [102, 18, 0, 0, 0, 0],
+            # 这里增加动作序列.....
+        }
+    ),
+```
 ## 6.3 获取设备状态与信息
 ```bash
 # 启动SDK后
