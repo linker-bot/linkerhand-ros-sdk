@@ -11,7 +11,7 @@ class HandConfig:
     preset_actions: Optional[Dict[str, List[int]]] = None
 
 # ------------------------------------------------------------------
-# 常量字典（仅构建一次）
+# 示例动作常量字典（可自行按照规则添加）
 # ------------------------------------------------------------------
 _HAND_CONFIGS: Dict[str, HandConfig] = {
     "L25": HandConfig(
