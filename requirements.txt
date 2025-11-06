@@ -12,8 +12,8 @@ PyYAML
 tqdm
 wandb
 mediapipe
-PyQt5==5.15.4
-PyQt5-sip==12.9.0
+PyQt5
+PyQt5-sip
 pyqtgraph
 dm_control
 uvicorn
