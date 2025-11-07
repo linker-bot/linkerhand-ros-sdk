@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <launch>
     <arg name="hand_type_left" default="right"/> <!-- left or right -->
-    <arg name="hand_joint" default="L6"/>   <!--  O6\L6\L7\L10\L20\L21  -->
+    <arg name="hand_joint" default="G20"/>   <!--  O6\L6\L7\L10\L20\G20(工业版)\L21  -->
     <arg name="topic_hz" default="15"/>  
     <arg name="is_arc" default="false"/> <!-- "false" or "true" -->
     <!-- 左手节点 -->
     <node pkg="gui_control" type="gui_control.py" name="gui_control$(anon left)" output="screen">
         <param name="hand_type" type="string" value="$(arg hand_type_left)"/> 
-        <param name="hand_joint" type="string" value="$(arg hand_joint)"/> <!--  O6\L6\L6P\L7\L10\L20\L21  -->
+        <param name="hand_joint" type="string" value="$(arg hand_joint)"/> <!--  O6\L6\L6P\L7\L10\L20\G20(工业版)\L21  -->
         <param name="topic_hz" type="int" value="$(arg topic_hz)"/>
         <param name="is_arc" type="bool" value="$(arg is_arc)"/>
     </node>

@@ -133,6 +133,8 @@ class LinkerHand:
             pose = [255, 200, 255, 255, 255, 255, 180, 180, 180, 41]
         elif self.hand_joint == "L20":
             pose = [255,255,255,255,255,255,10,100,180,240,245,255,255,255,255,255,255,255,255,255]
+        elif self.hand_joint == "G20":
+            pose = [241, 255, 255, 255, 255, 255, 141, 134, 149, 137, 245, 255, 255, 255, 255, 255, 255, 255, 255, 255]
         elif self.hand_joint == "L21":
             pose = [75, 255, 255, 255, 255, 176, 97, 81, 114, 147, 202, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]
         elif self.hand_joint == "L25":
@@ -444,6 +446,9 @@ class LinkerHand:
             elif self.hand_joint == "L20" and len(vel) == 20:
                 speed = [vel[10],vel[1],vel[2],vel[3],vel[4]]
                 self.api.set_joint_speed(speed=speed)
+            elif self.hand_joint == "G20" and len(vel) == 20:
+                speed = [vel[10],vel[1],vel[2],vel[3],vel[4]]
+                self.api.set_joint_speed(speed=speed)
             elif self.hand_joint == "L21" and len(vel) == 25:
                 speed = vel
                 self.api.set_joint_speed(speed=speed)
@@ -479,6 +484,9 @@ class LinkerHand:
                 speed = [vel[0],vel[2],vel[3],vel[4],vel[5]]
                 self.api.set_joint_speed(speed=speed)
             elif self.hand_joint == "L20" and len(vel) == 20:
+                speed = [vel[10],vel[1],vel[2],vel[3],vel[4]]
+                self.api.set_joint_speed(speed=speed)
+            elif self.hand_joint == "G20" and len(vel) == 20:
                 speed = [vel[10],vel[1],vel[2],vel[3],vel[4]]
                 self.api.set_joint_speed(speed=speed)
             elif self.hand_joint == "L21" and len(vel) == 25:
@@ -525,6 +533,9 @@ class LinkerHand:
             elif self.hand_joint == "L20" and len(vel) == 20:
                 speed = [vel[10],vel[1],vel[2],vel[3],vel[4]]
                 self.api.set_joint_speed(speed=speed)
+            elif self.hand_joint == "G20" and len(vel) == 20:
+                speed = [vel[10],vel[1],vel[2],vel[3],vel[4]]
+                self.api.set_joint_speed(speed=speed)
             elif self.hand_joint == "L21" and len(vel) == 25:
                 speed = vel
                 self.api.set_joint_speed(speed=speed)
@@ -562,6 +573,9 @@ class LinkerHand:
             elif self.hand_joint == "L20" and len(vel) == 20:
                 speed = [vel[10],vel[1],vel[2],vel[3],vel[4]]
                 self.api.set_joint_speed(speed=speed)
+            elif self.hand_joint == "G20" and len(vel) == 20:
+                speed = [vel[10],vel[1],vel[2],vel[3],vel[4]]
+                self.api.set_joint_speed(speed=speed)
             elif self.hand_joint == "L21" and len(vel) == 25:
                 speed = vel
                 self.api.set_joint_speed(speed=speed)
@@ -593,7 +607,7 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, linker_hand.signal_handler)  # Ctrl+C
     signal.signal(signal.SIGTERM, linker_hand.signal_handler)  # kill command
     embedded_version = linker_hand.embedded_version
-    if linker_hand.hand_joint.upper() == "O6" or linker_hand.hand_joint.upper() == "L6":
+    if linker_hand.hand_joint.upper() == "O6" or linker_hand.hand_joint.upper() == "L6" or linker_hand.hand_joint.upper() == "G20":
         ColorMsg(msg=f"New Matrix Touch For SDK V2", color="green")
         linker_hand.run_v2()
     elif len(embedded_version) == 3:

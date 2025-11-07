@@ -15,7 +15,7 @@ from PyQt5.QtGui import *
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from utils.mapping import *
 from config.constants import _HAND_CONFIGS
-
+LOOP_TIME = 1000 # 循环动作间隔时间 毫秒
 class ROS1NodeManager(QObject):
     status_updated = pyqtSignal(str, str)
 
@@ -610,7 +610,7 @@ class HandControlGUI(QWidget):
             self.current_action_index = -1  # 重置索引
             self.cycle_timer = QTimer(self)
             self.cycle_timer.timeout.connect(self.run_next_action)
-            self.cycle_timer.start(2000)  # 2秒间隔
+            self.cycle_timer.start(LOOP_TIME)  # 2秒间隔
             self.cycle_button.setText("停止循环运行")
             self.status_updated.emit("info", "开始循环运行预设动作")
             self.run_next_action()  # 立即运行第一个动作
