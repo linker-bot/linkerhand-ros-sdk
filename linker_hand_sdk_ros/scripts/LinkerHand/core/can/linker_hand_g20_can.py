@@ -650,27 +650,27 @@ class LinkerHandG20Can:
     
     def get_thumb_touch(self):
         """获取大拇指触觉传感数据"""
-        self.send_command(FrameProperty.THUMB_TOUCH, [0xC6], sleep_time=0.006)
+        self.send_command(FrameProperty.THUMB_TOUCH, [0xC6], sleep_time=0.007)
         #return self.thumb_matrix
     
     def get_index_touch(self):
         """获取食指触觉传感数据"""
-        self.send_command(FrameProperty.INDEX_TOUCH, [0xC6], sleep_time=0.006)
+        self.send_command(FrameProperty.INDEX_TOUCH, [0xC6], sleep_time=0.007)
         #return self.xB2
     
     def get_middle_touch(self):
         """获取中指触觉传感数据"""
-        self.send_command(FrameProperty.MIDDLE_TOUCH, [0xC6], sleep_time=0.006)
+        self.send_command(FrameProperty.MIDDLE_TOUCH, [0xC6], sleep_time=0.007)
         #33333return self.xB3
     
     def get_ring_touch(self):
         """获取无名指触觉传感数据"""
-        self.send_command(FrameProperty.RING_TOUCH, [0xC6], sleep_time=0.006)
+        self.send_command(FrameProperty.RING_TOUCH, [0xC6], sleep_time=0.007)
         #return self.xB4
     
     def get_little_touch(self):
         """获取小拇指触觉传感数据"""
-        self.send_command(FrameProperty.LITTLE_TOUCH, [0xC6], sleep_time=0.006)
+        self.send_command(FrameProperty.LITTLE_TOUCH, [0xC6], sleep_time=0.007)
         #return self.xB5
     
     def get_palm_touch(self):
