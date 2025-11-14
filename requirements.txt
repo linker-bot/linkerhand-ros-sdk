@@ -3,6 +3,9 @@ catkin_pkg
 python-can
 dm_env
 pexpect
+minimalmodbus
+pymodbus
+pyserial
 pyquaternion
 pyagxrobots
 pycryptodome
