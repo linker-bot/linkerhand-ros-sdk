@@ -292,6 +292,7 @@ modbus: "None" or "/dev/ttyUSB0"  注:modbus的参数为string类型，当modbus
 # 安装系统级相关驱动
 $ pip install minimalmodbus
 $ pip install pyserial
+$ pip install pymodbus
 # 查看USB-RS485端口号
 $ ls /dev
 # 可以看到类似ttyUSB0端口后给端口执行权限
