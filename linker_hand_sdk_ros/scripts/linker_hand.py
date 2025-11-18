@@ -610,7 +610,7 @@ if __name__ == '__main__':
     if linker_hand.hand_joint.upper() == "O6" or linker_hand.hand_joint.upper() == "L6" or linker_hand.hand_joint.upper() == "G20":
         ColorMsg(msg=f"New Matrix Touch For SDK V2", color="green")
         linker_hand.run_v2()
-    elif len(embedded_version) == 3:
+    elif len(embedded_version) == 3 or len(embedded_version) == 6:
         ColorMsg(msg=f"New Matrix Touch For SDK V2", color="green")
         linker_hand.run_v2()
     elif len(embedded_version) > 4 and ((embedded_version[0]==10 and embedded_version[4]>35) or (embedded_version[0]==7 and embedded_version[4]>50) or (embedded_version[0] == 6)):
