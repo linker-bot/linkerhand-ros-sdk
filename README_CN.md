@@ -14,7 +14,8 @@ LinkerHand 灵巧手 ROS SDK 是由灵心巧手（北京）科技有限公司开
 
 # 2. **版本说明**
 V2.2.4
-1. 新增支持G20工业版本LinkeerHand灵巧手
+1. 新增支持G20工业版本LinkerHand灵巧手
+2. 支持L10 RS485通讯协议
 
 
 v2.2.3
