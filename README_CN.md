@@ -21,6 +21,10 @@ LinkerHand 灵巧手 ROS SDK 是由灵心巧手（北京）科技有限公司开
 | ROS2 SDK | ![SDK Version](https://img.shields.io/badge/SDK%20Version-V3.0.1-brightgreen?style=flat-square) ![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white) ![Ubuntu 24.04](https://img.shields.io/badge/OS-Ubuntu%2024.04-E95420?style=flat-square&logo=ubuntu&logoColor=white) ![ROS 2 Jazzy](https://img.shields.io/badge/ROS%202-Jazzy-00B3E6?style=flat-square&logo=ros) ![Windows 11](https://img.shields.io/badge/OS-Windows%2011-0078D4?style=flat-square&logo=windows&logoColor=white) | [![GitHub 仓库](https://img.shields.io/badge/GitHub-grey?logo=github&style=flat-square)](https://github.com/linker-bot/linkerhand-ros2-sdk) |
 
 # 2. **版本说明**
+V3.0.1
+1、支持L6\L10灵巧手 RS485通讯
+2、重构ROS层逻辑。
+
 V2.2.4
 1. 新增支持G20工业版本LinkerHand灵巧手
 2. 支持L10 RS485通讯协议
