@@ -4,7 +4,7 @@ import time
 from typing import List
 import numpy as np
 from pymodbus.client import ModbusSerialClient
-_INTERVAL = 0.008  # 8 ms
+_INTERVAL = 0.03  # 30 ms
 
 
 class LinkerHandL10RS485:
