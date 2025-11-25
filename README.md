@@ -187,7 +187,7 @@ $ roslaunch linker_hand_sdk_ros linker_hand.launch
 ```
 
 ### Dual USB to CAN control with two-hand operation Note: First, ensure that no other CAN devices are connected to the control computer. Insert the left USB to CAN adapter as can0, and then insert the right USB to CAN adapter as can1. Supports CAN communication for all Linker Hand models
-- 修改linker_hand_double.launch
+- Modify `linker_hand_double.launch`
 ```html
     <arg name="left_hand_joint" default="L10"/> <!-- left-hand model O6/L6/L7/L10/L20/G20/L21-->
     <arg name="right_hand_joint" default="L10"/> <!-- right-hand model O6/L6/L7/L10/L20/G20/L21-->
