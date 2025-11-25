@@ -1,3 +1,5 @@
+<img  src="resource/logo.png" width="170">
+
 # 1. **概述**
 
 灵心巧手，创造万物。
@@ -11,6 +13,12 @@ LinkerHand 灵巧手 ROS SDK 是由灵心巧手（北京）科技有限公司开
 2. 执行动作前请务必进行安全评估，以防止发生碰撞。
 
 3. 请保护好灵巧手。
+
+| Name | Version | Link |
+| --- | --- | --- |
+| Python SDK | V3.0.1 ![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue?style=flat-square&logo=python&logoColor=white) ![Windows 11](https://img.shields.io/badge/OS-Windows%2011-0078D4?style=flat-square&logo=windows&logoColor=white) ![Ubuntu 20.04+](https://img.shields.io/badge/OS-Ubuntu%2020.04%2B-E95420?style=flat-square&logo=ubuntu&logoColor=white) | [![GitHub 仓库](https://img.shields.io/badge/GitHub-grey?logo=github&style=flat-square)](https://github.com/linker-bot/linkerhand-python-sdk) |
+| ROS SDK | V3.0.1 ![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue?style=flat-square&logo=python&logoColor=white) ![Ubuntu 20.04+](https://img.shields.io/badge/OS-Ubuntu%2020.04%2B-E95420?style=flat-square&logo=ubuntu&logoColor=white) ![ROS Noetic](https://img.shields.io/badge/ROS-Noetic-009624?style=flat-square&logo=ros) | [![GitHub 仓库](https://img.shields.io/badge/GitHub-grey?logo=github&style=flat-square)](https://github.com/linker-bot/linkerhand-ros-sdk) |
+| ROS2 SDK | V3.0.1 ![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white) ![Ubuntu 24.04](https://img.shields.io/badge/OS-Ubuntu%2024.04-E95420?style=flat-square&logo=ubuntu&logoColor=white) ![ROS 2 Jazzy](https://img.shields.io/badge/ROS%202-Jazzy-00B3E6?style=flat-square&logo=ros) ![Windows 11](https://img.shields.io/badge/OS-Windows%2011-0078D4?style=flat-square&logo=windows&logoColor=white) | [![GitHub 仓库](https://img.shields.io/badge/GitHub-grey?logo=github&style=flat-square)](https://github.com/linker-bot/linkerhand-ros2-sdk) |
 
 # 2. **版本说明**
 V2.2.4
@@ -26,78 +34,7 @@ V2.1.9
 
 V2.1.8
 1. 修复偶发撞帧问题
-
-V2.1.4
-1. 新增支持L21版本LinkeerHand灵巧手
-
-2. 新增支持矩阵式压力传感器
-
-3. 支持单USB转CAN同时控制同型号双手，需要重新接线
-
-4. 支持双USB转CAN同时控制同型号双手
-
-5. 新增L10通过RML485接口控制（由于睿尔曼机械臂Python调用485接口BUG问题，暂时不可用）
-
-V2.0.2
-1. 支持L7/O7/L10/O10/L20/O20/L25版本LinkerHand灵巧手
-
-2. 支持动捕手套发布的实时速度
-
-3. 支持获取所有LinkerHand灵巧手压感数据
-
-4. 支持设置LinkerHand灵巧手手指速度
-
-5. 支持设置LinkerHand灵巧手最大扭矩阈值
-
-6. 支持LinkerHand灵巧手L20设置电流阈值 L7/L10/L25暂不支持
-
-7. 支持LinkerHand灵巧手获取版本
-
-8. 支持获取LinkerHand灵巧手L20电流阈值 L7/L10/L25暂不支持
-
-9. 支持获取LinkerHand灵巧手当前关节状态
-
-10. 支持获取LinkerHand灵巧手当前速度阈值
-
-11. 支持获取LinkerHand灵巧手当前最大扭矩阈值
-
-12. 支持获取LinkerHand灵巧手电机当前实时温度
-
-13. 支持获取LinkerHand灵巧手电机故障码
-
-14. 支持LinkerHand灵巧手L20清除电机故障码 L7/L10/L25暂不支持
-
-15. 支持LinkerHand灵巧手L25设置电机使能 L7/L10/L20暂不支持
-
-16. 支持LinkerHand灵巧手L25设置电机失能 L7/L10/L20暂不支持
-
-17. 支持LinkerHand灵巧手L10&L20范围转弧度和弧度topic带有控制速度
-
-V1.3.4
-
-1. 波形图由单手显示改为单/双手配置显示，通过修改该配置文件压感是否存在来控制
-
-2. 解决接近感应波形图数据同行错误
-
-3. 改变关闭CAN口逻辑，避免第二次启动后灵巧手部分传感器数据读取不出来
-
-V1.3.3
-
-1. GUI新增了压力传感器波形图
-
-2. L10支持了设置速度和设置扭矩
-
-V1.3.2
-
-1. 新增了T24版本灵巧手的支持
-
-V1.3.1
-
-1. examples新增LinkerHand灵巧手状态值(弧度与范围)的获取
-
-2. 新增PyBullet仿真环境
-
-3. 新增GUI控制界面
+......
 
 # 3. 准备工作
 
