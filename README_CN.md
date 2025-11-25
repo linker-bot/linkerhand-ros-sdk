@@ -1,4 +1,4 @@
-<img  src="resource/logo.png" width="170">
+<img  src="resource/logo.png" width="800">
 
 # 1. **概述**
 
