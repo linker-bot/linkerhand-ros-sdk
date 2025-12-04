@@ -1,5 +1,6 @@
 empy
 catkin_pkg
+rospkg
 python-can
 dm_env
 pexpect
