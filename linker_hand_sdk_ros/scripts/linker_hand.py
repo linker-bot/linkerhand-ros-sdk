@@ -3,7 +3,7 @@
 
 import rospy, signal, rospkg, sys, os, math, time, threading, json
 import numpy as np
-from std_msgs.msg import String, Header, Float32MultiArray
+from std_msgs.msg import String, Header, Float32MultiArray, Float64MultiArray
 from sensor_msgs.msg import JointState
 from common.init_position import CONFIG
 from LinkerHand.utils.mapping import *
@@ -32,6 +32,10 @@ class LinkerHand:
         self.open_can.open_can(self.can)
         self.last_touch_force = [-1] * 5
         self.matrix_dic = {
+            "stamp":{
+                "secs": 0,
+                "nsecs": 0,
+            },
             "thumb_matrix":[[-1] * 12 for _ in range(6)],
             "index_matrix":[[-1] * 12 for _ in range(6)],
             "middle_matrix":[[-1] * 12 for _ in range(6)],
@@ -268,6 +272,20 @@ class LinkerHand:
                 self.touch_pub.publish(msg)
             if self.is_touch == True and self.touch_type == 2 and self.matrix_touch_pub.get_num_connections() > 0:
                 msg = String()
+                # 尝试获取当前的 ROS 时间
+                try:
+                    current_time = rospy.Time.now()
+                    # 提取 secs 和 nsecs
+                    t_secs = current_time.secs
+                    t_nsecs = current_time.nsecs
+                except rospy.ROSInitException:
+                    # 如果 ROS 时间系统尚未启动 (例如，没有 roscore)，使用系统时间作为备用
+                    # 这种情况下，时间可能不够精确或与 ROS bag 时间不同步
+                    t_secs = int(time.time())
+                    t_nsecs = int((time.time() - t_secs) * 1e9)
+                    rospy.logwarn("ROS Time not available, using system time.")
+                self.matrix_dic["stamp"]["secs"] = t_secs
+                self.matrix_dic["stamp"]["nsecs"] = t_nsecs
                 msg.data = json.dumps(self.matrix_dic)
                 self.matrix_touch_pub.publish(msg)
             """发布配置信息"""
@@ -276,8 +294,6 @@ class LinkerHand:
                 msg.data = json.dumps(self.last_hand_info)
                 self.hand_info_pub.publish(msg)
             time.sleep(self.hz)
-            
-        
 
     def signal_handler(self,sig, frame):
         #self.open_can.close_can(self.can)
