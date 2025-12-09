@@ -224,7 +224,7 @@ is_dense: False
  - 接收端处理示例
 ```python
 def pc2_to_6x12x5(msg):
-    arr = np.frombuffer(msg.data, np.float32)  # 360
+    arr = np.frombuffer(msg.data, np.float16)  # 360
     return arr.reshape(5, 6, 12)  # 原始数据为5组6*12的矩阵
 ```
 
