@@ -2,7 +2,7 @@
 <launch>
     <!-- 参数定义（可外部传入） -->
     <arg name="hand_type" default="left"/>
-    <arg name="hand_joint" default="L20"/>   <!--  O6\L6\L7\L10\L20\G20(工业版)\L21  -->
+    <arg name="hand_joint" default="L6"/>   <!--  O6\L6\L7\L10\L20\G20(工业版)\L21  -->
     <arg name="touch" default="true"/>
     <arg name="can" default="can0"/>
     <arg name="modbus" default="None"/> <!-- "None" or "/dev/ttyUSB*"  only O6 -->

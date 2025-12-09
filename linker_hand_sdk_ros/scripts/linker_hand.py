@@ -1,10 +1,10 @@
 #!/usr/bin/env python3 
 # -*- coding: utf-8 -*-
 
-import rospy, signal, rospkg, sys, os, math, time, threading, json
+import rospy, signal, rospkg, sys, os, math, time, threading, json,itertools
 import numpy as np
 from std_msgs.msg import String, Header, Float32MultiArray, Float64MultiArray
-from sensor_msgs.msg import JointState
+from sensor_msgs.msg import JointState,PointCloud2, PointField
 from common.init_position import CONFIG
 from LinkerHand.utils.mapping import *
 from LinkerHand.linker_hand_api import LinkerHandApi
@@ -36,11 +36,11 @@ class LinkerHand:
                 "secs": 0,
                 "nsecs": 0,
             },
-            "thumb_matrix":[[-1] * 12 for _ in range(6)],
-            "index_matrix":[[-1] * 12 for _ in range(6)],
-            "middle_matrix":[[-1] * 12 for _ in range(6)],
-            "ring_matrix":[[-1] * 12 for _ in range(6)],
-            "little_matrix":[[-1] * 12 for _ in range(6)]
+            "thumb_matrix":[[-1] * 6 for _ in range(12)],
+            "index_matrix":[[-1] * 6 for _ in range(12)],
+            "middle_matrix":[[-1] * 6 for _ in range(12)],
+            "ring_matrix":[[-1] * 6 for _ in range(12)],
+            "little_matrix":[[-1] * 6 for _ in range(12)]
         }
         self.last_hand_info = {
             "version": [-1], # Dexterous hand version number
@@ -77,6 +77,7 @@ class LinkerHand:
         if self.is_touch == True:
             if self.touch_type == 2:
                 self.matrix_touch_pub = rospy.Publisher(f"/cb_{self.hand_type}_hand_matrix_touch" ,String, queue_size=10)
+                self.matrix_touch_pub_pc = rospy.Publisher(f"/cb_{self.hand_type}_hand_matrix_touch_pc2" ,PointCloud2, queue_size=10)
                 ColorMsg(msg=f"Linker Hand {self.hand_type} {self.hand_joint} It features a matrix pressure sensor and has been enabled in the configuration",color="green")
             elif self.touch_type != -1:
                 self.touch_pub = rospy.Publisher(f"/cb_{self.hand_type}_hand_touch", Float32MultiArray, queue_size=10)
@@ -224,7 +225,7 @@ class LinkerHand:
                     force = self.api.get_force()
                     # 扁平化和浮点转换合并到一行
                     self.last_touch_force = [float(val) for sublist in force for val in sublist]
-                if self.is_touch == True and self.touch_type == 2 and self.matrix_touch_pub.get_num_connections() > 0:
+                if self.is_touch == True and self.touch_type == 2 and (self.matrix_touch_pub.get_num_connections() > 0 or self.matrix_touch_pub_pc.get_num_connections() > 0):
                     """矩阵式压力传感器"""
                     if count == 3:
                         self.matrix_dic["thumb_matrix"] = self.api.get_thumb_matrix_touch(sleep_time=sleep_time).tolist()
@@ -270,30 +271,58 @@ class LinkerHand:
                 msg = Float32MultiArray()
                 msg.data = self.last_touch_force
                 self.touch_pub.publish(msg)
-            if self.is_touch == True and self.touch_type == 2 and self.matrix_touch_pub.get_num_connections() > 0:
-                msg = String()
-                # 尝试获取当前的 ROS 时间
-                try:
-                    current_time = rospy.Time.now()
-                    # 提取 secs 和 nsecs
-                    t_secs = current_time.secs
-                    t_nsecs = current_time.nsecs
-                except rospy.ROSInitException:
-                    # 如果 ROS 时间系统尚未启动 (例如，没有 roscore)，使用系统时间作为备用
-                    # 这种情况下，时间可能不够精确或与 ROS bag 时间不同步
-                    t_secs = int(time.time())
-                    t_nsecs = int((time.time() - t_secs) * 1e9)
-                    rospy.logwarn("ROS Time not available, using system time.")
-                self.matrix_dic["stamp"]["secs"] = t_secs
-                self.matrix_dic["stamp"]["nsecs"] = t_nsecs
-                msg.data = json.dumps(self.matrix_dic)
-                self.matrix_touch_pub.publish(msg)
+            if self.is_touch == True and self.touch_type == 2 and (self.matrix_touch_pub.get_num_connections() > 0 or self.matrix_touch_pub_pc.get_num_connections() > 0):
+                self.pub_matrix_dic()
+                self.pub_matrix_point_cloud()
             """发布配置信息"""
             if self.hand_info_pub.get_num_connections() > 0:
                 msg = String()
                 msg.data = json.dumps(self.last_hand_info)
                 self.hand_info_pub.publish(msg)
             time.sleep(self.hz)
+            
+    def pub_matrix_dic(self):
+        """发布矩阵数据JSON格式"""
+        msg = String()
+        # 尝试获取当前的 ROS 时间
+        try:
+            current_time = rospy.Time.now()
+            # 提取 secs 和 nsecs
+            t_secs = current_time.secs
+            t_nsecs = current_time.nsecs
+        except rospy.ROSInitException:
+            # 如果 ROS 时间系统尚未启动 (例如，没有 roscore)，使用系统时间作为备用
+            # 这种情况下，时间可能不够精确或与 ROS bag 时间不同步
+            t_secs = int(time.time())
+            t_nsecs = int((time.time() - t_secs) * 1e9)
+            rospy.logwarn("ROS Time not available, using system time.")
+        self.matrix_dic["stamp"]["secs"] = t_secs
+        self.matrix_dic["stamp"]["nsecs"] = t_nsecs
+        msg.data = json.dumps(self.matrix_dic)
+        self.matrix_touch_pub.publish(msg)
+
+    def pub_matrix_point_cloud(self):
+        tmp_dic = self.matrix_dic.copy()
+        del tmp_dic['stamp']               # 去掉时间戳字段
+        all_matrices = list(tmp_dic.values())  # 5 帧，每帧 6×12=72 个数
+        # 摊平到一维：360 个 float
+        flat_list = [v for frame in all_matrices for v in frame]  # 360
+        flat = np.array(flat_list, dtype=np.float16)              # (360,)
+
+        fields = [PointField('val', 0, PointField.UINT8, 1)]
+        pc = PointCloud2()
+        pc.header.stamp = rospy.Time.now()
+        pc.header.frame_id = ''   # 可改成你需要的坐标系
+        pc.height = 1
+        pc.width = flat.size         # 360
+        pc.fields = fields
+        pc.is_bigendian = False
+        pc.point_step = 1            # 1 个 float32
+        pc.row_step = pc.point_step * pc.width
+        pc.data = flat.tobytes()     # 1440 字节
+        self.matrix_touch_pub_pc.publish(pc)
+        
+
 
     def signal_handler(self,sig, frame):
         #self.open_can.close_can(self.can)

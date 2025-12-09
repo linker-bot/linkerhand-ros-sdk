@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <launch>
     <arg name="hand_type_left" default="left"/> <!-- left or right -->
-    <arg name="hand_joint" default="L20"/>   <!--  O6\L6\L7\L10\L20\G20(工业版)\L21  -->
+    <arg name="hand_joint" default="L6"/>   <!--  O6\L6\L7\L10\L20\G20(工业版)\L21  -->
     <arg name="topic_hz" default="30"/>  
     <arg name="is_arc" default="false"/> <!-- "false" or "true" -->
     <!-- 左手节点 -->
