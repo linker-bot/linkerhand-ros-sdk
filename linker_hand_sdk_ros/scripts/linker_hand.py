@@ -307,7 +307,7 @@ class LinkerHand:
         all_matrices = list(tmp_dic.values())  # 5 帧，每帧 6×12=72 个数
         # 摊平到一维：360 个 float
         flat_list = [v for frame in all_matrices for v in frame]  # 360
-        flat = np.array(flat_list, dtype=np.float16)              # (360,)
+        flat = np.array(flat_list, dtype=np.uint8)              # (360,)
 
         fields = [PointField('val', 0, PointField.UINT8, 1)]
         pc = PointCloud2()
