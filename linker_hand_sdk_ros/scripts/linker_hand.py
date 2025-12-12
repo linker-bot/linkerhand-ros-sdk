@@ -179,7 +179,7 @@ class LinkerHand:
                 """如果有命令，则执行命令动作"""
                 if self.last_position_cmd != None:
                     self.api.finger_move(pose=self.last_position_cmd)
-                    time.sleep(0.005)
+                    time.sleep(0.003)
                     if len(self.last_velocity_cmd) > 0:
                         vel = self.last_velocity_cmd
                     else:
@@ -209,17 +209,18 @@ class LinkerHand:
                         elif self.hand_joint == "L25" and len(vel) == 25:
                             speed = vel
                             self.api.set_joint_speed(speed=speed)
-                        time.sleep(0.005)
+                        time.sleep(0.003)
                     # 重置命令
                     self.last_position_cmd = None
                     self.last_velocity_cmd = None
-                if count % 2 == 0:
-                    """获取手当前状态"""
-                    if self.hand_state_pub.get_num_connections() > 0:
-                        state = self.api.get_state()
-                        vel = self.api.get_joint_speed()
-                        self.last_hand_state['state'] = state
-                        self.last_hand_state['vel'] = vel
+                #if count % 2 == 0:
+                """获取手当前状态"""
+                if self.hand_state_pub.get_num_connections() > 0:
+                    state = self.api.get_state()
+                    vel = self.api.get_joint_speed()
+                    self.last_hand_state['state'] = state
+                    self.last_hand_state['vel'] = vel
+                    time.sleep(0.003)
                 if count == 3 and self.is_touch == True and self.touch_type == 1 and self.touch_pub.get_num_connections() > 0:
                     """单点式压力传感器"""
                     force = self.api.get_force()
@@ -307,8 +308,8 @@ class LinkerHand:
         all_matrices = list(tmp_dic.values())  # 5 帧，每帧 6×12=72 个数
         # 摊平到一维：360 个 float
         flat_list = [v for frame in all_matrices for v in frame]  # 360
-        flat = np.array(flat_list, dtype=np.uint8)              # (360,)
-
+        #flat = np.array(flat_list, dtype=np.uint8)              # (360,)
+        flat = np.array(flat_list).astype(np.uint8)
         fields = [PointField('val', 0, PointField.UINT8, 1)]
         pc = PointCloud2()
         pc.header.stamp = rospy.Time.now()
