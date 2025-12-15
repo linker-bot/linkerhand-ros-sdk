@@ -309,7 +309,9 @@ class LinkerHand:
         # 摊平到一维：360 个 float
         flat_list = [v for frame in all_matrices for v in frame]  # 360
         #flat = np.array(flat_list, dtype=np.uint8)              # (360,)
-        flat = np.array(flat_list).astype(np.uint8)
+        #flat = np.array(flat_list).astype(np.uint8)
+        flat = np.concatenate([np.asarray(np.clip(c, 0, 255), dtype=np.uint8) for c in flat_list])
+        
         fields = [PointField('val', 0, PointField.UINT8, 1)]
         pc = PointCloud2()
         pc.header.stamp = rospy.Time.now()
