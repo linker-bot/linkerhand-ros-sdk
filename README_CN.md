@@ -1033,30 +1033,30 @@ $ sudo visudo
 #'/cb_{self.hand_type}_hand_matrix_touch' 话题类型为 std_msgs/msg/String 40Hz以上
 #'/cb_{self.hand_type}_hand_matrix_touch_pc' 话题类型为 sensor_msgs/msg/PointCloud2 40Hz以上 将矩阵压感点云格式发布
 # 以O6为例
-$ cd linker_hand_ros2_sdk/
-$ colcon build --symlink-install
-$ source ./install/setup.bash
+$ cd Linker_Hand_SDK_ROS/
+$ catkin_make
+$ source ./devel/setup.bash
 $ sudo /usr/sbin/ip link set can0 up type can bitrate 1000000 #USB转CAN设备蓝色灯常亮状态 在按照要求修改setting.ymal配置文件后
-$ ros2 run linker_hand_ros2_sdk linker_hand_advanced_o6 --hand_type left --can can0 --is_touch true
+$ sudo chmod a+x src/linkerhand-ros-sdk/linker_hand_sdk_ros/scripts/linker_hand_advanced_o6.py
+$ rosrun linker_hand_sdk_ros linker_hand_advanced_o6.py --hand_type right --can can0 --is_touch true
 #其他型号灵巧手启动方式
 # L6 右手 不带指尖压感
-$ ros2 run linker_hand_ros2_sdk linker_hand_advanced_l6 --hand_type right --can can0 --is_touch false
+$ sudo chmod a+x src/linkerhand-ros-sdk/linker_hand_sdk_ros/scripts/linker_hand_advanced_l6.py
+$ rosrun linker_hand_sdk_ros linker_hand_advanced_l6.py --hand_type right --can can0 --is_touch false
 ```
  - 进阶用法，双手控制 支持O6\L6\
 新开终端1
 ```bash
-# 以O6为例
-$ cd linker_hand_ros2_sdk/
-$ colcon build --symlink-install
-$ source ./install/setup.bash
-$ sudo /usr/sbin/ip link set can0 up type can bitrate 1000000 #USB转CAN设备蓝色灯常亮状态 在按照要求修改setting.ymal配置文件后
-$ ros2 run linker_hand_ros2_sdk linker_hand_advanced_o6 --hand_type left --can can0 --is_touch true #开启左手 带压感
+$ cd Linker_Hand_SDK_ROS/
+$ source ./devel/setup.bash
+$ sudo /usr/sbin/ip link set can0 up type can bitrate 1000000 #USB转CAN设备蓝色灯常亮状态
+$ sudo chmod a+x src/linkerhand-ros-sdk/linker_hand_sdk_ros/scripts/linker_hand_advanced_o6.py
+$ rosrun linker_hand_sdk_ros linker_hand_advanced_o6.py --hand_type left --can can0 --is_touch true # 开启O6左手带压感
 ```
 新开终端2
 ```bash
-# 以O6为例
-$ cd linker_hand_ros2_sdk/
-$ source ./install/setup.bash
+$ cd Linker_Hand_SDK_ROS/
+$ source ./devel/setup.bash
 $ sudo /usr/sbin/ip link set can1 up type can bitrate 1000000 #USB转CAN设备蓝色灯常亮状态
-$ ros2 run linker_hand_ros2_sdk linker_hand_advanced_o6 --hand_type right --can can1 --is_touch false #开启右手  不带压感
+$ rosrun linker_hand_sdk_ros linker_hand_advanced_o6.py --hand_type right --can can1 --is_touch true # 开启O6右手带压感
 ```
