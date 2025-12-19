@@ -70,12 +70,13 @@ class LinkerHand:
         self.embedded_version = self.api.get_embedded_version()
         # 获取指尖压感类型
         self.touch_type = self.api.get_touch_type()
+
         self.hand_cmd_sub = rospy.Subscriber(f"/cb_{self.hand_type}_hand_control_cmd", JointState, self.hand_cmd_cb, queue_size=10)
         self.hand_state_pub = rospy.Publisher(f'/cb_{self.hand_type}_hand_state', JointState, queue_size=10)
         self.hand_state_arc_pub = rospy.Publisher(f'/cb_{self.hand_type}_hand_state_arc', JointState, queue_size=10)
         self.hand_info_pub = rospy.Publisher(f"/cb_{self.hand_type}_hand_info", String, queue_size=10)
         if self.is_touch == True:
-            if self.touch_type == 2:
+            if self.touch_type > 1:
                 self.matrix_touch_pub = rospy.Publisher(f"/cb_{self.hand_type}_hand_matrix_touch" ,String, queue_size=10)
                 self.matrix_touch_pub_pc = rospy.Publisher(f"/cb_{self.hand_type}_hand_matrix_touch_pc2" ,PointCloud2, queue_size=10)
                 ColorMsg(msg=f"Linker Hand {self.hand_type} {self.hand_joint} It features a matrix pressure sensor and has been enabled in the configuration",color="green")
@@ -226,7 +227,7 @@ class LinkerHand:
                     force = self.api.get_force()
                     # 扁平化和浮点转换合并到一行
                     self.last_touch_force = [float(val) for sublist in force for val in sublist]
-                if self.is_touch == True and self.touch_type == 2 and (self.matrix_touch_pub.get_num_connections() > 0 or self.matrix_touch_pub_pc.get_num_connections() > 0):
+                if self.is_touch == True and self.touch_type > 1 and (self.matrix_touch_pub.get_num_connections() > 0 or self.matrix_touch_pub_pc.get_num_connections() > 0):
                     """矩阵式压力传感器"""
                     if count == 3:
                         self.matrix_dic["thumb_matrix"] = self.api.get_thumb_matrix_touch(sleep_time=sleep_time).tolist()
@@ -272,7 +273,7 @@ class LinkerHand:
                 msg = Float32MultiArray()
                 msg.data = self.last_touch_force
                 self.touch_pub.publish(msg)
-            if self.is_touch == True and self.touch_type == 2 and (self.matrix_touch_pub.get_num_connections() > 0 or self.matrix_touch_pub_pc.get_num_connections() > 0):
+            if self.is_touch == True and self.touch_type > 1 and (self.matrix_touch_pub.get_num_connections() > 0 or self.matrix_touch_pub_pc.get_num_connections() > 0):
                 self.pub_matrix_dic()
                 self.pub_matrix_point_cloud()
             """发布配置信息"""
@@ -337,11 +338,12 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, linker_hand.signal_handler)  # Ctrl+C
     signal.signal(signal.SIGTERM, linker_hand.signal_handler)  # kill command
     embedded_version = linker_hand.embedded_version
-    if embedded_version == None:
-        ColorMsg(msg=f"No Hand Connected", color="red")
+    print(embedded_version)
     if linker_hand.hand_joint.upper() == "O6" or linker_hand.hand_joint.upper() == "L6" or linker_hand.hand_joint.upper() == "G20":
         ColorMsg(msg=f"New Matrix Touch For SDK V2", color="green")
         linker_hand.sdk_v=2
+    if embedded_version == None:
+        ColorMsg(msg=f"No Hand Connected", color="red")
     elif len(embedded_version) == 3 or len(embedded_version) == 6:
         ColorMsg(msg=f"New Matrix Touch For SDK V2", color="green")
         linker_hand.sdk_v=2

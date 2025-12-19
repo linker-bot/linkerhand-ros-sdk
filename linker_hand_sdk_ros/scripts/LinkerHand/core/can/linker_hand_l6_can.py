@@ -74,7 +74,7 @@ class LinkerHandL6Can:
             #print("Please insert CAN device")
             ColorMsg(msg="Warning: Please insert CAN device", color="red")
 
-    def send_frame(self, frame_property, data_list,sleep=0.005):
+    def send_frame(self, frame_property, data_list,sleep=0.003):
         """Send a single CAN frame with specified properties and data."""
         frame_property_value = int(frame_property.value) if hasattr(frame_property, 'value') else frame_property
         data = [frame_property_value] + [int(val) for val in data_list]
