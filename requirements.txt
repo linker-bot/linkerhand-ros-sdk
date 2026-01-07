@@ -2,6 +2,7 @@ empy
 catkin_pkg
 rospkg
 python-can
+python-can-candle
 dm_env
 pexpect
 minimalmodbus
