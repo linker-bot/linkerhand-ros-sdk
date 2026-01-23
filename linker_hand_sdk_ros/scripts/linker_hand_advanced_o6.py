@@ -121,7 +121,6 @@ class LinkerHandAdvancedO6:
         return joint_state
     
     def get_state(self):
-        count = 0
         while True:
             """如果有命令，则执行命令动作"""
             if self.last_position_cmd != None:
@@ -129,38 +128,28 @@ class LinkerHandAdvancedO6:
                 # 重置命令
                 self.last_position_cmd = None
                 self.last_velocity_cmd = None
-                time.sleep(0.001)
-            #if count % 2 == 0:
+                #time.sleep(0.001)
             """获取手当前状态"""
             if self.hand_state_pub.get_num_connections() > 0:
                 state = self.api.get_state()
-                time.sleep(0.001)
                 vel = self.api.get_joint_speed()
-                time.sleep(0.001)
+                #time.sleep(0.001)
                 self.last_hand_state['state'] = state
                 self.last_hand_state['vel'] = vel
             if self.is_touch == True and self.touch_type > 1 and (self.matrix_touch_pub.get_num_connections() > 0 or self.matrix_touch_pub_pc.get_num_connections() > 0):
                 """矩阵式压力传感器"""
-                if count == 1:
-                    self.matrix_dic["thumb_matrix"] = self.api.get_thumb_matrix_touch(sleep_time=0.002).tolist()
-                if count == 2:
-                    self.matrix_dic["index_matrix"] = self.api.get_index_matrix_touch(sleep_time=0.002).tolist()
-                if count == 3:
-                    self.matrix_dic["middle_matrix"] = self.api.get_middle_matrix_touch(sleep_time=0.002).tolist()
-                if count == 4:
-                    self.matrix_dic["ring_matrix"] = self.api.get_ring_matrix_touch(sleep_time=0.002).tolist()
-                if count == 5:
-                    self.matrix_dic["little_matrix"] = self.api.get_little_matrix_touch(sleep_time=0.002).tolist()
-                time.sleep(0.003)
-            if count == 6:
-                count = 0
-            count += 1
+                self.matrix_dic["thumb_matrix"] = self.api.get_thumb_matrix_touch(sleep_time=0.002).tolist()
+                self.matrix_dic["index_matrix"] = self.api.get_index_matrix_touch(sleep_time=0.002).tolist()
+                self.matrix_dic["middle_matrix"] = self.api.get_middle_matrix_touch(sleep_time=0.002).tolist()
+                self.matrix_dic["ring_matrix"] = self.api.get_ring_matrix_touch(sleep_time=0.002).tolist()
+                self.matrix_dic["little_matrix"] = self.api.get_little_matrix_touch(sleep_time=0.002).tolist()
+                #time.sleep(0.003)
             state_msg = self.joint_state_msg(pose=self.last_hand_state['state'], vel=self.last_hand_state['vel'])
             self.hand_state_pub.publish(state_msg)
             if self.is_touch == True:
                 self.pub_matrix_dic()
                 self.pub_matrix_point_cloud()
-            time.sleep(0.002)
+            #time.sleep(0.002)
             
             
     def pub_matrix_dic(self):
