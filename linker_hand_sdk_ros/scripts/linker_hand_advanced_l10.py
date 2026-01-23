@@ -230,9 +230,9 @@ if __name__ == '__main__':
     '''
     本节点用于收集手指状态和压感数据。初始化速度为最大值，初始化扭矩为最大值。如需要修改可修改scripts/common/init_position.py文件，文件内有说明
     '/cb_{self.hand_type}_hand_control_cmd' 话题类型为 sensor_msgs/msg/JointState 控制话题，限制 30Hz
-    /cb_{self.hand_type}_hand_state 话题类型为 sensor_msgs/msg/JointState 40Hz
-    '/cb_{self.hand_type}_hand_matrix_touch' 话题类型为 std_msgs/msg/String 40Hz
-    '/cb_{self.hand_type}_hand_matrix_touch_pc' 话题类型为 sensor_msgs/msg/PointCloud2 40Hz
+    /cb_{self.hand_type}_hand_state 话题类型为 sensor_msgs/msg/JointState 30Hz
+    '/cb_{self.hand_type}_hand_matrix_touch' 话题类型为 std_msgs/msg/String 30Hz
+    '/cb_{self.hand_type}_hand_matrix_touch_pc' 话题类型为 sensor_msgs/msg/PointCloud2 30Hz
     运行命令
     rosrun linker_hand_sdk_ros linker_hand_advanced_l10.py --hand_type left --can can0 --is_touch true
     '''
