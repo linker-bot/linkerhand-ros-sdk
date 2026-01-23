@@ -81,8 +81,8 @@ class LinkerHandAdvancedO6:
             ColorMsg(msg=f"Linker Hand {self.hand_type} {self.hand_joint} Not opened or equipped with a pressure sensor",color="yellow")
         # 1. 初始化默认值
         pose = None
-        torque = [200, 200, 200, 200, 200]
-        speed = [80, 200, 200, 200, 200]
+        torque = [255, 255, 255, 255, 255]
+        speed = [255, 255, 255, 255, 255]
         # 2. 查找配置（将手关节名称转换为大写，以匹配字典键）
         joint_key = self.hand_joint.upper()
         # 3. 处理 O6/L6/L6P 的情况 (它们共享相同的配置)
