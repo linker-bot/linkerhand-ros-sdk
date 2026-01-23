@@ -66,6 +66,8 @@ $ git clone https://github.com/linker-bot/linkerhand-ros-sdk.git    #获取SDK
 
 ```python
 $ sudo apt install python3-can
+$ pip install python-can
+$ pip install python-can-candle
 $ cd Linker_Hand_SDK_ROS/src/linker_hand_sdk    #进入目录
 $ pip install -r requirements.txt    #安装所需依赖
 $ cd Linker_Hand_SDK_ROS # 回到工程目录
