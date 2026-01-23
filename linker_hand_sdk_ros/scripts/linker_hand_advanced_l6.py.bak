@@ -55,6 +55,7 @@ class LinkerHandAdvancedL6:
             "touch_type": -1,
             "finger_order": None # Finger motor order
         }
+        self.hz = 1.0/60.0
         self._init_hand()
         self.thread_get_state = threading.Thread(target=self.get_state)
         self.thread_get_state.daemon = True
@@ -121,6 +122,7 @@ class LinkerHandAdvancedL6:
         return joint_state
     
     def get_state(self):
+        count = 0
         while True:
             """如果有命令，则执行命令动作"""
             if self.last_position_cmd != None:
@@ -129,6 +131,7 @@ class LinkerHandAdvancedL6:
                 # 重置命令
                 self.last_position_cmd = None
                 self.last_velocity_cmd = None
+            #if count % 2 == 0:
             """获取手当前状态"""
             if self.hand_state_pub.get_num_connections() > 0:
                 state = self.api.get_state()
@@ -138,11 +141,20 @@ class LinkerHandAdvancedL6:
                 time.sleep(0.003)
             if self.is_touch == True and self.touch_type > 1 and (self.matrix_touch_pub.get_num_connections() > 0 or self.matrix_touch_pub_pc.get_num_connections() > 0):
                 """矩阵式压力传感器"""
-                self.matrix_dic["thumb_matrix"] = self.api.get_thumb_matrix_touch(sleep_time=0.003).tolist()
-                self.matrix_dic["index_matrix"] = self.api.get_index_matrix_touch(sleep_time=0.003).tolist()
-                self.matrix_dic["middle_matrix"] = self.api.get_middle_matrix_touch(sleep_time=0.003).tolist()
-                self.matrix_dic["ring_matrix"] = self.api.get_ring_matrix_touch(sleep_time=0.003).tolist()
-                self.matrix_dic["little_matrix"] = self.api.get_little_matrix_touch(sleep_time=0.003).tolist()
+                if count == 1:
+                    self.matrix_dic["thumb_matrix"] = self.api.get_thumb_matrix_touch(sleep_time=0.006).tolist()
+                if count == 3:
+                    self.matrix_dic["index_matrix"] = self.api.get_index_matrix_touch(sleep_time=0.006).tolist()
+                if count == 5:
+                    self.matrix_dic["middle_matrix"] = self.api.get_middle_matrix_touch(sleep_time=0.006).tolist()
+                if count == 7:
+                    self.matrix_dic["ring_matrix"] = self.api.get_ring_matrix_touch(sleep_time=0.006).tolist()
+                if count == 9:
+                    self.matrix_dic["little_matrix"] = self.api.get_little_matrix_touch(sleep_time=0.006).tolist()
+                time.sleep(0.005)
+            if count == 10:
+                count = 0
+            count += 1
             state_msg = self.joint_state_msg(pose=self.last_hand_state['state'], vel=self.last_hand_state['vel'])
             self.hand_state_pub.publish(state_msg)
             if self.is_touch == True:
@@ -205,7 +217,7 @@ if __name__ == '__main__':
     '/cb_{self.hand_type}_hand_matrix_touch' 话题类型为 std_msgs/msg/String 40Hz
     '/cb_{self.hand_type}_hand_matrix_touch_pc' 话题类型为 sensor_msgs/msg/PointCloud2 40Hz
     运行命令
-    rosrun linker_hand_sdk_ros linker_hand_advanced_l6.py --hand_type left --can can0 --is_touch true
+    rosrun linker_hand_sdk_ros linker_hand_advanced_l6.py --hand_type right --can can0 --is_touch true
     '''
     rospy.init_node('linker_hand_advanced_l6', anonymous=True)
     parser = argparse.ArgumentParser(description='LinkerHand advanced control')
