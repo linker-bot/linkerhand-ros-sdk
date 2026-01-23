@@ -15,6 +15,7 @@ This document provides a detailed overview of the ROS Topic for the Linker Hand,
 /cb_left_hand_force # 左手压感数据显示话题
 /cb_left_hand_matrix_touch # 左手矩阵压感数据显示话题 list(6x12) String格式 带时间戳
 /cb_left_hand_matrix_touch_pc # 左手矩阵压感数据显示话题 list(6x12) 点云PointCloud2格式
+/cb_left_hand_matrix_touch_mass # 左手矩阵压感6X12总和数据显示话题 String格式 带时间戳
 /cb_left_hand_info  # 左手配置信息显示话题
 /cb_left_hand_state # 左手状态显示话题 范围
 /cb_left_hand_state_arc # 左手状态显示话题 弧度
@@ -22,6 +23,8 @@ This document provides a detailed overview of the ROS Topic for the Linker Hand,
 /cb_right_hand_control_cmd_arc # 控制右手运动话题 by arc -3.14~3.14 (弧度)
 /cb_right_hand_force # 右手压感数据显示话题
 /cb_right_hand_matrix_touch # 右手矩阵压感数据显示话题 list(6x12)
+/cb_right_hand_matrix_touch_pc # 右手矩阵压感数据显示话题 list(6x12) 点云PointCloud2格式
+/cb_right_hand_matrix_touch_mass # 右手矩阵压感6X12总和数据显示话题 String格式 带时间戳
 /cb_right_hand_info # 右手配置信息显示话题
 /cb_right_hand_state # 右手状态显示话题 范围
 /cb_right_hand_state_arc # 右手状态显示话题 弧度
@@ -227,6 +230,26 @@ def pc2_to_6x12x5(msg):
     arr = np.frombuffer(msg.data, np.float16)  # 360
     return arr.reshape(5, 6, 12)  # 原始数据为5组6*12的矩阵
 ```
+
+
+### 获取矩阵式压感数据 Topic /cb_left_hand_matrix_touch_mass or /cb_right_hand_matrix_touch_mass 注：只第二代压力传感器
+```bash
+rostopic echo /cb_right_hand_matrix_touch_mass
+data: "{\"stamp\": {\"secs\": 1769153384, \"nsecs\": 636972904}, \"thumb_mass\": 0, \"index_mass\"\
+  : 1302, \"middle_mass\": 420, \"ring_mass\": 151, \"little_mass\": 1213}"
+```
+**Description**: 
+获取手指矩阵压感数据总合 数据格式 std_msgs/String Json 单位g
+**Parameters**:
+- `data`:
+```bash
+thumb_mass：大拇指矩阵压力总和值 0~2000
+index_mass：食指矩阵压力总和值 0~2000
+middle_mass：中指矩阵压力总和值 0~2000
+ring_mass：无名指矩阵压力总和值 0~2000
+little_mass：小拇指矩阵压力总和值 0~2000
+```
+
 
 ---
 ### 获取LinkerHand配置信息 Topic /cb_left_hand_info or /cb_right_hand_info

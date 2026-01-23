@@ -337,7 +337,7 @@ class LinkerHandApi:
         self.hand.show_fun_table()
         
     def close_can(self):
-        if sys.platform == "linux" and modbus=="None":
+        if sys.platform == "linux":
             self.open_can.close_can(can=self.can)                    
 
 if __name__ == "__main__":

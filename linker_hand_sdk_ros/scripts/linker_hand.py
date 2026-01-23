@@ -42,6 +42,18 @@ class LinkerHand:
             "ring_matrix":[[-1] * 6 for _ in range(12)],
             "little_matrix":[[-1] * 6 for _ in range(12)]
         }
+        # 压感矩阵合值，单位g 克
+        self.matrix_mass_dic = {
+            "stamp":{
+                "secs": 0,
+                "nsecs": 0,
+            },
+            "thumb_mass":[-1],
+            "index_mass":[-1],
+            "middle_mass":[-1],
+            "ring_mass":[-1],
+            "little_mass":[-1]
+        }
         self.last_hand_info = {
             "version": [-1], # Dexterous hand version number
             "hand_joint": self.hand_joint, # Dexterous hand joint type
@@ -79,6 +91,7 @@ class LinkerHand:
             if self.touch_type > 1:
                 self.matrix_touch_pub = rospy.Publisher(f"/cb_{self.hand_type}_hand_matrix_touch" ,String, queue_size=10)
                 self.matrix_touch_pub_pc = rospy.Publisher(f"/cb_{self.hand_type}_hand_matrix_touch_pc2" ,PointCloud2, queue_size=10)
+                self.matrix_touch_pub_mass = rospy.Publisher(f"/cb_{self.hand_type}_hand_matrix_touch_mass" ,String, queue_size=10)
                 ColorMsg(msg=f"Linker Hand {self.hand_type} {self.hand_joint} It features a matrix pressure sensor and has been enabled in the configuration",color="green")
             elif self.touch_type != -1:
                 self.touch_pub = rospy.Publisher(f"/cb_{self.hand_type}_hand_touch", Float32MultiArray, queue_size=10)
@@ -227,7 +240,7 @@ class LinkerHand:
                     force = self.api.get_force()
                     # 扁平化和浮点转换合并到一行
                     self.last_touch_force = [float(val) for sublist in force for val in sublist]
-                if self.is_touch == True and self.touch_type > 1 and (self.matrix_touch_pub.get_num_connections() > 0 or self.matrix_touch_pub_pc.get_num_connections() > 0):
+                if self.is_touch == True and self.touch_type > 1 and (self.matrix_touch_pub.get_num_connections() > 0 or self.matrix_touch_pub_pc.get_num_connections() > 0 or self.matrix_touch_pub_mass.get_num_connections() > 0):
                     """矩阵式压力传感器"""
                     if count == 3:
                         self.matrix_dic["thumb_matrix"] = self.api.get_thumb_matrix_touch(sleep_time=sleep_time).tolist()
@@ -273,15 +286,45 @@ class LinkerHand:
                 msg = Float32MultiArray()
                 msg.data = self.last_touch_force
                 self.touch_pub.publish(msg)
-            if self.is_touch == True and self.touch_type > 1 and (self.matrix_touch_pub.get_num_connections() > 0 or self.matrix_touch_pub_pc.get_num_connections() > 0):
+            if self.is_touch == True and self.touch_type > 1 and (self.matrix_touch_pub.get_num_connections() > 0 or self.matrix_touch_pub_pc.get_num_connections() > 0 or self.matrix_touch_pub_mass.get_num_connections() > 0):
+                # 发布矩阵压感原始值
                 self.pub_matrix_dic()
+                # 发布矩阵压感点云值
                 self.pub_matrix_point_cloud()
+                # 发布矩阵压感合值
+                self.pub_matrix_mass(dic=self.matrix_dic)
             """发布配置信息"""
             if self.hand_info_pub.get_num_connections() > 0:
                 msg = String()
                 msg.data = json.dumps(self.last_hand_info)
                 self.hand_info_pub.publish(msg)
             time.sleep(self.hz)
+
+    def pub_matrix_mass(self, dic):
+        """发布矩阵数据合值 单位g 克 JSON格式"""
+        msg = String()
+        # 尝试获取当前的 ROS 时间
+        try:
+            current_time = rospy.Time.now()
+            # 提取 secs 和 nsecs
+            t_secs = current_time.secs
+            t_nsecs = current_time.nsecs
+        except rospy.ROSInitException:
+            # 如果 ROS 时间系统尚未启动 (例如，没有 roscore)，使用系统时间作为备用
+            # 这种情况下，时间可能不够精确或与 ROS bag 时间不同步
+            t_secs = int(time.time())
+            t_nsecs = int((time.time() - t_secs) * 1e9)
+            rospy.logwarn("ROS Time not available, using system time.")
+        self.matrix_mass_dic["stamp"]["secs"] = t_secs
+        self.matrix_mass_dic["stamp"]["nsecs"] = t_nsecs
+        self.matrix_mass_dic["unit"] = "g"
+        self.matrix_mass_dic["thumb_mass"] = sum(sum(row) for row in dic["thumb_matrix"])
+        self.matrix_mass_dic["index_mass"] = sum(sum(row) for row in dic["index_matrix"])
+        self.matrix_mass_dic["middle_mass"] = sum(sum(row) for row in dic["middle_matrix"])
+        self.matrix_mass_dic["ring_mass"] = sum(sum(row) for row in dic["ring_matrix"])
+        self.matrix_mass_dic["little_mass"] = sum(sum(row) for row in dic["little_matrix"])
+        msg.data = json.dumps(self.matrix_mass_dic)
+        self.matrix_touch_pub_mass.publish(msg)
             
     def pub_matrix_dic(self):
         """发布矩阵数据JSON格式"""
