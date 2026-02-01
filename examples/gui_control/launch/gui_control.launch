@@ -11,6 +11,8 @@
         <param name="topic_hz" type="int" value="$(arg topic_hz)"/>
         <param name="is_arc" type="bool" value="$(arg is_arc)"/>
     </node>
+    <node pkg="pressure_diagram" type="pressure_diagram.py" name="pressure_diagram_node" output="screen">
+    </node>
 
 
 

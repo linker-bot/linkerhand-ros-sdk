@@ -381,7 +381,6 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, linker_hand.signal_handler)  # Ctrl+C
     signal.signal(signal.SIGTERM, linker_hand.signal_handler)  # kill command
     embedded_version = linker_hand.embedded_version
-    print(embedded_version)
     if linker_hand.hand_joint.upper() == "O6" or linker_hand.hand_joint.upper() == "L6" or linker_hand.hand_joint.upper() == "G20":
         ColorMsg(msg=f"New Matrix Touch For SDK V2", color="green")
         linker_hand.sdk_v=2
