@@ -4,6 +4,7 @@
     <arg name="hand_joint" default="L6"/>   <!--  O6\L6\L7\L10\L20\G20(工业版)\L21  -->
     <arg name="topic_hz" default="30"/>  
     <arg name="is_arc" default="false"/> <!-- "false" or "true" -->
+    <arg name="is_pressure_diagram" default="false"/> <!-- 是否启动压力图节点 -->
     <!-- 左手节点 -->
     <node pkg="gui_control" type="gui_control.py" name="gui_control$(anon left)" output="screen">
         <param name="hand_type" type="string" value="$(arg hand_type_left)"/> 
@@ -14,8 +15,6 @@
     <node pkg="pressure_diagram" type="pressure_diagram.py" name="pressure_diagram_node" output="screen">
     </node>
 
-
-
     <!-- 右手节点 -->
     <!-- <arg name="hand_type_right" default="right"/> -->
     <!-- <node pkg="gui_control" type="gui_control.py" name="gui_control$(anon right)" output="screen">
@@ -24,4 +23,9 @@
         <param name="topic_hz" type="int" value="$(arg topic_hz)"/>
         <param name="is_arc" type="bool" value="$(arg is_arc)"/>
     </node> -->
+    <!-- 压力图节点 - 条件启动 -->
+    <group if="$(arg is_pressure_diagram)">
+        <include file="$(find pressure_diagram)/launch/pressure_diagram.launch">
+        </include>
+    </group>
 </launch>

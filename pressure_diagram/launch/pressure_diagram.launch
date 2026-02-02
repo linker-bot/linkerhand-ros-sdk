@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<launch>
+    <node pkg="pressure_diagram" type="pressure_diagram.py" name="pressure_diagram_node" output="screen">
+    </node>
+</launch>
