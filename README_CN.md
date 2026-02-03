@@ -231,7 +231,7 @@ $ sudo chmod a+x src/linker_hand_sdk/linker_hand_sdk_ros/scripts/linker_hand.py
 $ roslaunch linker_hand_sdk_ros linker_hand.launch
 ```
 
-### 4.4 RS485 协议切换 当前支持O6/L6，其他型号灵巧手请参考MODBUS RS485协议文档
+### 4.4 RS485 协议切换 当前支持O6/L6/L7/L10，其他型号灵巧手请参考MODBUS RS485协议文档
 
 编辑[scripts/LinkerHand/config/setting.yaml](https://github.com/linker-bot/linkerhand-ros-sdk/blob/main/linker_hand_sdk_ros/scripts/LinkerHand/config/setting.yaml)配置文件，按照配置文件内注释说明进行参数修改,将MODBUS:"/dev/ttyUSB0"，并且[linker_hand.launch.py](https://github.com/linker-bot/linkerhand-ros-sdk/blob/main/linker_hand_sdk_ros/launch/linker_hand.launch)配置文件中"modbus"参数为"/dev/ttyUSB0"。USB-RS485转换器在Ubuntu上一般显示为/dev/ttyUSB* or /dev/ttyACM*
 modbus: "None" or "/dev/ttyUSB0"  注:modbus的参数为string类型，当modbus参数不为"None"时，参数can失效
