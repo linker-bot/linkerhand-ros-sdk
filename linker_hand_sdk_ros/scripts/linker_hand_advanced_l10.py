@@ -114,7 +114,8 @@ class LinkerHandAdvancedL10:
         joint_state = JointState()
         joint_state.header = Header()
         joint_state.header.stamp = rospy.Time.now()
-        joint_state.name = []
+        joint_state.name = ["thumb_cmc_pitch", "thumb_cmc_roll", "index_mcp_pitch", "middle_mcp_pitch", "ring_mcp_pitch", "pinky_mcp_pitch",
+                        "index_mcp_roll", "ring_mcp_roll", "pinky_mcp_roll", "thumb_cmc_yaw"]
         joint_state.position = pose
         if len(vel) > 1:
             joint_state.velocity = vel

@@ -127,7 +127,7 @@ class LinkerHandAdvancedO6:
         joint_state = JointState()
         joint_state.header = Header()
         joint_state.header.stamp = rospy.Time.now()
-        joint_state.name = []
+        joint_state.name = ["thumb_cmc_pitch","thumb_cmc_yaw","index_mcp_pitch","middle_mcp_pitch","pinky_mcp_pitch","ring_mcp_pitch"]
         joint_state.position = pose
         if len(vel) > 1:
             joint_state.velocity = vel
@@ -250,7 +250,7 @@ if __name__ == '__main__':
     '/cb_{self.hand_type}_hand_matrix_touch' 话题类型为 std_msgs/msg/String 60Hz
     '/cb_{self.hand_type}_hand_matrix_touch_pc' 话题类型为 sensor_msgs/msg/PointCloud2 60Hz
     运行命令
-    rosrun linker_hand_sdk_ros linker_hand_advanced_o6.py --hand_type right --can can0 --is_touch true
+    rosrun linker_hand_sdk_ros linker_hand_advanced_o6.py --hand_type left --can can0 --is_touch true
     '''
     rospy.init_node('linker_hand_advanced_l6', anonymous=True)
     parser = argparse.ArgumentParser(description='LinkerHand advanced control')

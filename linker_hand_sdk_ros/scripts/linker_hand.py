@@ -108,12 +108,12 @@ class LinkerHand:
         if joint_key in ("O6", "L6", "L6P"):
             joint_key = "O6" # 将它们都映射到 "O6" 的配置上
         # 4. 获取配置并更新参数
-        config_data = CONFIG.get(joint_key)
-        if config_data:
+        self.config_data = CONFIG.get(joint_key)
+        if self.config_data:
             # 仅当配置中提供了 pose/torque/speed 时才更新它们
-            pose = config_data.get("pose", pose)
-            torque = config_data.get("torque", torque)
-            speed = config_data.get("speed", speed)
+            pose = self.config_data.get("pose", pose)
+            torque = self.config_data.get("torque", torque)
+            speed = self.config_data.get("speed", speed)
         # 5. 执行操作 (保持不变)
         if pose is not None:
             # L20, G20, L21, L25 的 torque 和 speed 默认为初始的 [200...] 和 [80...]

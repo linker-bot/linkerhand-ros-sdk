@@ -165,7 +165,7 @@ class LinkerHandAdvancedL6:
                 self.pub_matrix_point_cloud()
                 # 发布矩阵压感合值
                 self.pub_matrix_mass(dic=self.matrix_dic)
-            time.sleep(0.003)
+            #time.sleep(0.003)
             
 
 
