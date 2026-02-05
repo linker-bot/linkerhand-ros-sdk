@@ -261,5 +261,8 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, linker_hand.signal_handler)  # Ctrl+C
     signal.signal(signal.SIGTERM, linker_hand.signal_handler)  # kill command
     embedded_version = linker_hand.embedded_version
+    if embedded_version[2] < 8:
+        ColorMsg(msg=f"固件版本过低，请升级固件到V{embedded_version[0]}.{embedded_version[1]}.8及以上版本", color="red")
+        sys.exit(0)
     rospy.spin()
         
