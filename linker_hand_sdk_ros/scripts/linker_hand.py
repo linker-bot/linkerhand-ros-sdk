@@ -176,7 +176,7 @@ class LinkerHand:
         joint_state = JointState()
         joint_state.header = Header()
         joint_state.header.stamp = rospy.Time.now()
-        joint_state.name = []
+        joint_state.name = self.api.get_finger_order()
         joint_state.position = pose
         if len(vel) > 1:
             joint_state.velocity = vel
