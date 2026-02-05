@@ -12,10 +12,8 @@ pyquaternion
 pyagxrobots
 pycryptodome
 ipython
-h5py
 PyYAML
 tqdm
-wandb
 mediapipe
 PyQt5
 PyQt5-sip
