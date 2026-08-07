@@ -11,9 +11,14 @@ setup(
     packages=find_packages(exclude=("tests",)),
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{PACKAGE_NAME}"]),
-        (f"share/{PACKAGE_NAME}", ["package.xml"]),
+        (
+            f"share/{PACKAGE_NAME}",
+            ["package.xml", "README.md", "README_zh.md"],
+        ),
         (f"share/{PACKAGE_NAME}/launch", glob("launch/*.launch.py")),
         (f"share/{PACKAGE_NAME}/config", glob("config/*.yaml")),
+        (f"share/{PACKAGE_NAME}/docs", glob("docs/*.md")),
+        (f"share/{PACKAGE_NAME}/docs/zh", glob("docs/zh/*.md")),
     ],
     install_requires=["setuptools", "linkerbot>=0.5.4"],
     python_requires=">=3.10",
@@ -25,6 +30,8 @@ setup(
     entry_points={
         "console_scripts": [
             "hand_node = linkerbot_hand_ros.node:main",
+            "angle_command = linkerbot_hand_ros.examples.angle_command:main",
+            "state_monitor = linkerbot_hand_ros.examples.state_monitor:main",
         ],
     },
 )

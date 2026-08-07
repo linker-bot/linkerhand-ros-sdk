@@ -1,5 +1,7 @@
 # Linkerbot Hand ROS 2
 
+[English](README.md) | [简体中文](README_zh.md)
+
 ROS 2 Python driver for Linkerbot dexterous hands. The package wraps the
 [`linkerbot`](https://pypi.org/project/linkerbot/) Python SDK and supports
 O6, L6, L20Lite, L25, O20, O30I, and L30 hands through one node.
@@ -49,6 +51,13 @@ Parameters can also be loaded from
 [`config/hand.yaml`](config/hand.yaml). See
 [`docs/ros_api.md`](docs/ros_api.md) for the complete interface and model joint
 orders.
+
+Runnable Python examples are installed with the package:
+
+```bash
+ros2 run linkerbot_hand_ros angle_command --values 0 0 0 0 0 0
+ros2 run linkerbot_hand_ros state_monitor
+```
 
 ## Safety
 
