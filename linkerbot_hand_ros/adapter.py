@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 
@@ -184,7 +185,7 @@ def _as_float_list(value: Any) -> list[float]:
         value = value.values
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
         raise TypeError(f"SDK returned unsupported vector type {type(value).__name__}")
-    return [float(item) for item in value]
+    return [float(item.value if isinstance(item, Enum) else item) for item in value]
 
 
 class HandAdapter:

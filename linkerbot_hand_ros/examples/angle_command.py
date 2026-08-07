@@ -59,7 +59,7 @@ def main(args: list[str] | None = None) -> None:
         node.get_logger().info(f"已向 {parsed.topic} 发送 {len(parsed.values)} 个角度值")
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

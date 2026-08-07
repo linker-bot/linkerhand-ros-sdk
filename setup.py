@@ -19,6 +19,10 @@ setup(
         (f"share/{PACKAGE_NAME}/config", glob("config/*.yaml")),
         (f"share/{PACKAGE_NAME}/docs", glob("docs/*.md")),
         (f"share/{PACKAGE_NAME}/docs/zh", glob("docs/zh/*.md")),
+        (
+            f"share/{PACKAGE_NAME}/docs/zh/test_reports",
+            glob("docs/zh/test_reports/*.md"),
+        ),
     ],
     install_requires=["setuptools", "linkerbot>=0.5.4"],
     python_requires=">=3.10",

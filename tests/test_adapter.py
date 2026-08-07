@@ -1,8 +1,14 @@
+from enum import Flag
 from types import SimpleNamespace
 
 import pytest
 
-from linkerbot_hand_ros.adapter import HandAdapter, MODEL_SPECS, create_sdk_hand
+from linkerbot_hand_ros.adapter import (
+    HandAdapter,
+    MODEL_SPECS,
+    _as_float_list,
+    create_sdk_hand,
+)
 
 
 class FakeManager:
@@ -125,3 +131,11 @@ def test_canfd_commands_use_model_specific_integer_ranges():
     assert hand.torque.commands == [[800] * 17]
     with pytest.raises(ValueError, match="integers"):
         adapter.set_speeds([10.5] * 17)
+
+
+def test_sdk_flag_values_are_converted_for_ros_messages():
+    class FaultCode(Flag):
+        NONE = 0
+        OVER_CURRENT = 1
+
+    assert _as_float_list([FaultCode.NONE, FaultCode.OVER_CURRENT]) == [0.0, 1.0]

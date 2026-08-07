@@ -9,7 +9,7 @@ from typing import Any
 
 import rclpy
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
-from rclpy.executors import MultiThreadedExecutor
+from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
 from std_msgs.msg import Float64MultiArray, String
 from std_srvs.srv import Trigger
@@ -83,8 +83,12 @@ class LinkerbotHandNode(Node):
         )
 
         io_group = MutuallyExclusiveCallbackGroup()
-        self.create_service(Trigger, "~/read_now", self._read_now, io_group)
-        self.create_service(Trigger, "~/clear_faults", self._clear_faults, io_group)
+        self.create_service(
+            Trigger, "~/read_now", self._read_now, callback_group=io_group
+        )
+        self.create_service(
+            Trigger, "~/clear_faults", self._clear_faults, callback_group=io_group
+        )
         self.create_timer(1.0 / poll_rate, self._poll, callback_group=io_group)
         if self._publish_optional:
             self.create_timer(
@@ -173,13 +177,13 @@ def main(args: list[str] | None = None) -> None:
         node = LinkerbotHandNode()
         executor.add_node(node)
         executor.spin()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         executor.shutdown()
         if node is not None:
             node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

@@ -88,6 +88,7 @@ ros2 run linkerbot_hand_ros state_monitor
 - [话题、服务与关节顺序](docs/zh/ros_api.md)
 - [Python 与命令行示例](docs/zh/examples.md)
 - [故障排查](docs/zh/troubleshooting.md)
+- [L6 / ROS 2 Jazzy 实机测试报告](docs/zh/test_reports/l6_jazzy_2026-08-07.md)
 
 ## 安全说明
 
