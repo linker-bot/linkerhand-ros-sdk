@@ -61,10 +61,12 @@ ros2 run linkerbot_hand_ros state_monitor
 
 ## Safety
 
-Angle commands are percentages in the closed interval `[0, 100]`, following
-the Python SDK: `0` is open and `100` is closed. Speed and torque ranges are
-model-specific and documented in the ROS API. Verify joint order, hand model,
-CAN interface, and conservative speed/torque values before commanding hardware.
+Angle commands use the Python SDK's `[0, 100]` logical range. Physical direction
+is model- and joint-specific: for L6 flexion joints, `0` moves toward a fist and
+`100` moves toward an open hand, while other models may use different mappings.
+Speed and torque ranges are documented in the ROS API. Verify joint order,
+model-specific semantics, CAN interface, and conservative limits before
+commanding hardware.
 
 ## Development
 

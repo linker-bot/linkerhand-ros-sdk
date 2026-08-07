@@ -10,25 +10,29 @@ ros2 topic echo --once /linkerbot_hand/joint_names
 ros2 topic hz /linkerbot_hand/state/angles
 ```
 
-## L6 张开和握拳
+## L6 张开和握拳方向
 
 ```bash
-# 张开
-ros2 topic pub --once /linkerbot_hand/command/angles \
-  std_msgs/msg/Float64MultiArray "{data: [0, 0, 0, 0, 0, 0]}"
-
 # 以较低速度运动
 ros2 topic pub --once /linkerbot_hand/command/speeds \
   std_msgs/msg/Float64MultiArray "{data: [20, 20, 20, 20, 20, 20]}"
 
-# 握拳；数组顺序必须与 joint_names 一致
+# 张开；数组顺序必须与 joint_names 一致
 ros2 topic pub --once /linkerbot_hand/command/angles \
   std_msgs/msg/Float64MultiArray "{data: [100, 50, 100, 100, 100, 100]}"
+
+# 向握拳方向运动，但保留端点余量
+ros2 topic pub --once /linkerbot_hand/command/angles \
+  std_msgs/msg/Float64MultiArray "{data: [20, 20, 20, 20, 20, 20]}"
 ```
+
+对 L6 而言，屈伸关节的 `0` 是握拳方向、`100` 是张开方向。拇指侧摆的典型
+张开目标不是 100，SDK 示例使用 50。首次实机测试不要直接命令 0 或 100 极限。
 
 ## L30 设置速度、扭矩和角度
 
-L30 有 17 个关节，速度范围为 1–250，扭矩范围为 60–800：
+L30 有 17 个关节，速度范围为 1–250，扭矩范围为 60–800。L30 的百分比按
+每个关节的协议最小/最大值映射，下面的 0 仅表示协议最小值，不统一等同于张开：
 
 ```bash
 ros2 topic pub --once /linkerbot_hand/command/speeds \

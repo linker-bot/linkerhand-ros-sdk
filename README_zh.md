@@ -62,17 +62,17 @@ ros2 launch linkerbot_hand_ros hand.launch.py \
 ros2 topic echo --once /linkerbot_hand/joint_names
 ```
 
-将 L6 完全张开：
+将 L6 张开（拇指侧摆使用 SDK 示例值 `50`）：
 
 ```bash
 ros2 topic pub --once /linkerbot_hand/command/angles \
-  std_msgs/msg/Float64MultiArray "{data: [0, 0, 0, 0, 0, 0]}"
+  std_msgs/msg/Float64MultiArray "{data: [100, 50, 100, 100, 100, 100]}"
 ```
 
 使用仓库提供的 Python 示例完成同一操作：
 
 ```bash
-ros2 run linkerbot_hand_ros angle_command --values 0 0 0 0 0 0
+ros2 run linkerbot_hand_ros angle_command --values 100 50 100 100 100 100
 ```
 
 监听关节顺序和实时角度：
@@ -92,6 +92,7 @@ ros2 run linkerbot_hand_ros state_monitor
 
 ## 安全说明
 
-角度命令使用 SDK 的逻辑百分比：`0` 表示张开，`100` 表示闭合。速度和扭矩
-范围随型号变化。连接真实硬件前，请先核对型号、左右手、关节顺序和通信接口，
-从保守的速度、扭矩开始测试。急停和机械限位等安全措施应独立于本节点部署。
+角度命令使用 SDK 的 `0–100` 逻辑范围，但物理方向随型号和关节变化。L6 的屈伸
+关节中，`0` 向握拳方向运动，`100` 向张开方向运动；其他型号不能套用这一规则。
+连接真实硬件前，请核对对应型号的 SDK 定义、左右手、关节顺序和通信接口，从
+非极限角度以及保守的速度、扭矩开始测试。急停和机械限位应独立于本节点部署。

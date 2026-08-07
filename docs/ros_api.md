@@ -1,7 +1,8 @@
 # ROS 2 API
 
-Angle command and state values use the SDK's logical percentage range: `0.0`
-is open and `100.0` is closed. Speed and torque ranges follow each device
+Angle command and state values use the SDK's logical `[0, 100]` range. Physical
+direction is model- and joint-specific; do not interpret the endpoints as a
+universal open/closed convention. Speed and torque ranges follow each device
 protocol. Array order is published once per second on `~/joint_names` as a
 comma-separated string.
 

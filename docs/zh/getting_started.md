@@ -91,4 +91,5 @@ ros2 service call /linkerbot_hand/read_now std_srvs/srv/Trigger '{}'
 ros2 topic echo --once /linkerbot_hand/state/angles
 ```
 
-确认状态可正常读取后，再从全张开命令和低速度配置开始测试真实运动。
+确认状态可正常读取后，先设置低速度和保守扭矩，再从远离 0/100 端点的小范围
+动作开始测试。角度增大或减小对应的物理方向必须按具体型号确认。
