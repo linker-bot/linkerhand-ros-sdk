@@ -1,0 +1,11 @@
+linkerbot_hand:
+  ros__parameters:
+    model: l6
+    side: left
+    interface_name: can0
+    interface_type: socketcan
+    library_path: ""
+    poll_rate: 30.0
+    timeout_ms: 100.0
+    publish_optional_state: true
+    optional_state_rate: 1.0
