@@ -3,7 +3,7 @@
 ## 1. 安装依赖
 
 ```bash
-source /opt/ros/humble/setup.bash
+source /opt/ros/jazzy/setup.bash
 python3 -m pip install 'linkerbot>=0.5.4'
 sudo apt update
 sudo apt install python3-colcon-common-extensions python3-rosdep
@@ -53,9 +53,10 @@ mkdir -p ~/linkerbot_ws/src
 cd ~/linkerbot_ws/src
 git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand-ros.git
 cd ~/linkerbot_ws
+source /opt/ros/jazzy/setup.bash
 rosdep install --from-paths src --ignore-src -r -y
 colcon build --symlink-install
-source install/setup.bash
+source ~/linkerbot_ws/install/setup.bash
 ```
 
 ## 4. 启动节点

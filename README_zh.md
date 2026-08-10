@@ -16,7 +16,7 @@
 
 ## 环境要求
 
-- Ubuntu 22.04 + ROS 2 Humble，或更新的 ROS 2 版本
+- Ubuntu 24.04 + ROS 2 Jazzy
 - Python 3.10 或更新版本
 - Linkerbot Python SDK 0.5.4 或更新版本
 - 已配置的 SocketCAN/CAN FD 接口，或厂商 CAN FD 动态库
@@ -24,7 +24,7 @@
 先加载 ROS 2 环境，再将 SDK 安装到 ROS 2 使用的 Python 环境：
 
 ```bash
-source /opt/ros/humble/setup.bash
+source /opt/ros/jazzy/setup.bash
 python3 -m pip install 'linkerbot>=0.5.4'
 ```
 
@@ -35,15 +35,16 @@ mkdir -p ~/linkerbot_ws/src
 cd ~/linkerbot_ws/src
 git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand-ros.git
 cd ..
+source /opt/ros/jazzy/setup.bash
 rosdep install --from-paths src --ignore-src -r -y
 colcon build --symlink-install
-source install/setup.bash
+source ~/linkerbot_ws/install/setup.bash
 ```
 
 每次打开新终端都需要加载 ROS 2 和工作空间：
 
 ```bash
-source /opt/ros/humble/setup.bash
+source /opt/ros/jazzy/setup.bash
 source ~/linkerbot_ws/install/setup.bash
 ```
 

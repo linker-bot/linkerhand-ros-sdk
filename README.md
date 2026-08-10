@@ -8,7 +8,7 @@ O6, L6, L20Lite, L25, O20, O30I, and L30 hands through one node.
 
 ## Requirements
 
-- ROS 2 Humble or newer
+- Ubuntu 24.04 with ROS 2 Jazzy
 - Python 3.10 or newer
 - A configured SocketCAN/CAN FD interface, or the vendor CAN FD library
 - `linkerbot` Python SDK 0.5.4 or newer
@@ -26,9 +26,10 @@ mkdir -p ~/linkerbot_ws/src
 cd ~/linkerbot_ws/src
 git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand-ros.git
 cd ..
+source /opt/ros/jazzy/setup.bash
 rosdep install --from-paths src --ignore-src -r -y
 colcon build --symlink-install
-source install/setup.bash
+source ~/linkerbot_ws/install/setup.bash
 ```
 
 ## Run

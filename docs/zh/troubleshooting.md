@@ -10,9 +10,9 @@ Package 'linkerbot_hand_ros' not found
 
 ```bash
 cd ~/linkerbot_ws
+source /opt/ros/jazzy/setup.bash
 colcon build --symlink-install
-source /opt/ros/humble/setup.bash
-source install/setup.bash
+source ~/linkerbot_ws/install/setup.bash
 ros2 pkg executables linkerbot_hand_ros
 ```
 
