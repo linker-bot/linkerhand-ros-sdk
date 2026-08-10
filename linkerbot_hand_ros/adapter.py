@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -188,6 +189,39 @@ def _as_float_list(value: Any) -> list[float]:
     return [float(item.value if isinstance(item, Enum) else item) for item in value]
 
 
+def validate_command(
+    model: str,
+    values: Sequence[float],
+    command: str,
+) -> list[float] | list[int]:
+    """Validate and normalize one model-specific SDK command."""
+    model = normalize_model(model)
+    spec = MODEL_SPECS[model]
+    limits_by_command = {
+        "angles": (0, 100),
+        "speeds": spec.speed_range,
+        "torques": spec.torque_range,
+    }
+    if command not in limits_by_command:
+        raise ValueError(f"unsupported command: {command}")
+
+    result = [float(value) for value in values]
+    if len(result) != len(spec.joint_names):
+        raise ValueError(
+            f"{command} requires {len(spec.joint_names)} values, got {len(result)}"
+        )
+    if any(not math.isfinite(value) for value in result):
+        raise ValueError(f"{command} values must be finite")
+    minimum, maximum = limits_by_command[command]
+    if any(value < minimum or value > maximum for value in result):
+        raise ValueError(f"{command} values must be in [{minimum}, {maximum}]")
+    if spec.transport == "canfd" and command != "angles":
+        if any(not value.is_integer() for value in result):
+            raise ValueError(f"{command} values must be integers for {model}")
+        return [int(value) for value in result]
+    return result
+
+
 class HandAdapter:
     """Uniform control and sensing API for all supported SDK hand models."""
 
@@ -217,36 +251,24 @@ class HandAdapter:
         return self.spec.joint_names
 
     def _validate_command(
-        self, values: Sequence[float], label: str, limits: tuple[int, int]
+        self, values: Sequence[float], label: str
     ) -> list[float] | list[int]:
-        result = [float(value) for value in values]
-        if len(result) != len(self.joint_names):
-            raise ValueError(
-                f"{label} requires {len(self.joint_names)} values, got {len(result)}"
-            )
-        minimum, maximum = limits
-        if any(value < minimum or value > maximum for value in result):
-            raise ValueError(f"{label} values must be in [{minimum}, {maximum}]")
-        if self.spec.transport == "canfd" and label != "angles":
-            if any(not value.is_integer() for value in result):
-                raise ValueError(f"{label} values must be integers for {self.model}")
-            return [int(value) for value in result]
-        return result
+        return validate_command(self.model, values, label)
 
-    def set_angles(self, values: Sequence[float]) -> None:
-        self._hand.angle.set_angles(
-            self._validate_command(values, "angles", (0, 100))
-        )
+    def set_angles(self, values: Sequence[float]) -> list[float] | list[int]:
+        normalized = self._validate_command(values, "angles")
+        self._hand.angle.set_angles(normalized)
+        return normalized
 
-    def set_speeds(self, values: Sequence[float]) -> None:
-        self._hand.speed.set_speeds(
-            self._validate_command(values, "speeds", self.spec.speed_range)
-        )
+    def set_speeds(self, values: Sequence[float]) -> list[float] | list[int]:
+        normalized = self._validate_command(values, "speeds")
+        self._hand.speed.set_speeds(normalized)
+        return normalized
 
-    def set_torques(self, values: Sequence[float]) -> None:
-        self._hand.torque.set_torques(
-            self._validate_command(values, "torques", self.spec.torque_range)
-        )
+    def set_torques(self, values: Sequence[float]) -> list[float] | list[int]:
+        normalized = self._validate_command(values, "torques")
+        self._hand.torque.set_torques(normalized)
+        return normalized
 
     def read_angles(self, timeout_ms: float) -> list[float]:
         data = self._hand.angle.get_blocking(timeout_ms=timeout_ms)

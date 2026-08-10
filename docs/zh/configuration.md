@@ -13,9 +13,11 @@
 | `timeout_ms` | `100.0` | SDK 阻塞读取超时，单位 ms |
 | `publish_optional_state` | `true` | 是否读取温度、电流和故障状态 |
 | `optional_state_rate` | `1.0` | 可选状态轮询频率，单位 Hz |
+| `diagnostic_rate` | `1.0` | `/diagnostics` 发布频率，单位 Hz |
 
-`poll_rate`、`timeout_ms` 和 `optional_state_rate` 必须大于 0。总线负载较高或设备
-较多时，应降低轮询频率。
+`poll_rate`、`timeout_ms`、`optional_state_rate` 和 `diagnostic_rate` 必须大于
+0。总线负载较高或设备较多时，应降低轮询频率。上述参数均可通过
+`ros2 launch linkerbot_hand_ros hand.launch.py 参数名:=值` 覆盖。
 
 ## 使用 YAML
 
@@ -33,6 +35,7 @@ linkerbot_hand:
     timeout_ms: 100.0
     publish_optional_state: true
     optional_state_rate: 1.0
+    diagnostic_rate: 1.0
 ```
 
 通过 `ros2 run` 加载：

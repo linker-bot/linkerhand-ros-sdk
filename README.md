@@ -6,6 +6,10 @@ ROS 2 Python driver for Linkerbot dexterous hands. The package wraps the
 [`linkerbot`](https://pypi.org/project/linkerbot/) Python SDK and supports
 O6, L6, L20Lite, L25, O20, O30I, and L30 hands through one node.
 
+Production applications can embed the persistent
+`linkerbot_hand_ros.client.HandCommandClient`. It reuses publishers, validates
+commands against driver metadata, and exposes the latest SDK-accepted command.
+
 ## Requirements
 
 - Ubuntu 24.04 with ROS 2 Jazzy

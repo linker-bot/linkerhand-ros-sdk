@@ -14,7 +14,9 @@ def generate_launch_description():
         DeclareLaunchArgument("library_path", default_value=""),
         DeclareLaunchArgument("poll_rate", default_value="30.0"),
         DeclareLaunchArgument("timeout_ms", default_value="100.0"),
+        DeclareLaunchArgument("publish_optional_state", default_value="true"),
         DeclareLaunchArgument("optional_state_rate", default_value="1.0"),
+        DeclareLaunchArgument("diagnostic_rate", default_value="1.0"),
     ]
     node = Node(
         package="linkerbot_hand_ros",
@@ -34,8 +36,14 @@ def generate_launch_description():
                 "timeout_ms": ParameterValue(
                     LaunchConfiguration("timeout_ms"), value_type=float
                 ),
+                "publish_optional_state": ParameterValue(
+                    LaunchConfiguration("publish_optional_state"), value_type=bool
+                ),
                 "optional_state_rate": ParameterValue(
                     LaunchConfiguration("optional_state_rate"), value_type=float
+                ),
+                "diagnostic_rate": ParameterValue(
+                    LaunchConfiguration("diagnostic_rate"), value_type=float
                 ),
             }
         ],

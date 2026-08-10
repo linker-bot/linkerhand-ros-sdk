@@ -31,3 +31,41 @@ def test_entry_points_use_idempotent_rclpy_shutdown():
         source = path.read_text(encoding="utf-8")
         assert "rclpy.try_shutdown()" in source
         assert "rclpy.shutdown()" not in source
+
+
+def test_launch_exposes_every_driver_parameter():
+    source = Path("launch/hand.launch.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    declared = {
+        call.args[0].value
+        for call in ast.walk(tree)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Name)
+        and call.func.id == "DeclareLaunchArgument"
+        and call.args
+        and isinstance(call.args[0], ast.Constant)
+    }
+    configured = {
+        call.args[0].value
+        for call in ast.walk(tree)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Name)
+        and call.func.id == "LaunchConfiguration"
+        and call.args
+        and isinstance(call.args[0], ast.Constant)
+    }
+    expected = {
+        "model",
+        "side",
+        "interface_name",
+        "interface_type",
+        "library_path",
+        "poll_rate",
+        "timeout_ms",
+        "publish_optional_state",
+        "optional_state_rate",
+        "diagnostic_rate",
+    }
+
+    assert declared == expected
+    assert configured == expected

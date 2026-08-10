@@ -3,29 +3,36 @@
 from __future__ import annotations
 
 import argparse
-import math
 import sys
-import time
 
 import rclpy
-from rclpy.duration import Duration
 from rclpy.node import Node
-from rclpy.publisher import Publisher
 from rclpy.utilities import remove_ros_args
-from std_msgs.msg import Float64MultiArray, String
+
+from linkerbot_hand_ros.client import HandCommandClient
+from linkerbot_hand_ros.examples._command_cli import (
+    DEFAULT_DRIVER_NAME,
+    resolve_driver_name,
+    spin_until_ready,
+)
 
 
 def _parse_args(args: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="持续发送灵巧手角度命令")
     parser.add_argument(
+        "--driver-name",
+        default=DEFAULT_DRIVER_NAME,
+        help="驱动节点完整名称",
+    )
+    parser.add_argument(
         "--topic",
-        default="/linkerbot_hand/command/angles",
-        help="角度命令话题",
+        default=None,
+        help="兼容参数：角度命令话题",
     )
     parser.add_argument(
         "--joint-names-topic",
-        default="/linkerbot_hand/joint_names",
-        help="关节名称话题",
+        default=None,
+        help="兼容参数：关节名称话题",
     )
     parser.add_argument(
         "--wait-timeout",
@@ -36,34 +43,12 @@ def _parse_args(args: list[str]) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
-def _parse_values(line: str, joint_count: int) -> list[float]:
+def _parse_values(line: str) -> list[float]:
     parts = line.replace(",", " ").split()
-    if len(parts) != joint_count:
-        raise ValueError(f"需要 {joint_count} 个角度值，收到 {len(parts)} 个")
     try:
-        values = [float(part) for part in parts]
+        return [float(part) for part in parts]
     except ValueError as error:
         raise ValueError("角度值必须是数字") from error
-    if any(
-        not math.isfinite(value) or value < 0.0 or value > 100.0
-        for value in values
-    ):
-        raise ValueError("角度值必须是 0 到 100 之间的有限数值")
-    return values
-
-
-def _wait_until_ready(
-    node: Node,
-    publisher: Publisher,
-    joint_names: list[str],
-    timeout: float,
-) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if publisher.get_subscription_count() > 0 and joint_names:
-            return True
-        rclpy.spin_once(node, timeout_sec=0.05)
-    return publisher.get_subscription_count() > 0 and bool(joint_names)
 
 
 def main(args: list[str] | None = None) -> None:
@@ -71,34 +56,26 @@ def main(args: list[str] | None = None) -> None:
     parsed = _parse_args(remove_ros_args(raw_args)[1:])
     if parsed.wait_timeout <= 0.0:
         raise SystemExit("--wait-timeout 必须大于 0")
+    try:
+        driver_name = resolve_driver_name(
+            parsed.driver_name,
+            angle_topic=parsed.topic,
+            joint_names_topic=parsed.joint_names_topic,
+        )
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
 
     rclpy.init(args=raw_args)
     node = Node("linkerbot_hand_angle_controller")
-    publisher = node.create_publisher(Float64MultiArray, parsed.topic, 10)
-    joint_names: list[str] = []
-
-    def update_joint_names(message: String) -> None:
-        joint_names[:] = [
-            name.strip() for name in message.data.split(",") if name.strip()
-        ]
-
-    node.create_subscription(
-        String,
-        parsed.joint_names_topic,
-        update_joint_names,
-        1,
-    )
-
+    command_client = HandCommandClient(node, driver_name=driver_name)
     logger = node.get_logger()
     try:
-        if not _wait_until_ready(
-            node,
-            publisher,
-            joint_names,
-            parsed.wait_timeout,
-        ):
-            raise SystemExit("等待驱动订阅者或关节名称超时")
-        logger.info(f"已连接 {len(joint_names)} 个关节: {', '.join(joint_names)}")
+        if not spin_until_ready(node, command_client, parsed.wait_timeout):
+            raise SystemExit(f"等待驱动就绪超时: {driver_name}")
+        logger.info(
+            f"已连接 {command_client.model}，{len(command_client.joint_names)} 个关节: "
+            f"{', '.join(command_client.joint_names)}"
+        )
 
         while rclpy.ok():
             if sys.stdin.isatty():
@@ -113,35 +90,32 @@ def main(args: list[str] | None = None) -> None:
                 break
 
             try:
-                values = _parse_values(stripped, len(joint_names))
-            except ValueError as error:
+                values = _parse_values(stripped)
+                if not command_client.is_ready():
+                    if not spin_until_ready(
+                        node, command_client, parsed.wait_timeout
+                    ):
+                        raise RuntimeError(f"等待驱动就绪超时: {driver_name}")
+                receipt = command_client.send_angles(
+                    values,
+                    wait_for_dds_ack=True,
+                    timeout_sec=parsed.wait_timeout,
+                )
+            except (RuntimeError, ValueError) as error:
                 logger.error(str(error))
                 continue
 
-            subscriber_missing = publisher.get_subscription_count() == 0
-            if subscriber_missing and not _wait_until_ready(
-                node, publisher, joint_names, parsed.wait_timeout
-            ):
-                logger.error(f"等待话题订阅者超时: {parsed.topic}")
-                continue
-
-            message = Float64MultiArray()
-            message.data = values
-            started_ns = time.monotonic_ns()
-            publisher.publish(message)
-            acknowledged = publisher.wait_for_all_acked(
-                timeout=Duration(seconds=parsed.wait_timeout)
-            )
-            elapsed_ms = (time.monotonic_ns() - started_ns) / 1_000_000.0
-            if acknowledged:
+            if receipt.dds_acknowledged:
                 logger.info(
-                    f"已发送 {len(values)} 个角度值，DDS 确认耗时 {elapsed_ms:.2f} ms"
+                    f"已发送 {len(receipt.values)} 个角度值，DDS 确认耗时 "
+                    f"{receipt.dds_ack_latency_ms:.2f} ms"
                 )
             else:
-                logger.error(f"等待话题订阅者确认超时: {parsed.topic}")
+                logger.error(f"等待话题订阅者确认超时: {driver_name}")
     except KeyboardInterrupt:
         pass
     finally:
+        command_client.destroy()
         node.destroy_node()
         rclpy.try_shutdown()
 

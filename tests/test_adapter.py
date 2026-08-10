@@ -76,7 +76,10 @@ def test_commands_and_readback_use_uniform_lists(hand_and_adapter):
     assert adapter.read_optional("temperature", 100) == [25.0] * 6
 
 
-@pytest.mark.parametrize("values", ([1] * 5, [1] * 7, [-1] * 6, [101] * 6))
+@pytest.mark.parametrize(
+    "values",
+    ([1] * 5, [1] * 7, [-1] * 6, [101] * 6, [float("nan")] * 6),
+)
 def test_invalid_commands_are_rejected(hand_and_adapter, values):
     _, adapter = hand_and_adapter
     with pytest.raises(ValueError):

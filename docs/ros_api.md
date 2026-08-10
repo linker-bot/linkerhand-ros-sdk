@@ -19,6 +19,7 @@ comma-separated string.
 | `timeout_ms` | `100.0` | SDK blocking read timeout |
 | `publish_optional_state` | `true` | Read temperature/current/fault when supported |
 | `optional_state_rate` | `1.0` | Optional state polling rate in Hz |
+| `diagnostic_rate` | `1.0` | Standard diagnostics publishing rate in Hz |
 
 ## Command Ranges
 
@@ -36,11 +37,21 @@ comma-separated string.
 | `~/command/angles` | `std_msgs/msg/Float64MultiArray` | Subscribe |
 | `~/command/speeds` | `std_msgs/msg/Float64MultiArray` | Subscribe |
 | `~/command/torques` | `std_msgs/msg/Float64MultiArray` | Subscribe |
+| `~/command/accepted/angles` | `std_msgs/msg/Float64MultiArray` | Publish after SDK accepts command |
+| `~/command/accepted/speeds` | `std_msgs/msg/Float64MultiArray` | Publish after SDK accepts command |
+| `~/command/accepted/torques` | `std_msgs/msg/Float64MultiArray` | Publish after SDK accepts command |
 | `~/state/angles` | `std_msgs/msg/Float64MultiArray` | Publish |
 | `~/state/temperature` | `std_msgs/msg/Float64MultiArray` | Publish when available |
 | `~/state/current` | `std_msgs/msg/Float64MultiArray` | Publish when available |
 | `~/state/fault` | `std_msgs/msg/Float64MultiArray` | Publish when available |
 | `~/joint_names` | `std_msgs/msg/String` | Publish |
+| `~/model` | `std_msgs/msg/String` | Publish normalized model name |
+| `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | Publish driver health |
+
+Command subscriptions use reliable keep-last QoS with depth 1 so stale targets
+do not queue behind newer targets. Metadata and accepted-command topics are
+transient-local. An accepted command means the SDK setter returned successfully;
+physical completion must be determined from state feedback.
 
 ## Services
 

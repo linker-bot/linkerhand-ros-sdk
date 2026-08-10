@@ -3,24 +3,40 @@ from types import SimpleNamespace
 
 import pytest
 
+from linkerbot_hand_ros.adapter import validate_command
 from linkerbot_hand_ros.examples import angle_controller
 
 
-class FakePublisher:
-    def __init__(self, acknowledgements=(True,)):
+class FakeCommandClient:
+    model = "l6"
+    joint_names = (
+        "thumb_flex",
+        "thumb_abd",
+        "index",
+        "middle",
+        "ring",
+        "pinky",
+    )
+
+    def __init__(self, acknowledgements=(True, True)):
         self.acknowledgements = iter(acknowledgements)
-        self.messages = []
-        self.timeouts = []
+        self.calls = []
+        self.destroyed = False
 
-    def get_subscription_count(self):
-        return 1
+    def is_ready(self):
+        return True
 
-    def publish(self, message):
-        self.messages.append(message)
+    def send_angles(self, values, **kwargs):
+        normalized = validate_command(self.model, values, "angles")
+        self.calls.append((normalized, kwargs))
+        return SimpleNamespace(
+            values=tuple(normalized),
+            dds_acknowledged=next(self.acknowledgements),
+            dds_ack_latency_ms=5.25,
+        )
 
-    def wait_for_all_acked(self, timeout):
-        self.timeouts.append(timeout)
-        return next(self.acknowledgements)
+    def destroy(self):
+        self.destroyed = True
 
 
 class FakeLogger:
@@ -36,17 +52,9 @@ class FakeLogger:
 
 
 class FakeNode:
-    def __init__(self, publisher):
-        self.publisher = publisher
+    def __init__(self):
         self.logger = FakeLogger()
         self.destroyed = False
-
-    def create_publisher(self, *_args):
-        return self.publisher
-
-    def create_subscription(self, _type, _topic, callback, _depth):
-        callback(SimpleNamespace(data="thumb_flex,thumb_abd,index,middle,ring,pinky"))
-        return object()
 
     def get_logger(self):
         return self.logger
@@ -56,35 +64,42 @@ class FakeNode:
 
 
 def _run(monkeypatch, input_text, acknowledgements=(True, True)):
-    publisher = FakePublisher(acknowledgements=acknowledgements)
-    node = FakeNode(publisher)
-    timestamps = iter((1_000_000, 2_500_000, 3_000_000, 4_000_000))
+    command_client = FakeCommandClient(acknowledgements=acknowledgements)
+    node = FakeNode()
     monkeypatch.setattr(angle_controller, "Node", lambda _name: node)
+    monkeypatch.setattr(
+        angle_controller,
+        "HandCommandClient",
+        lambda _node, driver_name: command_client,
+    )
+    monkeypatch.setattr(angle_controller, "spin_until_ready", lambda *_args: True)
     monkeypatch.setattr(angle_controller.rclpy, "init", lambda **_kwargs: None)
     monkeypatch.setattr(angle_controller.rclpy, "ok", lambda: True)
     monkeypatch.setattr(angle_controller.rclpy, "try_shutdown", lambda: None)
-    monkeypatch.setattr(angle_controller.time, "monotonic_ns", lambda: next(timestamps))
     monkeypatch.setattr(angle_controller.sys, "stdin", StringIO(input_text))
     angle_controller.main(args=[])
-    return publisher, node
+    return command_client, node
 
 
-def test_controller_reuses_publisher_for_multiple_commands(monkeypatch):
-    publisher, node = _run(
+def test_controller_reuses_business_client_for_multiple_commands(monkeypatch):
+    command_client, node = _run(
         monkeypatch,
         "100 50 100 100 100 20\n100,50,100,100,100,100\nquit\n",
     )
 
-    assert [list(message.data) for message in publisher.messages] == [
+    assert [values for values, _kwargs in command_client.calls] == [
         [100.0, 50.0, 100.0, 100.0, 100.0, 20.0],
         [100.0, 50.0, 100.0, 100.0, 100.0, 100.0],
     ]
-    assert len(publisher.timeouts) == 2
+    assert all(
+        kwargs == {"wait_for_dds_ack": True, "timeout_sec": 5.0}
+        for _values, kwargs in command_client.calls
+    )
     assert node.logger.infos[-2:] == [
-        "已发送 6 个角度值，DDS 确认耗时 1.50 ms",
-        "已发送 6 个角度值，DDS 确认耗时 1.00 ms",
+        "已发送 6 个角度值，DDS 确认耗时 5.25 ms",
+        "已发送 6 个角度值，DDS 确认耗时 5.25 ms",
     ]
-    assert node.destroyed
+    assert command_client.destroyed
 
 
 @pytest.mark.parametrize(
@@ -97,24 +112,22 @@ def test_controller_reuses_publisher_for_multiple_commands(monkeypatch):
     ),
 )
 def test_controller_rejects_invalid_commands_and_stays_running(monkeypatch, line):
-    publisher, node = _run(
+    command_client, node = _run(
         monkeypatch,
         f"{line}\n100 50 100 100 100 100\nquit\n",
     )
 
-    assert len(publisher.messages) == 1
+    assert len(command_client.calls) == 1
     assert len(node.logger.errors) == 1
 
 
 def test_controller_reports_ack_timeout_and_accepts_next_input(monkeypatch):
-    publisher, node = _run(
+    command_client, node = _run(
         monkeypatch,
         "100 50 100 100 100 20\n100 50 100 100 100 100\nquit\n",
         acknowledgements=(False, True),
     )
 
-    assert len(publisher.messages) == 2
-    assert node.logger.errors == [
-        "等待话题订阅者确认超时: /linkerbot_hand/command/angles"
-    ]
-    assert node.logger.infos[-1] == "已发送 6 个角度值，DDS 确认耗时 1.00 ms"
+    assert len(command_client.calls) == 2
+    assert node.logger.errors == ["等待话题订阅者确认超时: /linkerbot_hand"]
+    assert node.logger.infos[-1] == "已发送 6 个角度值，DDS 确认耗时 5.25 ms"

@@ -56,11 +56,11 @@ ros2 topic pub --once /linkerbot_hand/command/angles \
 ros2 run linkerbot_hand_ros angle_command --values 100 50 100 100 100 100
 ```
 
-指定其他话题：
+指定其他驱动节点：
 
 ```bash
 ros2 run linkerbot_hand_ros angle_command \
-  --topic /left_hand/linkerbot_hand/command/angles \
+  --driver-name /left_hand/linkerbot_hand \
   --values 0 0 0 0 0 0
 ```
 
@@ -87,13 +87,15 @@ angles> 100,50,100,100,100,100
 ```
 
 控制器复用同一个 ROS 2 Publisher，每条成功命令会显示 DDS 确认耗时。输入
-`quit`、`exit`，或按 `Ctrl-D` 退出。使用命名空间时同时指定命令和关节名称话题：
+`quit`、`exit`，或按 `Ctrl-D` 退出。使用命名空间时指定驱动节点完整名称：
 
 ```bash
 ros2 run linkerbot_hand_ros angle_controller \
-  --topic /left_hand/linkerbot_hand/command/angles \
-  --joint-names-topic /left_hand/linkerbot_hand/joint_names
+  --driver-name /left_hand/linkerbot_hand
 ```
+
+原有 `--topic` 和 `--joint-names-topic` 参数仍可使用，控制器会解析并校验它们是否
+属于同一个驱动节点。
 
 ## Python 状态监听示例
 
