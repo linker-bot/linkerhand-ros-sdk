@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import rclpy
@@ -15,6 +16,38 @@ from std_msgs.msg import Float64MultiArray, String
 from std_srvs.srv import Trigger
 
 from .adapter import HandAdapter
+
+
+class _PriorityIoLock:
+    """Serialize SDK I/O while giving on-demand operations priority over polls."""
+
+    def __init__(self) -> None:
+        self._io_lock = threading.Lock()
+        self._state_lock = threading.Lock()
+        self._priority_waiters = 0
+
+    @contextmanager
+    def priority(self) -> Iterator[None]:
+        with self._state_lock:
+            self._priority_waiters += 1
+        try:
+            with self._io_lock:
+                yield
+        finally:
+            with self._state_lock:
+                self._priority_waiters -= 1
+
+    @contextmanager
+    def poll(self) -> Iterator[bool]:
+        with self._state_lock:
+            acquired = self._priority_waiters == 0 and self._io_lock.acquire(
+                blocking=False
+            )
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                self._io_lock.release()
 
 
 class LinkerbotHandNode(Node):
@@ -44,7 +77,7 @@ class LinkerbotHandNode(Node):
             interface_type=str(self.get_parameter("interface_type").value),
             library_path=str(self.get_parameter("library_path").value) or None,
         )
-        self._hand_lock = threading.Lock()
+        self._hand_io = _PriorityIoLock()
         self._last_error_log = 0.0
         self._publish_optional = bool(
             self.get_parameter("publish_optional_state").value
@@ -115,14 +148,16 @@ class LinkerbotHandNode(Node):
 
     def _run_command(self, command: str, values: Any) -> None:
         try:
-            with self._hand_lock:
+            with self._hand_io.priority():
                 getattr(self._adapter, f"set_{command}")(values)
         except Exception as error:  # ROS callbacks must keep the executor alive.
             self.get_logger().error(f"rejected {command} command: {error}")
 
     def _poll(self) -> None:
         try:
-            with self._hand_lock:
+            with self._hand_io.poll() as acquired:
+                if not acquired:
+                    return
                 angles = self._adapter.read_angles(self._timeout_ms)
             self._angle_publisher.publish(self._message(angles))
         except Exception as error:
@@ -134,7 +169,9 @@ class LinkerbotHandNode(Node):
     def _poll_optional(self) -> None:
         for name, publisher in self._optional_publishers.items():
             try:
-                with self._hand_lock:
+                with self._hand_io.poll() as acquired:
+                    if not acquired:
+                        return
                     values = self._adapter.read_optional(name, self._timeout_ms)
                 if values is not None:
                     publisher.publish(self._message(values))
@@ -143,7 +180,7 @@ class LinkerbotHandNode(Node):
 
     def _read_now(self, _request: Trigger.Request, response: Trigger.Response):
         try:
-            with self._hand_lock:
+            with self._hand_io.priority():
                 angles = self._adapter.read_angles(self._timeout_ms)
             self._angle_publisher.publish(self._message(angles))
             response.success = True
@@ -155,7 +192,7 @@ class LinkerbotHandNode(Node):
 
     def _clear_faults(self, _request: Trigger.Request, response: Trigger.Response):
         try:
-            with self._hand_lock:
+            with self._hand_io.priority():
                 self._adapter.clear_faults()
             response.success = True
             response.message = "fault clear command sent"

@@ -35,6 +35,7 @@ setup(
         "console_scripts": [
             "hand_node = linkerbot_hand_ros.node:main",
             "angle_command = linkerbot_hand_ros.examples.angle_command:main",
+            "angle_controller = linkerbot_hand_ros.examples.angle_controller:main",
             "state_monitor = linkerbot_hand_ros.examples.state_monitor:main",
         ],
     },

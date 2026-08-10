@@ -76,6 +76,12 @@ ros2 topic pub --once /linkerbot_hand/command/angles \
 ros2 run linkerbot_hand_ros angle_command --values 100 50 100 100 100 100
 ```
 
+连续控制时启动常驻 Publisher，随后直接输入多组角度：
+
+```bash
+ros2 run linkerbot_hand_ros angle_controller
+```
+
 监听关节顺序和实时角度：
 
 ```bash

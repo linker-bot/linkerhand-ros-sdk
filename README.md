@@ -57,6 +57,7 @@ Runnable Python examples are installed with the package:
 
 ```bash
 ros2 run linkerbot_hand_ros angle_command --values 0 0 0 0 0 0
+ros2 run linkerbot_hand_ros angle_controller
 ros2 run linkerbot_hand_ros state_monitor
 ```
 

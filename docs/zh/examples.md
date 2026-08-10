@@ -64,7 +64,36 @@ ros2 run linkerbot_hand_ros angle_command \
   --values 0 0 0 0 0 0
 ```
 
-示例会等待至少一个订阅者后发布一次命令；若 5 秒内没有找到驱动节点，会返回错误。
+示例会等待至少一个订阅者，发布命令并等待 DDS 可靠传输确认；若 5 秒内没有找到
+驱动节点或没有收到传输确认，会返回错误，不会把未确认的命令报告为发送成功。
+
+`ros2 topic pub --once` 每次都会创建临时 ROS 2 节点并等待 DDS 发现，单次调用的
+进程耗时通常比已运行的发布节点更长。连续控制时应使用常驻发布节点；命令行单次
+控制优先使用本示例，不能用 CLI 进程总耗时判断 CAN 或机械动作延迟。
+
+## 常驻角度控制器
+
+需要连续发送角度时，启动一次常驻控制器：
+
+```bash
+ros2 run linkerbot_hand_ros angle_controller
+```
+
+控制器显示关节顺序后，可持续输入空格或逗号分隔的角度值：
+
+```text
+angles> 100 50 100 100 100 20
+angles> 100,50,100,100,100,100
+```
+
+控制器复用同一个 ROS 2 Publisher，每条成功命令会显示 DDS 确认耗时。输入
+`quit`、`exit`，或按 `Ctrl-D` 退出。使用命名空间时同时指定命令和关节名称话题：
+
+```bash
+ros2 run linkerbot_hand_ros angle_controller \
+  --topic /left_hand/linkerbot_hand/command/angles \
+  --joint-names-topic /left_hand/linkerbot_hand/joint_names
+```
 
 ## Python 状态监听示例
 

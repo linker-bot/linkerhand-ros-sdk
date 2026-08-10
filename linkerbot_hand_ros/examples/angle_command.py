@@ -7,6 +7,7 @@ import sys
 import time
 
 import rclpy
+from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.utilities import remove_ros_args
 from std_msgs.msg import Float64MultiArray
@@ -55,7 +56,10 @@ def main(args: list[str] | None = None) -> None:
         message = Float64MultiArray()
         message.data = parsed.values
         publisher.publish(message)
-        rclpy.spin_once(node, timeout_sec=0.2)
+        if not publisher.wait_for_all_acked(
+            timeout=Duration(seconds=parsed.wait_timeout)
+        ):
+            raise SystemExit(f"等待话题订阅者确认超时: {parsed.topic}")
         node.get_logger().info(f"已向 {parsed.topic} 发送 {len(parsed.values)} 个角度值")
     finally:
         node.destroy_node()
