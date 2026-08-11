@@ -86,9 +86,28 @@ def test_client_creates_persistent_topics_with_shared_qos():
         "/left/linkerbot_hand/command/torques",
     ]
     assert all(publisher.qos is COMMAND_QOS for publisher in node.publishers)
-    assert all(
-        subscription.qos is METADATA_QOS for subscription in node.subscriptions
-    )
+    assert all(subscription.qos is METADATA_QOS for subscription in node.subscriptions)
+
+
+def test_client_rolls_back_partially_created_ros_entities():
+    node = FakeNode()
+    original_create_subscription = node.create_subscription
+    subscription_calls = 0
+
+    def fail_second_subscription(*args, **kwargs):
+        nonlocal subscription_calls
+        subscription_calls += 1
+        if subscription_calls == 2:
+            raise RuntimeError("injected subscription creation failure")
+        return original_create_subscription(*args, **kwargs)
+
+    node.create_subscription = fail_second_subscription
+
+    with pytest.raises(RuntimeError, match="injected subscription creation failure"):
+        HandCommandClient(node)
+
+    assert len(node.destroyed_publishers) == 3
+    assert len(node.destroyed_subscriptions) == 1
 
 
 def test_client_rejects_commands_until_driver_metadata_is_ready():
@@ -129,6 +148,16 @@ def test_client_waits_for_metadata_from_executor_thread():
     finally:
         worker.join(timeout=1.0)
     assert not worker.is_alive()
+
+
+@pytest.mark.parametrize("timeout_sec", (0.0, -1.0, float("nan"), float("inf"), True))
+def test_client_rejects_invalid_timeouts(ready_client, timeout_sec):
+    _, command_client = ready_client
+
+    with pytest.raises(ValueError, match="finite and positive"):
+        command_client.wait_until_ready(timeout_sec)
+    with pytest.raises(ValueError, match="finite and positive"):
+        command_client.send_angles([100] * 6, timeout_sec=timeout_sec)
 
 
 def test_client_reuses_publisher_without_waiting_for_ack_by_default(ready_client):

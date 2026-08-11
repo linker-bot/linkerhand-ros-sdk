@@ -1,307 +1,542 @@
-"""ROS 2 node exposing the Linkerbot hand adapter."""
+"""Lifecycle ROS 2 driver for Linkerbot hands."""
 
 from __future__ import annotations
 
-import threading
-import time
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+import math
+from collections.abc import Callable
+from typing import Any
 
 import rclpy
-from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
-from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from diagnostic_msgs.msg import DiagnosticArray
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
-from rclpy.node import Node
+from rclpy.lifecycle import LifecycleNode, LifecycleState, TransitionCallbackReturn
 from std_msgs.msg import Float64MultiArray, String
 from std_srvs.srv import Trigger
 
+from linkerbot_hand import (
+    CommandHandle,
+    HandSDKError,
+    SensorSample,
+    SensorType,
+)
+
 from .adapter import HandAdapter
+from .configuration import DriverConfiguration, read_driver_configuration
+from .diagnostics import build_diagnostic_status
 from .metrics import DriverMetrics
 from .qos import COMMAND_QOS, METADATA_QOS, STATE_QOS
 
 
-class _PriorityIoLock:
-    """Serialize SDK I/O while giving on-demand operations priority over polls."""
-
-    def __init__(self) -> None:
-        self._io_lock = threading.Lock()
-        self._state_lock = threading.Lock()
-        self._priority_waiters = 0
-
-    @contextmanager
-    def priority(self) -> Iterator[None]:
-        with self._state_lock:
-            self._priority_waiters += 1
-        try:
-            with self._io_lock:
-                yield
-        finally:
-            with self._state_lock:
-                self._priority_waiters -= 1
-
-    @contextmanager
-    def poll(self) -> Iterator[bool]:
-        with self._state_lock:
-            acquired = self._priority_waiters == 0 and self._io_lock.acquire(
-                blocking=False
-            )
-        try:
-            yield acquired
-        finally:
-            if acquired:
-                self._io_lock.release()
+_STATE_SENSORS = {
+    "angles": SensorType.ANGLES,
+    "temperature": SensorType.TEMPERATURE,
+    "current": SensorType.CURRENT,
+    "fault": SensorType.FAULTS,
+}
 
 
-class LinkerbotHandNode(Node):
+class LinkerbotHandNode(LifecycleNode):
+    """One lifecycle-managed ROS owner for one SDK ``HandDevice``."""
+
     def __init__(
-        self, adapter_factory: Callable[..., HandAdapter] = HandAdapter
+        self,
+        adapter_factory: Callable[..., HandAdapter] = HandAdapter,
+        **kwargs: Any,
     ) -> None:
-        super().__init__("linkerbot_hand")
+        super().__init__("linkerbot_hand", **kwargs)
         self.declare_parameter("model", "l6")
         self.declare_parameter("side", "left")
+        self.declare_parameter("transport_options_json", "{}")
+        # Deprecated compatibility parameters used only when the JSON object is empty.
         self.declare_parameter("interface_name", "can0")
         self.declare_parameter("interface_type", "socketcan")
         self.declare_parameter("library_path", "")
-        self.declare_parameter("poll_rate", 30.0)
-        self.declare_parameter("timeout_ms", 100.0)
-        self.declare_parameter("publish_optional_state", True)
-        self.declare_parameter("optional_state_rate", 1.0)
+        self.declare_parameter("command_rate_hz", 100.0)
+        self.declare_parameter("auto_reconnect", False)
+        self.declare_parameter("publish_rate_hz", 60.0)
+        self.declare_parameter("angles_hz", 60.0)
+        self.declare_parameter("force_hz", 0.0)
+        self.declare_parameter("temperature_hz", 1.0)
+        self.declare_parameter("current_hz", 10.0)
+        self.declare_parameter("faults_hz", 5.0)
         self.declare_parameter("diagnostic_rate", 1.0)
 
-        poll_rate = float(self.get_parameter("poll_rate").value)
-        self._timeout_ms = float(self.get_parameter("timeout_ms").value)
-        diagnostic_rate = float(self.get_parameter("diagnostic_rate").value)
-        if poll_rate <= 0.0:
-            raise ValueError("poll_rate must be positive")
-        if self._timeout_ms <= 0.0:
-            raise ValueError("timeout_ms must be positive")
-        if diagnostic_rate <= 0.0:
-            raise ValueError("diagnostic_rate must be positive")
-
-        self._adapter = adapter_factory(
-            str(self.get_parameter("model").value),
-            side=str(self.get_parameter("side").value),
-            interface_name=str(self.get_parameter("interface_name").value),
-            interface_type=str(self.get_parameter("interface_type").value),
-            library_path=str(self.get_parameter("library_path").value) or None,
-        )
-        self._hand_io = _PriorityIoLock()
+        self._adapter_factory = adapter_factory
+        self._adapter: HandAdapter | None = None
+        self._configuration: DriverConfiguration | None = None
+        self._active = False
+        self._destroying = False
+        self._driver_destroyed = False
         self._metrics = DriverMetrics()
-        self._state_stale_after_sec = max(
-            1.0,
-            (3.0 / poll_rate) + (self._timeout_ms / 1000.0),
-        )
-        self._last_error_log = 0.0
-        self._publish_optional = bool(
-            self.get_parameter("publish_optional_state").value
-        )
-        optional_state_rate = float(self.get_parameter("optional_state_rate").value)
-        if self._publish_optional and optional_state_rate <= 0.0:
-            raise ValueError("optional_state_rate must be positive")
+        self._latest_handles: dict[str, CommandHandle] = {}
 
-        self._angle_publisher = self.create_publisher(
-            Float64MultiArray, "~/state/angles", STATE_QOS
-        )
-        self._joint_names_publisher = self.create_publisher(
-            String, "~/joint_names", METADATA_QOS
-        )
-        self._model_publisher = self.create_publisher(
-            String, "~/model", METADATA_QOS
-        )
-        self._optional_publishers = {
-            name: self.create_publisher(
+        self._state_publishers: dict[str, Any] = {}
+        self._accepted_publishers: dict[str, Any] = {}
+        self._joint_names_publisher: Any | None = None
+        self._model_publisher: Any | None = None
+        self._diagnostic_publisher: Any | None = None
+        self._command_subscriptions: list[Any] = []
+        self._driver_services: list[Any] = []
+        self._state_timer: Any | None = None
+        self._metadata_timer: Any | None = None
+        self._diagnostic_timer: Any | None = None
+
+    def on_configure(self, state: LifecycleState) -> TransitionCallbackReturn:
+        try:
+            configuration = read_driver_configuration(
+                lambda name: self.get_parameter(name).value
+            )
+            self._configuration = configuration
+            self._adapter = self._adapter_factory(
+                configuration.model,
+                side=configuration.side,
+                transport_options=configuration.transport_options,
+                session_config=configuration.session_config,
+            )
+            self._create_ros_entities(configuration)
+            result = super().on_configure(state)
+            if result != TransitionCallbackReturn.SUCCESS:
+                raise RuntimeError("managed ROS entity configuration failed")
+            self._publish_metadata()
+            capabilities = self._require_adapter().capabilities
+            self.get_logger().info(
+                f"configured model={capabilities.model} "
+                f"joints={capabilities.joint_count}; device remains disconnected"
+            )
+            return TransitionCallbackReturn.SUCCESS
+        except Exception as error:
+            self.get_logger().error(f"configure failed: {self._error_text(error)}")
+            self._active = False
+            self._release_adapter(close=True)
+            self._adapter = None
+            self._configuration = None
+            self._destroy_ros_entities()
+            return TransitionCallbackReturn.FAILURE
+
+    def on_activate(self, state: LifecycleState) -> TransitionCallbackReturn:
+        adapter = self._adapter
+        configuration = self._configuration
+        if adapter is None or configuration is None:
+            self.get_logger().error("activate failed: hand is not configured")
+            return TransitionCallbackReturn.FAILURE
+        try:
+            adapter.open()
+            adapter.start_polling(configuration.polling_plan(adapter.capabilities))
+            result = super().on_activate(state)
+            if result != TransitionCallbackReturn.SUCCESS:
+                raise RuntimeError("managed ROS entity activation failed")
+            self._active = True
+            self._create_command_subscriptions()
+            if self._state_timer is not None:
+                self._state_timer.reset()
+            self._publish_metadata()
+            capabilities = adapter.capabilities
+            self.get_logger().info(
+                f"activated model={capabilities.model} "
+                f"side={capabilities.side.value} firmware={capabilities.firmware or 'unknown'}"
+            )
+            return TransitionCallbackReturn.SUCCESS
+        except Exception as error:
+            self.get_logger().error(f"activate failed: {self._error_text(error)}")
+            self._active = False
+            self._destroy_command_subscriptions()
+            if self._state_timer is not None:
+                self._state_timer.cancel()
+            try:
+                super().on_deactivate(state)
+            except Exception as rollback_error:
+                self.get_logger().error(
+                    f"activate rollback failed: {self._error_text(rollback_error)}"
+                )
+            self._release_adapter(close=True)
+            return TransitionCallbackReturn.FAILURE
+
+    def on_deactivate(self, state: LifecycleState) -> TransitionCallbackReturn:
+        self._active = False
+        self._destroy_command_subscriptions()
+        if self._state_timer is not None:
+            self._state_timer.cancel()
+        adapter = self._adapter
+        try:
+            if adapter is not None:
+                adapter.stop_polling()
+            result = super().on_deactivate(state)
+            if result != TransitionCallbackReturn.SUCCESS:
+                return result
+        except Exception as error:
+            self.get_logger().error(f"deactivate failed: {self._error_text(error)}")
+            return TransitionCallbackReturn.ERROR
+        self.get_logger().info("deactivated; SDK polling stopped")
+        return TransitionCallbackReturn.SUCCESS
+
+    def on_cleanup(self, state: LifecycleState) -> TransitionCallbackReturn:
+        self._active = False
+        self._destroy_command_subscriptions()
+        managed_result = super().on_cleanup(state)
+        released = self._release_adapter(close=True)
+        if released:
+            self._adapter = None
+            self._configuration = None
+        self._latest_handles.clear()
+        self._destroy_ros_entities()
+        if managed_result != TransitionCallbackReturn.SUCCESS or not released:
+            return TransitionCallbackReturn.ERROR
+        self.get_logger().info("cleaned up; SDK connection closed")
+        return TransitionCallbackReturn.SUCCESS
+
+    def on_shutdown(self, state: LifecycleState) -> TransitionCallbackReturn:
+        self._active = False
+        self._destroy_command_subscriptions()
+        managed_result = super().on_shutdown(state)
+        released = self._release_adapter(close=True)
+        if released:
+            self._adapter = None
+            self._configuration = None
+        self._latest_handles.clear()
+        self._destroy_ros_entities()
+        if managed_result != TransitionCallbackReturn.SUCCESS or not released:
+            return TransitionCallbackReturn.ERROR
+        return TransitionCallbackReturn.SUCCESS
+
+    def on_error(self, state: LifecycleState) -> TransitionCallbackReturn:
+        self._active = False
+        self._destroy_command_subscriptions()
+        if self._state_timer is not None:
+            self._state_timer.cancel()
+        managed_result = super().on_error(state)
+        released = self._release_adapter(close=True)
+        if released:
+            self._adapter = None
+            self._configuration = None
+        self._latest_handles.clear()
+        self._destroy_ros_entities()
+        if managed_result != TransitionCallbackReturn.SUCCESS or not released:
+            return TransitionCallbackReturn.ERROR
+        return TransitionCallbackReturn.SUCCESS
+
+    def _create_ros_entities(self, configuration: DriverConfiguration) -> None:
+        for name in _STATE_SENSORS:
+            self._state_publishers[name] = self.create_lifecycle_publisher(
                 Float64MultiArray, f"~/state/{name}", STATE_QOS
             )
-            for name in ("temperature", "current", "fault")
-        }
-        self._accepted_publishers = {
-            command: self.create_publisher(
+        for command in ("angles", "speeds", "torques"):
+            self._accepted_publishers[command] = self.create_publisher(
                 Float64MultiArray,
                 f"~/command/accepted/{command}",
                 METADATA_QOS,
             )
-            for command in ("angles", "speeds", "torques")
-        }
+        self._joint_names_publisher = self.create_publisher(
+            String, "~/joint_names", METADATA_QOS
+        )
+        self._model_publisher = self.create_publisher(String, "~/model", METADATA_QOS)
         self._diagnostic_publisher = self.create_publisher(
             DiagnosticArray, "/diagnostics", STATE_QOS
         )
-        self.create_subscription(
-            Float64MultiArray,
-            "~/command/angles",
-            lambda message: self._run_command("angles", message),
-            COMMAND_QOS,
+
+        self._driver_services.append(
+            self.create_service(
+                Trigger,
+                "~/read_now",
+                self._read_now,
+                callback_group=self.default_callback_group,
+            )
         )
-        self.create_subscription(
-            Float64MultiArray,
-            "~/command/speeds",
-            lambda message: self._run_command("speeds", message),
-            COMMAND_QOS,
+        self._driver_services.append(
+            self.create_service(
+                Trigger,
+                "~/clear_faults",
+                self._clear_faults,
+                callback_group=self.default_callback_group,
+            )
         )
-        self.create_subscription(
-            Float64MultiArray,
-            "~/command/torques",
-            lambda message: self._run_command("torques", message),
-            COMMAND_QOS,
+        self._state_timer = self.create_timer(
+            1.0 / configuration.publish_rate_hz, self._publish_cached_state
+        )
+        self._state_timer.cancel()
+        self._metadata_timer = self.create_timer(1.0, self._publish_metadata)
+        self._diagnostic_timer = self.create_timer(
+            1.0 / configuration.diagnostic_rate_hz, self._publish_diagnostics
         )
 
-        io_group = MutuallyExclusiveCallbackGroup()
-        self.create_service(
-            Trigger, "~/read_now", self._read_now, callback_group=io_group
-        )
-        self.create_service(
-            Trigger, "~/clear_faults", self._clear_faults, callback_group=io_group
-        )
-        self.create_timer(1.0 / poll_rate, self._poll, callback_group=io_group)
-        if self._publish_optional:
-            self.create_timer(
-                1.0 / optional_state_rate,
-                self._poll_optional,
-                callback_group=io_group,
-            )
-        self.create_timer(1.0, self._publish_metadata)
-        self.create_timer(1.0 / diagnostic_rate, self._publish_diagnostics)
-        self._publish_metadata()
-        self.get_logger().info(
-            f"connected model={self._adapter.model} "
-            f"joints={len(self._adapter.joint_names)}"
-        )
+    def _create_command_subscriptions(self) -> None:
+        if self._command_subscriptions:
+            return
+        subscriptions: list[Any] = []
+        try:
+            for command in ("angles", "speeds", "torques"):
+                subscriptions.append(
+                    self.create_subscription(
+                        Float64MultiArray,
+                        f"~/command/{command}",
+                        lambda message, name=command: self._run_command(name, message),
+                        COMMAND_QOS,
+                    )
+                )
+        except Exception:
+            for subscription in subscriptions:
+                self.destroy_subscription(subscription)
+            raise
+        self._command_subscriptions = subscriptions
+
+    def _destroy_command_subscriptions(self) -> None:
+        for subscription in self._command_subscriptions:
+            self.destroy_subscription(subscription)
+        self._command_subscriptions.clear()
+
+    def _destroy_ros_entities(self) -> None:
+        self._destroy_command_subscriptions()
+        for timer_name in (
+            "_state_timer",
+            "_metadata_timer",
+            "_diagnostic_timer",
+        ):
+            timer = getattr(self, timer_name)
+            if timer is not None:
+                self.destroy_timer(timer)
+                setattr(self, timer_name, None)
+        for service in self._driver_services:
+            self.destroy_service(service)
+        self._driver_services.clear()
+        for publisher in self._state_publishers.values():
+            self.destroy_lifecycle_publisher(publisher)
+        self._state_publishers.clear()
+        for publisher in self._accepted_publishers.values():
+            self.destroy_publisher(publisher)
+        self._accepted_publishers.clear()
+        for publisher_name in (
+            "_joint_names_publisher",
+            "_model_publisher",
+            "_diagnostic_publisher",
+        ):
+            publisher = getattr(self, publisher_name)
+            if publisher is not None:
+                self.destroy_publisher(publisher)
+                setattr(self, publisher_name, None)
 
     def _publish_metadata(self) -> None:
-        joint_names = String()
-        joint_names.data = ",".join(self._adapter.joint_names)
-        self._joint_names_publisher.publish(joint_names)
-        model = String()
-        model.data = self._adapter.model
-        self._model_publisher.publish(model)
+        adapter = self._adapter
+        if adapter is None:
+            return
+        if self._joint_names_publisher is not None:
+            self._joint_names_publisher.publish(
+                String(data=",".join(adapter.joint_names))
+            )
+        if self._model_publisher is not None:
+            self._model_publisher.publish(String(data=adapter.model))
 
     @staticmethod
     def _message(values: list[float]) -> Float64MultiArray:
-        message = Float64MultiArray()
-        message.data = values
-        return message
-
-    def _run_command(
-        self, command: str, message: Float64MultiArray
-    ) -> None:
-        try:
-            with self._hand_io.priority():
-                accepted = getattr(self._adapter, f"set_{command}")(message.data)
-            self._accepted_publishers[command].publish(self._message(accepted))
-            self._metrics.record_command_success()
-        except Exception as error:  # ROS callbacks must keep the executor alive.
-            self._metrics.record_command_error(error)
-            self.get_logger().error(f"rejected {command} command: {error}")
-
-    def _poll(self) -> None:
-        try:
-            with self._hand_io.poll() as acquired:
-                if not acquired:
-                    return
-                angles = self._adapter.read_angles(self._timeout_ms)
-            self._angle_publisher.publish(self._message(angles))
-            self._metrics.record_state_success()
-        except Exception as error:
-            self._metrics.record_state_error(error)
-            now = time.monotonic()
-            if now - self._last_error_log >= 5.0:
-                self.get_logger().error(f"hand state read failed: {error}")
-                self._last_error_log = now
-
-    def _poll_optional(self) -> None:
-        for name, publisher in self._optional_publishers.items():
-            try:
-                with self._hand_io.poll() as acquired:
-                    if not acquired:
-                        return
-                    values = self._adapter.read_optional(name, self._timeout_ms)
-                if values is not None:
-                    publisher.publish(self._message(values))
-            except Exception as error:
-                self.get_logger().debug(f"{name} state read failed: {error}")
+        return Float64MultiArray(data=values)
 
     @staticmethod
-    def _diagnostic_value(key: str, value: object) -> KeyValue:
-        return KeyValue(key=key, value=str(value))
+    def _numeric_values(sample: SensorSample) -> list[float]:
+        values: list[float] = []
+        for value in sample.values:
+            if value is None:
+                values.append(math.nan)
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(
+                    f"{sample.sensor.value} cache contains a non-numeric value"
+                )
+            numeric = float(value)
+            if not math.isfinite(numeric):
+                raise ValueError(
+                    f"{sample.sensor.value} cache contains a non-finite value"
+                )
+            values.append(numeric)
+        return values
+
+    def _run_command(self, command: str, message: Float64MultiArray) -> None:
+        adapter = self._adapter
+        if not self._active or adapter is None:
+            self._metrics.record_command_error(RuntimeError("driver is not active"))
+            self.get_logger().warning(
+                f"rejected {command} command: lifecycle node is not active",
+                throttle_duration_sec=5.0,
+            )
+            return
+        try:
+            handle = getattr(adapter, f"submit_{command}")(message.data)
+        except Exception as error:
+            self._metrics.record_command_error(error)
+            self.get_logger().error(
+                f"rejected {command} command: {self._error_text(error)}"
+            )
+            return
+
+        self._latest_handles[command] = handle
+        self._metrics.record_command_success()
+        accepted = [float(value) for value in handle.command.values]
+        try:
+            self._accepted_publishers[command].publish(self._message(accepted))
+            self._metrics.record_feedback_success()
+        except Exception as error:
+            self._metrics.record_feedback_error(error)
+            self.get_logger().error(
+                f"{command} command was accepted by SDK, but accepted feedback "
+                f"publication failed: {self._error_text(error)}"
+            )
+
+    def _publish_cached_state(self) -> None:
+        adapter = self._adapter
+        if not self._active or adapter is None:
+            return
+        try:
+            snapshot = adapter.get_snapshot()
+            for topic_name, sensor in _STATE_SENSORS.items():
+                sample = snapshot.sample(sensor)
+                if sample is None or not sample.valid or sample.stale:
+                    continue
+                publisher = self._state_publishers.get(topic_name)
+                if publisher is not None:
+                    publisher.publish(self._message(self._numeric_values(sample)))
+                    if sensor is SensorType.ANGLES:
+                        self._metrics.record_state_success()
+        except Exception as error:
+            self._metrics.record_state_error(error)
+            self.get_logger().error(
+                f"cached state publication failed: {self._error_text(error)}",
+                throttle_duration_sec=5.0,
+            )
 
     def _publish_diagnostics(self) -> None:
-        snapshot = self._metrics.snapshot()
-        status = DiagnosticStatus()
-        status.name = f"{self.get_fully_qualified_name()}: hand_driver"
-        status.hardware_id = self._adapter.model
-        if snapshot.state_successes == 0 and snapshot.state_errors > 0:
-            status.level = DiagnosticStatus.ERROR
-            status.message = "state reads are failing before first sample"
-        elif snapshot.state_successes == 0:
-            status.level = DiagnosticStatus.WARN
-            status.message = "waiting for first state sample"
-        elif (
-            snapshot.last_state_age_sec is not None
-            and snapshot.last_state_age_sec > self._state_stale_after_sec
-        ):
-            status.level = DiagnosticStatus.ERROR
-            status.message = "hand state is stale"
-        elif snapshot.latest_state_failed or snapshot.latest_command_failed:
-            status.level = DiagnosticStatus.WARN
-            status.message = "latest driver operation failed"
-        else:
-            status.level = DiagnosticStatus.OK
-            status.message = "operational"
-        status.values = [
-            self._diagnostic_value("model", self._adapter.model),
-            self._diagnostic_value("joint_count", len(self._adapter.joint_names)),
-            self._diagnostic_value("uptime_sec", f"{snapshot.uptime_sec:.3f}"),
-            self._diagnostic_value("state_successes", snapshot.state_successes),
-            self._diagnostic_value("state_errors", snapshot.state_errors),
-            self._diagnostic_value("command_successes", snapshot.command_successes),
-            self._diagnostic_value("command_errors", snapshot.command_errors),
-            self._diagnostic_value(
-                "last_state_age_sec",
-                "never"
-                if snapshot.last_state_age_sec is None
-                else f"{snapshot.last_state_age_sec:.3f}",
-            ),
-            self._diagnostic_value(
-                "last_command_age_sec",
-                "never"
-                if snapshot.last_command_age_sec is None
-                else f"{snapshot.last_command_age_sec:.3f}",
-            ),
-            self._diagnostic_value("last_error", snapshot.last_error),
-        ]
-        message = DiagnosticArray()
-        message.header.stamp = self.get_clock().now().to_msg()
-        message.status = [status]
-        self._diagnostic_publisher.publish(message)
-
-    def _read_now(self, _request: Trigger.Request, response: Trigger.Response):
+        publisher = self._diagnostic_publisher
+        adapter = self._adapter
+        if publisher is None or adapter is None:
+            return
         try:
-            with self._hand_io.priority():
-                angles = self._adapter.read_angles(self._timeout_ms)
-            self._angle_publisher.publish(self._message(angles))
+            health = adapter.get_health()
+            snapshot = adapter.get_snapshot()
+            capabilities = adapter.capabilities
+            status = build_diagnostic_status(
+                node_name=self.get_fully_qualified_name(),
+                active=self._active,
+                capabilities=capabilities,
+                health=health,
+                snapshot=snapshot,
+                metrics=self._metrics.snapshot(),
+                latest_handles=self._latest_handles,
+            )
+            message = DiagnosticArray()
+            message.header.stamp = self.get_clock().now().to_msg()
+            message.status = [status]
+            publisher.publish(message)
+        except Exception as error:
+            self.get_logger().error(
+                f"diagnostic publication failed: {self._error_text(error)}",
+                throttle_duration_sec=5.0,
+            )
+
+    def _read_now(
+        self, _request: Trigger.Request, response: Trigger.Response
+    ) -> Trigger.Response:
+        adapter = self._adapter
+        if not self._active or adapter is None:
+            response.success = False
+            response.message = "lifecycle node is not active"
+            return response
+        try:
+            sample = adapter.get_snapshot().angles
+            if sample is None or not sample.valid or sample.stale:
+                response.success = False
+                response.message = "no fresh cached angle state is available"
+                return response
+            self._state_publishers["angles"].publish(
+                self._message(self._numeric_values(sample))
+            )
+            self._metrics.record_state_success()
             response.success = True
-            response.message = "angle state published"
+            response.message = "fresh cached angle state published (no device I/O)"
         except Exception as error:
             response.success = False
-            response.message = str(error)
+            response.message = self._error_text(error)
         return response
 
-    def _clear_faults(self, _request: Trigger.Request, response: Trigger.Response):
-        try:
-            with self._hand_io.priority():
-                self._adapter.clear_faults()
-            response.success = True
-            response.message = "fault clear command sent"
-        except Exception as error:
+    def _clear_faults(
+        self, _request: Trigger.Request, response: Trigger.Response
+    ) -> Trigger.Response:
+        adapter = self._adapter
+        if not self._active or adapter is None:
+            error = RuntimeError("driver is not active")
+            self._metrics.record_command_error(error)
             response.success = False
-            response.message = str(error)
+            response.message = "lifecycle node is not active"
+            return response
+        if not adapter.capabilities.features.clear_faults:
+            error = RuntimeError("fault clearing is not supported by this model")
+            self._metrics.record_command_error(error)
+            response.success = False
+            response.message = "fault clearing is not supported by this model"
+            return response
+        try:
+            handle = adapter.clear_faults()
+            self._latest_handles["clear_faults"] = handle
+            self._metrics.record_command_success()
+            response.success = True
+            response.message = (
+                f"fault clear command accepted by SDK (id={handle.command_id}); "
+                "device dispatch is asynchronous"
+            )
+        except Exception as error:
+            self._metrics.record_command_error(error)
+            response.success = False
+            response.message = self._error_text(error)
         return response
 
-    def destroy_node(self) -> bool:
+    def _release_adapter(self, *, close: bool) -> bool:
+        adapter = self._adapter
+        if adapter is None:
+            return True
+        success = True
         try:
-            self._adapter.close()
+            adapter.stop_polling()
+        except Exception as error:
+            success = False
+            self.get_logger().error(
+                f"SDK stop_polling failed: {self._error_text(error)}"
+            )
+        if close:
+            try:
+                adapter.close()
+            except Exception as error:
+                success = False
+                self.get_logger().error(f"SDK close failed: {self._error_text(error)}")
+        return success
+
+    def _require_adapter(self) -> HandAdapter:
+        if self._adapter is None:
+            raise RuntimeError("hand is not configured")
+        return self._adapter
+
+    @staticmethod
+    def _error_text(error: BaseException) -> str:
+        if isinstance(error, HandSDKError):
+            return f"[{error.code.value}] {error}"
+        return str(error)
+
+    def destroy_node(self) -> None:
+        if self._destroying or self._driver_destroyed:
+            return
+        self._destroying = True
+        try:
+            self._active = False
+            released = self._release_adapter(close=True)
+            if not released:
+                self.get_logger().warning("retrying SDK shutdown once")
+                released = self._release_adapter(close=True)
+            if released:
+                self._adapter = None
+                self._configuration = None
+            else:
+                self.get_logger().error(
+                    "SDK shutdown still failed after one bounded retry"
+                )
+            self._destroy_ros_entities()
+            super().destroy_node()
+            self._driver_destroyed = True
         finally:
-            destroyed = super().destroy_node()
-        return destroyed
+            self._destroying = False
 
 
 def main(args: list[str] | None = None) -> None:

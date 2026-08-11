@@ -4,47 +4,42 @@
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-python3 -m pip install 'linkerbot>=0.5.4'
+python3 -m pip install 'linkerbot-hand>=0.1.0,<0.2.0'
 sudo apt update
-sudo apt install python3-colcon-common-extensions python3-rosdep
+sudo apt install python3-colcon-common-extensions python3-rosdep can-utils
 ```
 
-如果尚未初始化 `rosdep`：
+使用 SDK 本地源码时：
 
 ```bash
-sudo rosdep init
-rosdep update
+python3 -m pip install \
+  -e /home/lxqs/code/linkerbot-python-sdk/packages/linkerbot-common \
+  -e /home/lxqs/code/linkerbot-python-sdk/packages/linkerbot-hand
+python3 -c 'import linkerbot_hand; print(linkerbot_hand.__file__)'
 ```
 
 ## 2. 准备 CAN 接口
 
-O6、L6、L20Lite 和 L25 使用经典 CAN。下面仅给出常见 SocketCAN 配置形式，
-实际波特率以对应硬件手册为准：
+O6、L6、L20Lite 和 L25 使用经典 CAN。实际波特率以硬件手册为准：
 
 ```bash
 sudo ip link set can0 down
 sudo ip link set can0 type can bitrate 1000000
 sudo ip link set can0 up
-ip -details link show can0
+ip -details -statistics link show can0
 ```
 
-O20、O30I 和 L30 使用 CAN FD。SDK 默认配置为仲裁段 1 Mbit/s、数据段
-5 Mbit/s：
+O20、O30I 和 L30 使用 CAN FD：
 
 ```bash
 sudo ip link set can0 down
 sudo ip link set can0 type can \
   bitrate 1000000 dbitrate 5000000 fd on
 sudo ip link set can0 up
-ip -details link show can0
+ip -details -statistics link show can0
 ```
 
-可以用 `candump` 确认总线是否收到数据：
-
-```bash
-sudo apt install can-utils
-candump can0
-```
+`candump can0` 会占用并显示总线帧，排查结束后按 `Ctrl-C` 退出。
 
 ## 3. 构建工作空间
 
@@ -59,38 +54,59 @@ colcon build --symlink-install
 source ~/linkerbot_ws/install/setup.bash
 ```
 
-## 4. 启动节点
+## 4. 启动 Lifecycle 驱动
 
-经典 CAN 型号：
-
-```bash
-ros2 launch linkerbot_hand_ros hand.launch.py \
-  model:=l6 side:=left interface_name:=can0 interface_type:=socketcan
-```
-
-SocketCAN CAN FD 型号：
+L6 示例：
 
 ```bash
 ros2 launch linkerbot_hand_ros hand.launch.py \
-  model:=l30 interface_name:=can0 interface_type:=socketcan
+  model:=l6 side:=left \
+  transport_options_json:='{"interface_name":"can0","interface_type":"socketcan"}'
 ```
 
-使用厂商 CAN FD 动态库时，将后端设为 `ctypes` 并提供动态库路径：
+L30 SocketCAN 示例：
 
 ```bash
 ros2 launch linkerbot_hand_ros hand.launch.py \
-  model:=l30 interface_type:=ctypes \
-  library_path:=/opt/linkerbot/lib/libcanbus.so
+  model:=l30 side:=unknown \
+  transport_options_json:='{"interface_type":"socketcan","channel":"can0","node_id":1}'
 ```
 
-## 5. 验证通信
+O20 和 O30I 的 SocketCAN 通道键为 `socketcan_channel`。完整构造参数应以相同版本
+`linkerbot-hand` SDK 的型号文档为准，ROS 不再复制维护这些构造器规则。
+
+launch 默认 `autostart:=true`。由外部生命周期管理器接管时使用：
 
 ```bash
+ros2 launch linkerbot_hand_ros hand.launch.py autostart:=false
+ros2 lifecycle set /linkerbot_hand configure
+ros2 lifecycle set /linkerbot_hand activate
+```
+
+## 5. 先验证状态，不发送运动命令
+
+```bash
+ros2 lifecycle get /linkerbot_hand
 ros2 node info /linkerbot_hand
 ros2 topic echo --once /linkerbot_hand/joint_names
-ros2 service call /linkerbot_hand/read_now std_srvs/srv/Trigger '{}'
+ros2 topic echo --once /linkerbot_hand/model
 ros2 topic echo --once /linkerbot_hand/state/angles
+ros2 topic echo --once /diagnostics
 ```
 
-确认状态可正常读取后，先设置低速度和保守扭矩，再从远离 0/100 端点的小范围
-动作开始测试。角度增大或减小对应的物理方向必须按具体型号确认。
+`read_now` 只把 SDK 中有效且未过期的角度缓存立即发布一次，不会增加 CAN 查询：
+
+```bash
+ros2 service call /linkerbot_hand/read_now std_srvs/srv/Trigger '{}'
+```
+
+## 6. 使用常驻客户端测试 L6
+
+先确认急停、机械空间、速度和扭矩安全，再启动：
+
+```bash
+ros2 run linkerbot_hand_ros angle_controller
+```
+
+建议先从中间值做小范围测试。统一约定为全 `100` 完全张开、全 `0` 完全握拳；首次
+实机验证不应直接从一个机械端点跳到另一个端点。

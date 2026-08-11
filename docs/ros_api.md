@@ -1,25 +1,71 @@
 # ROS 2 API
 
-Angle command and state values use the SDK's logical `[0, 100]` range. Physical
-direction is model- and joint-specific; do not interpret the endpoints as a
-universal open/closed convention. Speed and torque ranges follow each device
-protocol. Array order is published once per second on `~/joint_names` as a
-comma-separated string.
+The lifecycle driver uses the SDK capability model as its only source for joint
+order, ranges, sensor support, and percentage mapping. All models expose
+`100=fully open` and `0=fully closed`. Values are percentages, not radians.
+
+Configure performs no device I/O. Activate opens the one `HandDevice` and
+starts SDK polling. ROS state timers only call `get_snapshot()` and
+`get_health()`.
 
 ## Parameters
 
 | Name | Default | Description |
 | --- | --- | --- |
-| `model` | `l6` | `o6`, `l6`, `l20lite`, `l25`, `o20`, `o30i`, or `l30` |
-| `side` | `left` | `left` or `right` where supported |
-| `interface_name` | `can0` | SocketCAN interface |
-| `interface_type` | `socketcan` | SDK transport (`socketcan` or `ctypes`) |
-| `library_path` | empty | Optional vendor CAN FD shared library path |
-| `poll_rate` | `30.0` | Angle polling rate in Hz |
-| `timeout_ms` | `100.0` | SDK blocking read timeout |
-| `publish_optional_state` | `true` | Read temperature/current/fault when supported |
-| `optional_state_rate` | `1.0` | Optional state polling rate in Hz |
-| `diagnostic_rate` | `1.0` | Standard diagnostics publishing rate in Hz |
+| `model` | `l6` | `o6/l6/l20lite/l25/o20/o30i/l30` |
+| `side` | `left` | `left/right/unknown` |
+| `transport_options_json` | `{}` | SDK transport constructor options; preferred |
+| `command_rate_hz` | `100.0` | Maximum SDK continuous-command dispatch rate |
+| `auto_reconnect` | `false` | Enable SDK exponential-backoff recovery |
+| `publish_rate_hz` | `60.0` | Cached ROS publication rate; no device I/O |
+| `angles_hz` | `60.0` | SDK angle polling rate; zero disables |
+| `force_hz` | `0.0` | SDK force polling rate; no ROS force message yet |
+| `temperature_hz` | `1.0` | SDK temperature polling rate |
+| `current_hz` | `10.0` | SDK current polling rate |
+| `faults_hz` | `5.0` | SDK fault polling rate |
+| `diagnostic_rate` | `1.0` | `/diagnostics` publication rate |
+
+Requested sensor rates are capped at each SDK capability's recommended rate;
+unsupported sensors are disabled. Legacy `interface_name`, `interface_type`,
+and `library_path` parameters apply only when `transport_options_json` is `{}`.
+The launch-only arguments are `namespace` and `autostart`.
+
+Parameters are validated and snapshotted during configure. Changes made while
+configured, active, or inactive take effect only after cleanup and configure.
+
+## Topics
+
+| Topic | Type | Direction |
+| --- | --- | --- |
+| `~/command/angles` | `std_msgs/msg/Float64MultiArray` | Subscribe while active |
+| `~/command/speeds` | `std_msgs/msg/Float64MultiArray` | Subscribe while active |
+| `~/command/torques` | `std_msgs/msg/Float64MultiArray` | Subscribe while active |
+| `~/command/accepted/angles` | `std_msgs/msg/Float64MultiArray` | Publish SDK acceptance |
+| `~/command/accepted/speeds` | `std_msgs/msg/Float64MultiArray` | Publish SDK acceptance |
+| `~/command/accepted/torques` | `std_msgs/msg/Float64MultiArray` | Publish SDK acceptance |
+| `~/state/angles` | `std_msgs/msg/Float64MultiArray` | Publish fresh cached percentages |
+| `~/state/temperature` | `std_msgs/msg/Float64MultiArray` | Publish fresh cache when supported |
+| `~/state/current` | `std_msgs/msg/Float64MultiArray` | Publish fresh cache when supported |
+| `~/state/fault` | `std_msgs/msg/Float64MultiArray` | Publish fresh cache when supported |
+| `~/joint_names` | `std_msgs/msg/String` | Publish SDK joint order |
+| `~/model` | `std_msgs/msg/String` | Publish normalized model |
+| `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | SDK health and command stages |
+
+An accepted command is only at SDK `ACCEPTED` stage. It has not necessarily
+been dispatched, acknowledged by the device, or physically completed. Recent
+`accepted/dispatched/acknowledged/failed/superseded` stages are exposed in
+diagnostics, including the most recent `clear_faults` service command.
+Continuous commands use latest-wins at both ROS QoS and SDK layers.
+
+An unavailable percentage readback is represented by `NaN` to preserve array
+shape. Invalid or stale samples are not published.
+
+## Services
+
+| Service | Type | Description |
+| --- | --- | --- |
+| `~/read_now` | `std_srvs/srv/Trigger` | Republish fresh angle cache without device I/O |
+| `~/clear_faults` | `std_srvs/srv/Trigger` | Asynchronously submit clear-faults when supported |
 
 ## Command Ranges
 
@@ -30,38 +76,5 @@ comma-separated string.
 | O30I | 0–100 | 0–255 integer | 0–255 integer |
 | L30 | 0–100 | 1–250 integer | 60–800 integer |
 
-## Topics
-
-| Topic | Type | Direction |
-| --- | --- | --- |
-| `~/command/angles` | `std_msgs/msg/Float64MultiArray` | Subscribe |
-| `~/command/speeds` | `std_msgs/msg/Float64MultiArray` | Subscribe |
-| `~/command/torques` | `std_msgs/msg/Float64MultiArray` | Subscribe |
-| `~/command/accepted/angles` | `std_msgs/msg/Float64MultiArray` | Publish after SDK accepts command |
-| `~/command/accepted/speeds` | `std_msgs/msg/Float64MultiArray` | Publish after SDK accepts command |
-| `~/command/accepted/torques` | `std_msgs/msg/Float64MultiArray` | Publish after SDK accepts command |
-| `~/state/angles` | `std_msgs/msg/Float64MultiArray` | Publish |
-| `~/state/temperature` | `std_msgs/msg/Float64MultiArray` | Publish when available |
-| `~/state/current` | `std_msgs/msg/Float64MultiArray` | Publish when available |
-| `~/state/fault` | `std_msgs/msg/Float64MultiArray` | Publish when available |
-| `~/joint_names` | `std_msgs/msg/String` | Publish |
-| `~/model` | `std_msgs/msg/String` | Publish normalized model name |
-| `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | Publish driver health |
-
-Command subscriptions use reliable keep-last QoS with depth 1 so stale targets
-do not queue behind newer targets. Metadata and accepted-command topics are
-transient-local. An accepted command means the SDK setter returned successfully;
-physical completion must be determined from state feedback.
-
-## Services
-
-| Service | Type | Description |
-| --- | --- | --- |
-| `~/read_now` | `std_srvs/srv/Trigger` | Read and publish angles immediately |
-| `~/clear_faults` | `std_srvs/srv/Trigger` | Clear faults when supported by the model |
-
-## Joint Counts
-
-O6 and L6 have 6 joints, L20Lite has 10, L25 and O20 have 16, L30 has 17,
-and O30I has 20. Exact names and order are defined by `MODEL_SPECS` in the
-adapter and published by the running node.
+For full lifecycle, diagnostics, joint orders, and business semantics, see the
+[Chinese API reference](zh/ros_api.md).

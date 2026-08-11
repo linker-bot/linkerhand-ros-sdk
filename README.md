@@ -2,25 +2,36 @@
 
 [English](README.md) | [简体中文](README_zh.md)
 
-ROS 2 Python driver for Linkerbot dexterous hands. The package wraps the
-[`linkerbot`](https://pypi.org/project/linkerbot/) Python SDK and supports
-O6, L6, L20Lite, L25, O20, O30I, and L30 hands through one node.
+Production-oriented ROS 2 Jazzy driver for Linkerbot O6, L6, L20Lite, L25,
+O20, O30I, and L30 hands. Model capabilities, polling, command scheduling, and
+recovery come from the split `linkerbot-hand` Python SDK.
 
-Production applications can embed the persistent
-`linkerbot_hand_ros.client.HandCommandClient`. It reuses publishers, validates
-commands against driver metadata, and exposes the latest SDK-accepted command.
+The driver is a `LifecycleNode`. Configure creates a no-I/O `HandDevice`;
+activate opens the single device connection and starts SDK-owned polling. ROS
+timers only publish cached snapshots, and command callbacks submit latest-wins
+targets without waiting for transport or device acknowledgements.
+
+All models expose the same percentage convention: `100=fully open` and
+`0=fully closed`.
 
 ## Requirements
 
 - Ubuntu 24.04 with ROS 2 Jazzy
 - Python 3.10 or newer
-- A configured SocketCAN/CAN FD interface, or the vendor CAN FD library
-- `linkerbot` Python SDK 0.5.4 or newer
-
-Install the SDK into the Python environment used by ROS 2:
+- `linkerbot-hand>=0.1.0,<0.2.0`
+- A configured SocketCAN/CAN FD interface or supported vendor library
 
 ```bash
-python3 -m pip install 'linkerbot>=0.5.4'
+source /opt/ros/jazzy/setup.bash
+python3 -m pip install 'linkerbot-hand>=0.1.0,<0.2.0'
+```
+
+For local SDK development:
+
+```bash
+python3 -m pip install \
+  -e /home/lxqs/code/linkerbot-python-sdk/packages/linkerbot-common \
+  -e /home/lxqs/code/linkerbot-python-sdk/packages/linkerbot-hand
 ```
 
 ## Build
@@ -29,7 +40,7 @@ python3 -m pip install 'linkerbot>=0.5.4'
 mkdir -p ~/linkerbot_ws/src
 cd ~/linkerbot_ws/src
 git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand-ros.git
-cd ..
+cd ~/linkerbot_ws
 source /opt/ros/jazzy/setup.bash
 rosdep install --from-paths src --ignore-src -r -y
 colcon build --symlink-install
@@ -38,49 +49,41 @@ source ~/linkerbot_ws/install/setup.bash
 
 ## Run
 
-For a classic CAN hand such as L6:
+For an L6 on `can0`:
 
 ```bash
 ros2 launch linkerbot_hand_ros hand.launch.py \
-  model:=l6 side:=left interface_name:=can0
+  model:=l6 side:=left \
+  transport_options_json:='{"interface_name":"can0","interface_type":"socketcan"}'
+ros2 lifecycle get /linkerbot_hand
 ```
 
-For a SocketCAN CAN FD hand such as L30:
+The launch file defaults to `autostart:=true`. Set it to `false` when an
+external lifecycle manager owns transitions.
+
+Use the persistent controller for repeated commands:
 
 ```bash
-ros2 launch linkerbot_hand_ros hand.launch.py \
-  model:=l30 interface_type:=socketcan interface_name:=can0
-```
-
-Parameters can also be loaded from
-[`config/hand.yaml`](config/hand.yaml). See
-[`docs/ros_api.md`](docs/ros_api.md) for the complete interface and model joint
-orders.
-
-Runnable Python examples are installed with the package:
-
-```bash
-ros2 run linkerbot_hand_ros angle_command --values 0 0 0 0 0 0
 ros2 run linkerbot_hand_ros angle_controller
-ros2 run linkerbot_hand_ros state_monitor
 ```
+
+See [the Chinese integration guide](docs/zh/business_integration.md) and the
+[ROS API reference](docs/ros_api.md) for lifecycle, parameters, topics,
+services, diagnostics, and command semantics.
 
 ## Safety
 
-Angle commands use the Python SDK's `[0, 100]` logical range. Physical direction
-is model- and joint-specific: for L6 flexion joints, `0` moves toward a fist and
-`100` moves toward an open hand, while other models may use different mappings.
-Speed and torque ranges are documented in the ROS API. Verify joint order,
-model-specific semantics, CAN interface, and conservative limits before
-commanding hardware.
+Percentage values are not radians. A DDS acknowledgement, SDK acceptance,
+protocol acknowledgement, and physical completion are distinct events. Verify
+model, side, joint order, bus configuration, emergency stop, conservative
+speed, and torque limits before commanding real hardware.
 
 ## Development
 
-Run hardware-independent checks with:
+Hardware-independent tests use the SDK `FakeBackendFactory`:
 
 ```bash
+source /opt/ros/jazzy/setup.bash
 python3 -m pytest
 python3 -m compileall linkerbot_hand_ros launch
 ```
-
-Hardware communication is intentionally excluded from automated tests.

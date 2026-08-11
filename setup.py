@@ -7,7 +7,7 @@ PACKAGE_NAME = "linkerbot_hand_ros"
 
 setup(
     name=PACKAGE_NAME,
-    version="0.2.0",
+    version="0.3.0",
     packages=find_packages(exclude=("tests",)),
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{PACKAGE_NAME}"]),
@@ -24,7 +24,10 @@ setup(
             glob("docs/zh/test_reports/*.md"),
         ),
     ],
-    install_requires=["setuptools", "linkerbot>=0.5.4"],
+    install_requires=[
+        "setuptools",
+        "linkerbot-hand>=0.1.0,<0.2.0",
+    ],
     extras_require={"test": ["pytest"]},
     python_requires=">=3.10",
     zip_safe=True,

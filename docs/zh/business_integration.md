@@ -1,26 +1,28 @@
-# 业务节点集成
+# 正式业务节点集成
 
-## 运行架构
+## 所有权边界
 
-正式部署中，每只手只运行一个驱动节点。驱动节点独占 Python SDK 和 CAN 连接，
-业务节点通过长期存在的 `HandCommandClient` 与驱动通信：
+每只实体手只允许一个 ROS 驱动节点和一个 `HandDevice`：
 
 ```text
-业务节点（HandCommandClient，常驻 Publisher）
-    |  command/*                  ^  command/accepted/*、joint_names、model
-    v                             |
-linkerbot_hand（唯一 SDK/CAN 所有者）
-    |  Python SDK
+业务控制节点（常驻）
+    | HandCommandClient / command/*
     v
-灵巧手硬件
+Lifecycle 驱动（唯一 SDK 所有者）
+    | submit_* / get_snapshot / get_health
+    v
+SDK scheduler + 唯一 I/O worker
+    v
+transport / protocol / hand
 ```
 
-不要让多个进程直接实例化同一只手的 Python SDK，也不要在控制循环中反复创建 ROS
-节点或 Publisher。允许多个状态监听者，但同一只手应由一个业务控制者负责发命令。
+业务节点不能同时直接实例化同一只手的 SDK，ROS executor 不能增加第二个传感器查询
+线程，也不能调用旧 manager 的阻塞读取。状态监听者可以有多个，但运动命令应有清晰的
+单一仲裁者。
 
-## Python API
+## 常驻命令客户端
 
-`HandCommandClient` 使用调用方已有的 ROS 2 Node，不创建线程、执行器或硬件连接：
+`HandCommandClient` 复用调用方已有的 Node、Publisher 和 DDS 连接：
 
 ```python
 import rclpy
@@ -34,9 +36,9 @@ class ProductionNode(Node):
         super().__init__("hand_business")
         self.hand = HandCommandClient(self, "/linkerbot_hand")
 
-    def set_hand_target(self, values):
+    def set_target(self, values):
         if not self.hand.is_ready("angles"):
-            raise RuntimeError("hand driver is not ready")
+            raise RuntimeError("hand lifecycle driver is not active")
         return self.hand.send_angles(values)
 
     def destroy_node(self):
@@ -54,45 +56,87 @@ def main():
         rclpy.try_shutdown()
 ```
 
-`send_angles`、`send_speeds` 和 `send_torques` 默认只执行非阻塞发布，适合业务控制
-循环。离散操作需要确认 DDS 可靠传输时，可显式使用：
+`send_angles/speeds/torques` 默认只执行一次非阻塞 ROS 发布。驱动 active 时才创建命令
+订阅者，因此 `is_ready()` 同时检查元数据、SDK 关节顺序和 DDS 订阅者存在性。
+
+不要在控制循环中反复创建 Node、Publisher，或反复执行 `ros2 run`、
+`ros2 topic pub --once`。这些临时进程的启动和 DDS 发现耗时不是驱动命令延迟。
+
+## latest-wins 控制
+
+连续目标在两层保持最新：
+
+1. ROS command QoS 为 keep-last depth 1。
+2. SDK `submit_*` 使用 `CommandPolicy.LATEST`，命令槽容量为 1。
+
+当 1 kHz 业务循环驱动 100 Hz transport 时，中间旧目标会进入 `superseded`，机械手
+不会追赶历史队列。重连也不会重放旧目标。
+
+高频循环不要逐帧等待 DDS ACK。只有低频管理操作确实需要确认 ROS 可靠传输时才使用：
 
 ```python
-receipt = hand.send_angles(
-    [100, 50, 100, 100, 100, 100],
+receipt = self.hand.send_angles(
+    [100, 100, 100, 100, 100, 100],
     wait_for_dds_ack=True,
     timeout_sec=1.0,
 )
 ```
 
-不要在高频循环中为每一帧等待 ACK。驱动的命令 QoS 深度为 1，控制循环应持续发布
-最新目标；过期目标不会在队列中累积。
+## 四层确认
 
-## 三层确认
-
-| 层级 | 接口 | 含义 |
+| 层级 | 可观察接口 | 准确含义 |
 | --- | --- | --- |
-| DDS 传输 | `CommandReceipt.dds_acknowledged` | ROS 2 订阅端可靠接收 |
-| SDK 接受 | `command/accepted/*`、`last_accepted()` | 参数有效且 SDK setter 正常返回 |
-| 机械到位 | `state/angles` | 实际角度进入业务定义的允许误差 |
+| DDS 传输 | `CommandReceipt.dds_acknowledged` | ROS 订阅端完成可靠传输 |
+| SDK 接受 | `command/accepted/*`、`last_accepted()` | 参数有效并进入 SDK 调度器 |
+| transport / 协议 | `/diagnostics` 的 `latest_*_stage` | 已发送，或设备协议明确 ACK |
+| 机械到位 | 业务层状态窗口 | 新鲜反馈进入误差并稳定足够时间 |
 
-业务流程必须按需要选择确认层级。例如抓取动作不能只依赖 DDS ACK，应等待实际角度
-进入容差，并结合电流、故障和超时策略决定成功或失败。
+这四层不能互相替代。L6 没有设备 ACK，成功终态为 `dispatched`；O30I 的连续命令可到
+`acknowledged`，但仍不代表机械到位。
 
-## 诊断与监控
+正式抓取流程至少应检查：
 
-驱动按 `diagnostic_rate` 向 `/diagnostics` 发布标准状态，包含：
+1. Lifecycle 驱动 active 且诊断 `connected=true`。
+2. 目标已被 SDK 接受，且没有进入 `failed`。
+3. 角度样本属于当前 `connection_generation`，有效、未过期且不含待判断轴的 `NaN`。
+4. 目标误差在允许范围内持续稳定时间。
+5. 电流、故障、业务超时和独立急停均满足安全策略。
 
-- 状态读取和命令成功/失败计数
-- 最近状态与命令距当前时间
-- 最近一次操作是否失败
-- 最近错误文本、型号、关节数和运行时间
+当前兼容话题没有携带 sample generation/valid/stale 字段；严谨的跨重连到位判断应同时
+订阅 `/diagnostics`，在 generation 变化时清空旧目标和稳定窗口。后续强类型状态消息会
+把这些字段直接放入消息。
 
-部署系统应监控诊断级别。当状态长期未更新时驱动报告 `ERROR`；最近一次读取或命令
-失败时报告 `WARN`。诊断不能替代独立急停、机械限位、电流保护和上层动作超时。
+## Lifecycle 管理
 
-## 生命周期
+launch 默认自动 configure/activate。由系统生命周期管理器接管时设置
+`autostart:=false`：
 
-业务节点关闭时调用 `HandCommandClient.destroy()`；该操作可重复调用。驱动关闭时
-会释放 Python SDK/CAN 资源。设备断线自动重连和 ROS 2 Lifecycle 管理尚未包含在
-0.2.0，应由后续独立版本实现，当前部署可由 systemd 或容器编排负责进程重启。
+```bash
+ros2 lifecycle set /linkerbot_hand configure
+ros2 lifecycle set /linkerbot_hand activate
+ros2 lifecycle set /linkerbot_hand deactivate
+ros2 lifecycle set /linkerbot_hand cleanup
+```
+
+- configure 不触碰硬件，可用于先验证配置和能力。
+- activate 失败时节点关闭候选连接，不留下第二个连接或 worker。
+- deactivate 先撤销命令订阅者，再停止 SDK 轮询，但保留连接。
+- cleanup/shutdown 即使停止轮询失败也会继续尝试关闭。
+
+## 断线恢复
+
+`auto_reconnect=true` 时 SDK 在自身 worker 中恢复。恢复不会重新执行断线前或断线期间的
+角度、速度、扭矩、张开、握拳或清错命令。`connection_generation` 增加后，业务节点应
+清除旧到位窗口，等待新一代角度样本，再显式下发新目标。
+
+## 监控字段
+
+部署系统至少监控：
+
+- Lifecycle 状态和诊断 level
+- `connection_state`、`connected`、`connection_generation`
+- `consecutive_errors`、`recent_error_code`
+- `angles_age_s`、`pending_commands`、`superseded_commands`
+- `latest_angles_stage` 和对应错误码
+
+诊断不能替代硬急停、机械限位、电流保护和上层动作超时。

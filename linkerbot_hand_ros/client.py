@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from collections.abc import Sequence
@@ -13,11 +14,22 @@ from rclpy.publisher import Publisher
 from rclpy.subscription import Subscription
 from std_msgs.msg import Float64MultiArray, String
 
-from .adapter import MODEL_SPECS, validate_command
+from linkerbot_hand import HandSDKError, get_model_capabilities
+
+from .adapter import validate_command
 from .qos import COMMAND_QOS, METADATA_QOS
 
 
 COMMAND_NAMES = ("angles", "speeds", "torques")
+
+
+def _positive_timeout(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("timeout_sec must be finite and positive")
+    timeout_sec = float(value)
+    if not math.isfinite(timeout_sec) or timeout_sec <= 0.0:
+        raise ValueError("timeout_sec must be finite and positive")
+    return timeout_sec
 
 
 @dataclass(frozen=True)
@@ -51,47 +63,52 @@ class HandCommandClient:
         self._sequence = 0
         self._destroyed = False
 
-        self._publishers: dict[str, Publisher] = {
-            command: node.create_publisher(
-                Float64MultiArray,
-                self._topic(f"command/{command}"),
-                COMMAND_QOS,
-            )
-            for command in COMMAND_NAMES
-        }
-        self._subscriptions: list[Subscription] = [
-            node.create_subscription(
-                String,
-                self._topic("joint_names"),
-                self._update_joint_names,
-                METADATA_QOS,
-            ),
-            node.create_subscription(
-                String,
-                self._topic("model"),
-                self._update_model,
-                METADATA_QOS,
-            ),
-        ]
-        for command in COMMAND_NAMES:
+        self._publishers: dict[str, Publisher] = {}
+        self._subscriptions: list[Subscription] = []
+        try:
+            for command in COMMAND_NAMES:
+                self._publishers[command] = node.create_publisher(
+                    Float64MultiArray,
+                    self._topic(f"command/{command}"),
+                    COMMAND_QOS,
+                )
             self._subscriptions.append(
                 node.create_subscription(
-                    Float64MultiArray,
-                    self._topic(f"command/accepted/{command}"),
-                    lambda message, name=command: self._update_accepted(
-                        name, message
-                    ),
+                    String,
+                    self._topic("joint_names"),
+                    self._update_joint_names,
                     METADATA_QOS,
                 )
             )
+            self._subscriptions.append(
+                node.create_subscription(
+                    String,
+                    self._topic("model"),
+                    self._update_model,
+                    METADATA_QOS,
+                )
+            )
+            for command in COMMAND_NAMES:
+                self._subscriptions.append(
+                    node.create_subscription(
+                        Float64MultiArray,
+                        self._topic(f"command/accepted/{command}"),
+                        lambda message, name=command: self._update_accepted(
+                            name, message
+                        ),
+                        METADATA_QOS,
+                    )
+                )
+        except Exception:
+            self._destroy_ros_entities()
+            self._destroyed = True
+            raise
 
     def _topic(self, suffix: str) -> str:
         return f"{self._driver_name}/{suffix}"
 
     def _update_joint_names(self, message: String) -> None:
-        names = tuple(
-            name.strip() for name in message.data.split(",") if name.strip()
-        )
+        names = tuple(name.strip() for name in message.data.split(",") if name.strip())
         with self._condition:
             self._joint_names = names
             self._condition.notify_all()
@@ -101,9 +118,7 @@ class HandCommandClient:
             self._model = message.data.strip().lower() or None
             self._condition.notify_all()
 
-    def _update_accepted(
-        self, command: str, message: Float64MultiArray
-    ) -> None:
+    def _update_accepted(self, command: str, message: Float64MultiArray) -> None:
         with self._condition:
             self._last_accepted[command] = tuple(float(value) for value in message.data)
             self._condition.notify_all()
@@ -137,22 +152,23 @@ class HandCommandClient:
             self._require_command(command)
             with self._condition:
                 model = self._model
-                metadata_ready = (
-                    model is not None
-                    and model in MODEL_SPECS
-                    and self._joint_names == MODEL_SPECS[model].joint_names
+                try:
+                    capabilities = (
+                        None if model is None else get_model_capabilities(model)
+                    )
+                except HandSDKError:
+                    capabilities = None
+                metadata_ready = capabilities is not None and (
+                    self._joint_names == capabilities.joint_names
                 )
             return (
                 metadata_ready
                 and self._publishers[command].get_subscription_count() > 0
             )
 
-    def wait_until_ready(
-        self, timeout_sec: float, command: str = "angles"
-    ) -> bool:
+    def wait_until_ready(self, timeout_sec: float, command: str = "angles") -> bool:
         """Wait while another executor thread processes discovery callbacks."""
-        if timeout_sec <= 0.0:
-            raise ValueError("timeout_sec must be positive")
+        timeout_sec = _positive_timeout(timeout_sec)
         deadline = time.monotonic() + timeout_sec
         while not self.is_ready(command):
             remaining = deadline - time.monotonic()
@@ -174,8 +190,7 @@ class HandCommandClient:
         with self._operation_lock:
             self._require_active()
             self._require_command(command)
-            if timeout_sec <= 0.0:
-                raise ValueError("timeout_sec must be positive")
+            timeout_sec = _positive_timeout(timeout_sec)
             if not self.is_ready(command):
                 raise RuntimeError(
                     f"hand driver is not ready for {command}: {self._driver_name}"
@@ -265,9 +280,12 @@ class HandCommandClient:
             if self._destroyed:
                 return
             self._destroyed = True
-            for subscription in self._subscriptions:
-                self._node.destroy_subscription(subscription)
-            for publisher in self._publishers.values():
-                self._node.destroy_publisher(publisher)
-            self._subscriptions.clear()
-            self._publishers.clear()
+            self._destroy_ros_entities()
+
+    def _destroy_ros_entities(self) -> None:
+        for subscription in self._subscriptions:
+            self._node.destroy_subscription(subscription)
+        for publisher in self._publishers.values():
+            self._node.destroy_publisher(publisher)
+        self._subscriptions.clear()
+        self._publishers.clear()

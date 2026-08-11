@@ -57,15 +57,69 @@ def test_launch_exposes_every_driver_parameter():
     expected = {
         "model",
         "side",
+        "transport_options_json",
         "interface_name",
         "interface_type",
         "library_path",
-        "poll_rate",
-        "timeout_ms",
-        "publish_optional_state",
-        "optional_state_rate",
+        "command_rate_hz",
+        "auto_reconnect",
+        "publish_rate_hz",
+        "angles_hz",
+        "force_hz",
+        "temperature_hz",
+        "current_hz",
+        "faults_hz",
         "diagnostic_rate",
+        "namespace",
+        "autostart",
     }
 
     assert declared == expected
     assert configured == expected
+
+
+def test_launch_uses_jazzy_lifecycle_node_with_autostart():
+    source = Path("launch/hand.launch.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    lifecycle_nodes = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "LifecycleNode"
+    ]
+
+    assert len(lifecycle_nodes) == 1
+    assert any(keyword.arg == "autostart" for keyword in lifecycle_nodes[0].keywords)
+
+
+def test_ros_driver_contains_no_direct_blocking_sdk_reads():
+    source = "\n".join(
+        Path(path).read_text(encoding="utf-8")
+        for path in (
+            "linkerbot_hand_ros/adapter.py",
+            "linkerbot_hand_ros/node.py",
+        )
+    )
+
+    assert "get_blocking" not in source
+    assert "_PriorityIoLock" not in source
+    assert "get_snapshot()" in source
+    assert "start_polling(" in source
+
+
+def test_package_depends_on_split_hand_sdk():
+    setup_source = Path("setup.py").read_text(encoding="utf-8")
+
+    assert '"linkerbot-hand>=0.1.0,<0.2.0"' in setup_source
+    assert '"linkerbot>=0.5.4"' not in setup_source
+
+
+def test_python_and_ros_package_versions_match():
+    setup_source = Path("setup.py").read_text(encoding="utf-8")
+    package_source = Path("package.xml").read_text(encoding="utf-8")
+    module_source = Path("linkerbot_hand_ros/__init__.py").read_text(encoding="utf-8")
+
+    assert 'version="0.3.0"' in setup_source
+    assert "<version>0.3.0</version>" in package_source
+    assert '__version__ = "0.3.0"' in module_source

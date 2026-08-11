@@ -1,59 +1,41 @@
-from enum import Flag
-from types import SimpleNamespace
-
 import pytest
+
+from linkerbot_hand import (
+    CommandStage,
+    HandDevice,
+    HandSide,
+    PollingPlan,
+    SensorType,
+    ValidationError,
+    get_model_capabilities,
+)
+from linkerbot_hand.testing import FakeBackendFactory, wait_until
 
 from linkerbot_hand_ros.adapter import (
     HandAdapter,
-    MODEL_SPECS,
-    _as_float_list,
-    create_sdk_hand,
+    normalize_command,
+    normalize_model,
+    validate_command,
 )
 
 
-class FakeManager:
-    def __init__(self, attribute="angles"):
-        self.attribute = attribute
-        self.commands = []
-
-    def set_angles(self, values):
-        self.commands.append(values)
-
-    def set_speeds(self, values):
-        self.commands.append(values)
-
-    def set_torques(self, values):
-        self.commands.append(values)
-
-    def get_blocking(self, timeout_ms):
-        vector = SimpleNamespace(to_list=lambda: [25.0] * 6)
-        return SimpleNamespace(**{self.attribute: vector}, timeout_ms=timeout_ms)
-
-
-class FakeHand:
-    def __init__(self):
-        self.angle = FakeManager()
-        self.speed = FakeManager("speeds")
-        self.torque = FakeManager("torques")
-        self.temperature = FakeManager("temperatures")
-        self.closed = False
-
-    def close(self):
-        self.closed = True
+MODELS = ("o6", "l6", "l20lite", "l25", "o20", "o30i", "l30")
 
 
 @pytest.fixture
-def hand_and_adapter():
-    hand = FakeHand()
+def adapter_rig():
+    capabilities = get_model_capabilities("L6", side=HandSide.LEFT)
+    backend_factory = FakeBackendFactory(capabilities)
+    device = HandDevice(capabilities, backend_factory)
+    adapter = HandAdapter("l6", side="left", device=device)
+    try:
+        yield adapter, backend_factory
+    finally:
+        adapter.close()
 
-    def factory(*args, **kwargs):
-        return hand
 
-    return hand, HandAdapter("l6", hand_factory=factory)
-
-
-def test_all_models_have_stable_joint_counts():
-    assert {name: len(spec.joint_names) for name, spec in MODEL_SPECS.items()} == {
+def test_sdk_capabilities_are_the_only_model_metadata_source():
+    assert {model: get_model_capabilities(model).joint_count for model in MODELS} == {
         "o6": 6,
         "l6": 6,
         "l20lite": 10,
@@ -62,83 +44,117 @@ def test_all_models_have_stable_joint_counts():
         "o30i": 20,
         "l30": 17,
     }
+    assert all(
+        get_model_capabilities(model).percentage_convention == "100=open, 0=closed"
+        for model in MODELS
+    )
+    assert normalize_model("L20-Lite") == "l20lite"
 
 
-def test_commands_and_readback_use_uniform_lists(hand_and_adapter):
-    hand, adapter = hand_and_adapter
-    adapter.set_angles([10] * 6)
-    adapter.set_speeds([20] * 6)
-    adapter.set_torques([30] * 6)
-    assert hand.angle.commands == [[10.0] * 6]
-    assert hand.speed.commands == [[20.0] * 6]
-    assert hand.torque.commands == [[30.0] * 6]
-    assert adapter.read_angles(100) == [25.0] * 6
-    assert adapter.read_optional("temperature", 100) == [25.0] * 6
+def test_adapter_construction_performs_no_device_io(adapter_rig):
+    adapter, backend_factory = adapter_rig
+
+    assert adapter.model == "l6"
+    assert adapter.joint_names == get_model_capabilities("L6").joint_names
+    assert backend_factory.state.open_count == 0
+    assert backend_factory.state.io_count == 0
+
+
+def test_adapter_uses_sdk_polling_and_cached_snapshot(adapter_rig):
+    adapter, backend_factory = adapter_rig
+    backend_factory.state.set_reading(
+        SensorType.ANGLES,
+        (100.0, None, 80.0, 70.0, 60.0, 50.0),
+        raw_values=(255, 255, 204, 178, 153, 128),
+    )
+
+    adapter.open()
+    adapter.start_polling(PollingPlan(angles_hz=60.0))
+    wait_until(lambda: len(backend_factory.state.poll_log) >= 1)
+    adapter.stop_polling()
+    io_count = backend_factory.state.io_count
+
+    snapshot = adapter.get_snapshot()
+    health = adapter.get_health()
+
+    assert snapshot.angles is not None
+    assert snapshot.angles.values == (100.0, None, 80.0, 70.0, 60.0, 50.0)
+    assert snapshot.angles.valid
+    assert not snapshot.angles.stale
+    assert health.connected
+    assert backend_factory.state.io_count == io_count
+
+
+def test_continuous_commands_return_handles_without_waiting(adapter_rig):
+    adapter, backend_factory = adapter_rig
+    adapter.open()
+
+    handle = adapter.submit_angles([100, 50, 80, 70, 60, 50])
+
+    assert handle.command.values == (100.0, 50.0, 80.0, 70.0, 60.0, 50.0)
+    wait_until(lambda: handle.done)
+    assert handle.stage is CommandStage.DISPATCHED
+    assert backend_factory.state.dispatched_commands[-1] == handle.command
 
 
 @pytest.mark.parametrize(
     "values",
     ([1] * 5, [1] * 7, [-1] * 6, [101] * 6, [float("nan")] * 6),
 )
-def test_invalid_commands_are_rejected(hand_and_adapter, values):
-    _, adapter = hand_and_adapter
-    with pytest.raises(ValueError):
-        adapter.set_angles(values)
+def test_invalid_angle_commands_are_rejected_before_sdk_submission(adapter_rig, values):
+    adapter, backend_factory = adapter_rig
+    adapter.open()
+
+    with pytest.raises(ValidationError):
+        adapter.submit_angles(values)
+
+    assert backend_factory.state.dispatched_commands == []
 
 
-def test_close_is_idempotent(hand_and_adapter):
-    hand, adapter = hand_and_adapter
-    adapter.close()
-    adapter.close()
-    assert hand.closed
-
-
-@pytest.mark.parametrize(
-    ("model", "expected"),
-    (
-        ("l6", {"side": "right", "interface_name": "can2", "interface_type": "socketcan"}),
-        ("o20", {"side": "right", "interface_type": "socketcan", "socketcan_channel": "can2"}),
-        ("o30i", {"interface_type": "socketcan", "socketcan_channel": "can2"}),
-        ("l30", {"interface_type": "socketcan", "channel": "can2"}),
-    ),
-)
-def test_sdk_constructor_mapping(model, expected):
-    calls = []
-
-    class Factory:
-        def __init__(self, **kwargs):
-            calls.append(kwargs)
-
-    sdk = SimpleNamespace(
-        L6=Factory,
-        O20=Factory,
-        O30i=Factory,
-        L30=Factory,
-    )
-    create_sdk_hand(
-        model,
+def test_ros_float_arrays_are_normalized_for_integer_only_models():
+    capabilities = get_model_capabilities("L30", side=HandSide.RIGHT)
+    backend_factory = FakeBackendFactory(capabilities)
+    adapter = HandAdapter(
+        "l30",
         side="right",
-        interface_name="can2",
-        interface_type="socketcan",
-        sdk_module=sdk,
+        device=HandDevice(capabilities, backend_factory),
     )
-    assert calls == [expected]
+    adapter.open()
+    try:
+        speed = adapter.submit_speeds([250.0] * 17)
+        torque = adapter.submit_torques([800.0] * 17)
+        wait_until(lambda: speed.done and torque.done)
+
+        assert speed.command.values == (250,) * 17
+        assert torque.command.values == (800,) * 17
+        with pytest.raises(ValidationError, match="must be an integer"):
+            adapter.submit_speeds([10.5] * 17)
+    finally:
+        adapter.close()
 
 
-def test_canfd_commands_use_model_specific_integer_ranges():
-    hand = FakeHand()
-    adapter = HandAdapter("l30", hand_factory=lambda *args, **kwargs: hand)
-    adapter.set_speeds([250] * 17)
-    adapter.set_torques([800] * 17)
-    assert hand.speed.commands == [[250] * 17]
-    assert hand.torque.commands == [[800] * 17]
-    with pytest.raises(ValueError, match="integers"):
-        adapter.set_speeds([10.5] * 17)
+def test_validation_uses_each_joint_range_from_sdk_capabilities():
+    assert validate_command("l6", [100, 50, 100, 100, 100, 100], "angles") == [
+        100.0,
+        50.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+    ]
+    with pytest.raises(ValidationError, match=r"\[60, 800\]"):
+        validate_command("l30", [59.0] * 17, "torques")
+    with pytest.raises(ValidationError, match="unsupported command"):
+        normalize_command(get_model_capabilities("l6"), [1] * 6, "position")
 
 
-def test_sdk_flag_values_are_converted_for_ros_messages():
-    class FaultCode(Flag):
-        NONE = 0
-        OVER_CURRENT = 1
+def test_close_is_idempotent(adapter_rig):
+    adapter, backend_factory = adapter_rig
+    adapter.open()
 
-    assert _as_float_list([FaultCode.NONE, FaultCode.OVER_CURRENT]) == [0.0, 1.0]
+    adapter.close()
+    adapter.close()
+
+    assert backend_factory.state.open_count == 1
+    assert backend_factory.state.close_count == 1
+    assert backend_factory.state.active_connections == 0
