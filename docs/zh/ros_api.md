@@ -30,6 +30,8 @@
 | `/linkerbot_hand/command/accepted/speeds` | `std_msgs/msg/Float64MultiArray` | 发布 | SDK 已接受的归一化速度目标 |
 | `/linkerbot_hand/command/accepted/torques` | `std_msgs/msg/Float64MultiArray` | 发布 | SDK 已接受的归一化扭矩目标 |
 | `/linkerbot_hand/state/angles` | `std_msgs/msg/Float64MultiArray` | 发布 | 有效且未过期的缓存角度百分比 |
+| `/linkerbot_hand/state/speeds` | `std_msgs/msg/Float64MultiArray` | 发布 | 型号支持时发布有效速度缓存 |
+| `/linkerbot_hand/state/torques` | `std_msgs/msg/Float64MultiArray` | 发布 | 型号支持时发布有效力矩缓存 |
 | `/linkerbot_hand/state/temperature` | `std_msgs/msg/Float64MultiArray` | 发布 | 有效且未过期的缓存温度 |
 | `/linkerbot_hand/state/current` | `std_msgs/msg/Float64MultiArray` | 发布 | 有效且未过期的缓存电流 |
 | `/linkerbot_hand/state/fault` | `std_msgs/msg/Float64MultiArray` | 发布 | 有效且未过期的缓存故障值 |
@@ -41,7 +43,8 @@
 时，驱动拒绝命令，不会提交给 SDK。
 
 状态定时器只调用 `get_snapshot()`；无效或 stale 的样本不会发布。设备查询频率只由
-SDK `PollingPlan` 决定。
+SDK `PollingPlan` 决定。轮询频率参数可在 active 状态动态修改，设为 `0` 后立即屏蔽
+对应状态话题并停止 SDK 查询，不重建设备连接。完整命令见[节点配置](configuration.md)。
 
 ## QoS 与 latest-wins
 

@@ -17,21 +17,25 @@ starts SDK polling. ROS state timers only call `get_snapshot()` and
 | `transport_options_json` | `{}` | SDK transport constructor options; preferred |
 | `command_rate_hz` | `100.0` | Maximum SDK continuous-command dispatch rate |
 | `auto_reconnect` | `false` | Enable SDK exponential-backoff recovery |
-| `publish_rate_hz` | `60.0` | Cached ROS publication rate; no device I/O |
+| `publish_rate_hz` | `60.0` | Cached ROS publication rate; zero pauses state topics |
 | `angles_hz` | `60.0` | SDK angle polling rate; zero disables |
+| `speeds_hz` | `0.0` | SDK speed polling rate; zero disables |
+| `torques_hz` | `0.0` | SDK torque polling rate; zero disables |
 | `force_hz` | `0.0` | SDK force polling rate; no ROS force message yet |
 | `temperature_hz` | `1.0` | SDK temperature polling rate |
 | `current_hz` | `10.0` | SDK current polling rate |
 | `faults_hz` | `5.0` | SDK fault polling rate |
-| `diagnostic_rate` | `1.0` | `/diagnostics` publication rate |
+| `diagnostic_rate` | `1.0` | `/diagnostics` publication rate; zero pauses |
 
 Requested sensor rates are capped at each SDK capability's recommended rate;
 unsupported sensors are disabled. Legacy `interface_name`, `interface_type`,
 and `library_path` parameters apply only when `transport_options_json` is `{}`.
 The launch-only arguments are `namespace` and `autostart`.
 
-Parameters are validated and snapshotted during configure. Changes made while
-configured, active, or inactive take effect only after cleanup and configure.
+Polling rates, `publish_rate_hz`, and `diagnostic_rate` are runtime-adjustable.
+An active sensor-rate update atomically replaces the SDK polling plan without
+reopening the transport. Zero stops that sensor's queries and state topic.
+Other parameters remain configure-time snapshots.
 
 ## Topics
 
@@ -44,6 +48,8 @@ configured, active, or inactive take effect only after cleanup and configure.
 | `~/command/accepted/speeds` | `std_msgs/msg/Float64MultiArray` | Publish SDK acceptance |
 | `~/command/accepted/torques` | `std_msgs/msg/Float64MultiArray` | Publish SDK acceptance |
 | `~/state/angles` | `std_msgs/msg/Float64MultiArray` | Publish fresh cached percentages |
+| `~/state/speeds` | `std_msgs/msg/Float64MultiArray` | Publish fresh speed cache when supported |
+| `~/state/torques` | `std_msgs/msg/Float64MultiArray` | Publish fresh torque cache when supported |
 | `~/state/temperature` | `std_msgs/msg/Float64MultiArray` | Publish fresh cache when supported |
 | `~/state/current` | `std_msgs/msg/Float64MultiArray` | Publish fresh cache when supported |
 | `~/state/fault` | `std_msgs/msg/Float64MultiArray` | Publish fresh cache when supported |

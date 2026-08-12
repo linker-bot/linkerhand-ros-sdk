@@ -7,6 +7,8 @@ linkerbot_hand:
     auto_reconnect: false
     publish_rate_hz: 60.0
     angles_hz: 60.0
+    speeds_hz: 0.0
+    torques_hz: 0.0
     force_hz: 0.0
     temperature_hz: 1.0
     current_hz: 10.0

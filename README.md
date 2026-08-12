@@ -58,6 +58,16 @@ ros2 launch linkerbot_hand_ros hand.launch.py \
 ros2 lifecycle get /linkerbot_hand
 ```
 
+Polling and cached-state publication can be adjusted after launch without
+reopening the device connection:
+
+```bash
+ros2 param set /linkerbot_hand torques_hz 30.0
+ros2 param set /linkerbot_hand torques_hz 0.0
+ros2 param set /linkerbot_hand publish_rate_hz 0.0
+ros2 param set /linkerbot_hand publish_rate_hz 60.0
+```
+
 The launch file defaults to `autostart:=true`. Set it to `false` when an
 external lifecycle manager owns transitions.
 

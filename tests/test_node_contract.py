@@ -15,6 +15,7 @@ from linkerbot_hand import (
     CommandStage,
     HandDevice,
     HandSide,
+    MODEL_CAPABILITIES,
     SensorType,
     get_model_capabilities,
 )
@@ -46,16 +47,24 @@ class NodeRig:
 
 def make_node_rig(
     *,
+    model="L6",
     angles_hz=60.0,
     command_rate_hz=100.0,
     transport_options_json="{}",
 ) -> NodeRig:
-    capabilities = get_model_capabilities("L6", side=HandSide.LEFT)
+    capabilities = get_model_capabilities(model, side=HandSide.LEFT)
     backend_factory = FakeBackendFactory(capabilities)
+    angle_values = (100.0,) * capabilities.joint_count
+    raw_angle_values = tuple(
+        joint.percentage_mapping.raw_open for joint in capabilities.joints
+    )
+    if capabilities.model == "L6":
+        angle_values = (100.0, None, 80.0, 70.0, 60.0, 50.0)
+        raw_angle_values = (255, 255, 204, 178, 153, 128)
     backend_factory.state.set_reading(
         SensorType.ANGLES,
-        (100.0, None, 80.0, 70.0, 60.0, 50.0),
-        raw_values=(255, 255, 204, 178, 153, 128),
+        angle_values,
+        raw_values=raw_angle_values,
     )
     adapter_calls = []
 
@@ -71,9 +80,12 @@ def make_node_rig(
     node = LinkerbotHandNode(
         adapter_factory=adapter_factory,
         parameter_overrides=[
+            Parameter("model", value=model),
             Parameter("transport_options_json", value=transport_options_json),
             Parameter("command_rate_hz", value=command_rate_hz),
             Parameter("angles_hz", value=angles_hz),
+            Parameter("speeds_hz", value=0.0),
+            Parameter("torques_hz", value=0.0),
             Parameter("force_hz", value=0.0),
             Parameter("temperature_hz", value=0.0),
             Parameter("current_hz", value=0.0),
@@ -125,6 +137,172 @@ def test_activate_opens_device_starts_sdk_polling_and_exposes_commands(node_rig)
     assert len(node._command_subscriptions) == 3
     assert node._state_timer is not None
     assert not node._state_timer.is_canceled()
+
+
+def test_runtime_sensor_rates_reconfigure_sdk_polling_and_state_topics(node_rig):
+    node = node_rig.node
+    state = node_rig.backend_factory.state
+    state.set_reading(SensorType.TORQUES, (6.0, 5.0, 4.0, 3.0, 2.0, 1.0))
+    node.trigger_configure()
+    node.trigger_activate()
+
+    result = node.set_parameters_atomically(
+        [
+            Parameter("speeds_hz", value=30.0),
+            Parameter("torques_hz", value=30.0),
+        ]
+    )
+    wait_until(
+        lambda: SensorType.TORQUES in state.poll_log
+    )
+    original_torques = node._state_publishers["torques"]
+    torques = FakePublisher()
+    node._state_publishers["torques"] = torques
+    try:
+        node._publish_cached_state()
+    finally:
+        node._state_publishers["torques"] = original_torques
+
+    assert result.successful
+    assert SensorType.SPEEDS not in state.poll_log
+    assert list(torques.messages[-1].data) == [6.0, 5.0, 4.0, 3.0, 2.0, 1.0]
+
+    result = node.set_parameters_atomically(
+        [
+            Parameter("speeds_hz", value=0.0),
+            Parameter("torques_hz", value=0.0),
+        ]
+    )
+    torque_polls_after_disable = state.poll_log.count(SensorType.TORQUES)
+    time.sleep(0.05)
+
+    original_torques = node._state_publishers["torques"]
+    torques = FakePublisher()
+    node._state_publishers["torques"] = torques
+    try:
+        node._publish_cached_state()
+    finally:
+        node._state_publishers["torques"] = original_torques
+
+    assert result.successful
+    assert state.poll_log.count(SensorType.TORQUES) == torque_polls_after_disable
+    assert torques.messages == []
+
+
+@pytest.mark.parametrize("model", MODEL_CAPABILITIES)
+def test_runtime_speed_and_torque_polling_reuses_connection_for_every_model(model):
+    rclpy.init()
+    rig = make_node_rig(model=model, angles_hz=0.0)
+    node = rig.node
+    state = rig.backend_factory.state
+    capabilities = get_model_capabilities(model)
+    supported = {
+        sensor
+        for sensor in (SensorType.SPEEDS, SensorType.TORQUES)
+        if capabilities.sensor(sensor) is not None
+    }
+    try:
+        for sensor in supported:
+            state.set_reading(sensor, (1.0,) * capabilities.joint_count)
+
+        assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+        assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+        generation = node._adapter.get_health().connection_generation
+
+        result = node.set_parameters_atomically(
+            [
+                Parameter("speeds_hz", value=30.0),
+                Parameter("torques_hz", value=30.0),
+            ]
+        )
+        assert result.successful
+        for sensor in supported:
+            wait_until(lambda sensor=sensor: sensor in state.poll_log)
+        for sensor in {SensorType.SPEEDS, SensorType.TORQUES}.difference(supported):
+            assert sensor not in state.poll_log
+
+        result = node.set_parameters_atomically(
+            [
+                Parameter("speeds_hz", value=0.0),
+                Parameter("torques_hz", value=0.0),
+            ]
+        )
+        assert result.successful
+        polls_after_disable = {
+            sensor: state.poll_log.count(sensor) for sensor in supported
+        }
+        time.sleep(0.05)
+
+        assert all(
+            state.poll_log.count(sensor) == count
+            for sensor, count in polls_after_disable.items()
+        )
+        assert node._adapter.get_health().connection_generation == generation
+        assert state.open_count == 1
+        assert state.active_connections == 1
+    finally:
+        node.destroy_node()
+        rclpy.try_shutdown()
+
+
+def test_runtime_publication_rates_pause_resume_and_reject_invalid(node_rig):
+    node = node_rig.node
+    node.trigger_configure()
+    node.trigger_activate()
+
+    result = node.set_parameters_atomically(
+        [
+            Parameter("publish_rate_hz", value=0.0),
+            Parameter("diagnostic_rate", value=0.0),
+        ]
+    )
+    assert result.successful
+    assert node._state_timer.is_canceled()
+    assert node._diagnostic_timer.is_canceled()
+
+    result = node.set_parameters_atomically(
+        [
+            Parameter("publish_rate_hz", value=20.0),
+            Parameter("diagnostic_rate", value=2.0),
+        ]
+    )
+    assert result.successful
+    assert not node._state_timer.is_canceled()
+    assert not node._diagnostic_timer.is_canceled()
+    assert node._state_timer.timer_period_ns == 50_000_000
+    assert node._diagnostic_timer.timer_period_ns == 500_000_000
+
+    result = node.set_parameters_atomically(
+        [Parameter("angles_hz", value=-1.0)]
+    )
+    assert not result.successful
+    assert node.get_parameter("angles_hz").value == 60.0
+
+
+def test_inactive_rate_update_applies_on_next_activate(node_rig):
+    node = node_rig.node
+    state = node_rig.backend_factory.state
+    node.trigger_configure()
+    node.trigger_activate()
+    wait_until(lambda: SensorType.ANGLES in state.poll_log)
+    node.trigger_deactivate()
+
+    result = node.set_parameters_atomically(
+        [Parameter("angles_hz", value=0.0)]
+    )
+    state.poll_log.clear()
+    node.trigger_activate()
+    time.sleep(0.05)
+
+    assert result.successful
+    assert SensorType.ANGLES not in state.poll_log
+
+    result = node.set_parameters_atomically(
+        [Parameter("angles_hz", value=60.0)]
+    )
+    wait_until(lambda: SensorType.ANGLES in state.poll_log)
+
+    assert result.successful
 
 
 def test_activate_failure_closes_candidate_and_allows_retry():

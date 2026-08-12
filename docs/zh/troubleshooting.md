@@ -85,13 +85,16 @@ ros2 topic echo --once /diagnostics
 
 ```bash
 ros2 param get /linkerbot_hand angles_hz
+ros2 param get /linkerbot_hand speeds_hz
+ros2 param get /linkerbot_hand torques_hz
 ros2 param get /linkerbot_hand current_hz
 ros2 param get /linkerbot_hand faults_hz
 ros2 topic echo --once /diagnostics
 ```
 
-`angles_hz=0` 会禁用角度查询。总线负载高时应降低相应 SDK 轮询频率，而不是降低
-`publish_rate_hz` 来假设总线查询会同步下降。诊断中的 `*_age_s`、
+传感器轮询频率设为 `0` 会禁用对应查询和状态话题。总线负载高时应在线降低相应
+SDK 轮询频率，而不是降低 `publish_rate_hz` 来假设总线查询会同步下降。若非零频率
+仍无状态，检查当前 SDK capability 是否支持该型号的传感器。诊断中的 `*_age_s`、
 `consecutive_errors` 和 `recent_error_code` 用于区分未采样、过期和 transport 错误。
 
 ## 状态数组中出现 nan

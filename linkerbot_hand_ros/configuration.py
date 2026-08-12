@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from linkerbot_hand import (
@@ -20,11 +20,16 @@ from linkerbot_hand import (
 
 SENSOR_RATE_PARAMETERS = {
     SensorType.ANGLES: "angles_hz",
+    SensorType.SPEEDS: "speeds_hz",
+    SensorType.TORQUES: "torques_hz",
     SensorType.FORCE: "force_hz",
     SensorType.TEMPERATURE: "temperature_hz",
     SensorType.CURRENT: "current_hz",
     SensorType.FAULTS: "faults_hz",
 }
+RUNTIME_RATE_PARAMETERS = frozenset(
+    (*SENSOR_RATE_PARAMETERS.values(), "publish_rate_hz", "diagnostic_rate")
+)
 RESERVED_TRANSPORT_OPTIONS = {"model", "side", "session_config", "clock"}
 
 
@@ -56,6 +61,36 @@ class DriverConfiguration:
             )
         return PollingPlan(**rates)
 
+    def with_runtime_rates(self, updates: dict[str, object]) -> "DriverConfiguration":
+        """Return a validated copy with runtime-adjustable rates replaced."""
+        unknown = set(updates).difference(RUNTIME_RATE_PARAMETERS)
+        if unknown:
+            names = ", ".join(sorted(unknown))
+            raise ValueError(f"parameters are not runtime-adjustable rates: {names}")
+
+        sensor_rates = dict(self.sensor_rates)
+        for sensor, parameter_name in SENSOR_RATE_PARAMETERS.items():
+            if parameter_name in updates:
+                sensor_rates[sensor] = _finite_rate(
+                    parameter_name, updates[parameter_name], allow_zero=True
+                )
+        publish_rate_hz = self.publish_rate_hz
+        if "publish_rate_hz" in updates:
+            publish_rate_hz = _finite_rate(
+                "publish_rate_hz", updates["publish_rate_hz"], allow_zero=True
+            )
+        diagnostic_rate_hz = self.diagnostic_rate_hz
+        if "diagnostic_rate" in updates:
+            diagnostic_rate_hz = _finite_rate(
+                "diagnostic_rate", updates["diagnostic_rate"], allow_zero=True
+            )
+        return replace(
+            self,
+            publish_rate_hz=publish_rate_hz,
+            diagnostic_rate_hz=diagnostic_rate_hz,
+            sensor_rates=tuple(sensor_rates.items()),
+        )
+
 
 def read_driver_configuration(read_parameter: ParameterReader) -> DriverConfiguration:
     """Read and validate all node parameters without performing device I/O."""
@@ -65,10 +100,10 @@ def read_driver_configuration(read_parameter: ParameterReader) -> DriverConfigur
         "command_rate_hz", read_parameter("command_rate_hz"), allow_zero=False
     )
     publish_rate_hz = _finite_rate(
-        "publish_rate_hz", read_parameter("publish_rate_hz"), allow_zero=False
+        "publish_rate_hz", read_parameter("publish_rate_hz"), allow_zero=True
     )
     diagnostic_rate_hz = _finite_rate(
-        "diagnostic_rate", read_parameter("diagnostic_rate"), allow_zero=False
+        "diagnostic_rate", read_parameter("diagnostic_rate"), allow_zero=True
     )
     sensor_rates = tuple(
         (
@@ -174,6 +209,7 @@ def _finite_rate(name: str, value: object, *, allow_zero: bool) -> float:
 
 __all__ = [
     "DriverConfiguration",
+    "RUNTIME_RATE_PARAMETERS",
     "SENSOR_RATE_PARAMETERS",
     "legacy_transport_options",
     "parse_transport_options",

@@ -17,6 +17,8 @@ def generate_launch_description():
         DeclareLaunchArgument("auto_reconnect", default_value="false"),
         DeclareLaunchArgument("publish_rate_hz", default_value="60.0"),
         DeclareLaunchArgument("angles_hz", default_value="60.0"),
+        DeclareLaunchArgument("speeds_hz", default_value="0.0"),
+        DeclareLaunchArgument("torques_hz", default_value="0.0"),
         DeclareLaunchArgument("force_hz", default_value="0.0"),
         DeclareLaunchArgument("temperature_hz", default_value="1.0"),
         DeclareLaunchArgument("current_hz", default_value="10.0"),
@@ -53,6 +55,12 @@ def generate_launch_description():
                 ),
                 "angles_hz": ParameterValue(
                     LaunchConfiguration("angles_hz"), value_type=float
+                ),
+                "speeds_hz": ParameterValue(
+                    LaunchConfiguration("speeds_hz"), value_type=float
+                ),
+                "torques_hz": ParameterValue(
+                    LaunchConfiguration("torques_hz"), value_type=float
                 ),
                 "force_hz": ParameterValue(
                     LaunchConfiguration("force_hz"), value_type=float

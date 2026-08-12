@@ -8,8 +8,10 @@ from typing import Any
 
 import rclpy
 from diagnostic_msgs.msg import DiagnosticArray
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.lifecycle import LifecycleNode, LifecycleState, TransitionCallbackReturn
+from rclpy.parameter import Parameter
 from std_msgs.msg import Float64MultiArray, String
 from std_srvs.srv import Trigger
 
@@ -21,7 +23,11 @@ from linkerbot_hand import (
 )
 
 from .adapter import HandAdapter
-from .configuration import DriverConfiguration, read_driver_configuration
+from .configuration import (
+    RUNTIME_RATE_PARAMETERS,
+    DriverConfiguration,
+    read_driver_configuration,
+)
 from .diagnostics import build_diagnostic_status
 from .metrics import DriverMetrics
 from .qos import COMMAND_QOS, METADATA_QOS, STATE_QOS
@@ -29,6 +35,8 @@ from .qos import COMMAND_QOS, METADATA_QOS, STATE_QOS
 
 _STATE_SENSORS = {
     "angles": SensorType.ANGLES,
+    "speeds": SensorType.SPEEDS,
+    "torques": SensorType.TORQUES,
     "temperature": SensorType.TEMPERATURE,
     "current": SensorType.CURRENT,
     "fault": SensorType.FAULTS,
@@ -55,6 +63,8 @@ class LinkerbotHandNode(LifecycleNode):
         self.declare_parameter("auto_reconnect", False)
         self.declare_parameter("publish_rate_hz", 60.0)
         self.declare_parameter("angles_hz", 60.0)
+        self.declare_parameter("speeds_hz", 0.0)
+        self.declare_parameter("torques_hz", 0.0)
         self.declare_parameter("force_hz", 0.0)
         self.declare_parameter("temperature_hz", 1.0)
         self.declare_parameter("current_hz", 10.0)
@@ -80,6 +90,9 @@ class LinkerbotHandNode(LifecycleNode):
         self._state_timer: Any | None = None
         self._metadata_timer: Any | None = None
         self._diagnostic_timer: Any | None = None
+        self._parameter_callback_handle = self.add_on_set_parameters_callback(
+            self._on_set_parameters
+        )
 
     def on_configure(self, state: LifecycleState) -> TransitionCallbackReturn:
         try:
@@ -128,7 +141,10 @@ class LinkerbotHandNode(LifecycleNode):
             self._active = True
             self._create_command_subscriptions()
             if self._state_timer is not None:
-                self._state_timer.reset()
+                if configuration.publish_rate_hz > 0.0:
+                    self._state_timer.reset()
+                else:
+                    self._state_timer.cancel()
             self._publish_metadata()
             capabilities = adapter.capabilities
             self.get_logger().info(
@@ -250,13 +266,87 @@ class LinkerbotHandNode(LifecycleNode):
             )
         )
         self._state_timer = self.create_timer(
-            1.0 / configuration.publish_rate_hz, self._publish_cached_state
+            self._timer_period(configuration.publish_rate_hz),
+            self._publish_cached_state,
         )
         self._state_timer.cancel()
         self._metadata_timer = self.create_timer(1.0, self._publish_metadata)
         self._diagnostic_timer = self.create_timer(
-            1.0 / configuration.diagnostic_rate_hz, self._publish_diagnostics
+            self._timer_period(configuration.diagnostic_rate_hz),
+            self._publish_diagnostics,
         )
+        if configuration.diagnostic_rate_hz == 0.0:
+            self._diagnostic_timer.cancel()
+
+    @staticmethod
+    def _timer_period(rate_hz: float) -> float:
+        return 1.0 if rate_hz == 0.0 else 1.0 / rate_hz
+
+    @staticmethod
+    def _set_timer_rate(timer: Any | None, rate_hz: float, *, enabled: bool) -> None:
+        if timer is None:
+            return
+        if rate_hz == 0.0 or not enabled:
+            timer.cancel()
+            return
+        timer.timer_period_ns = int(1_000_000_000 / rate_hz)
+        timer.reset()
+
+    def _apply_timer_rates(self, configuration: DriverConfiguration) -> None:
+        self._set_timer_rate(
+            self._state_timer,
+            configuration.publish_rate_hz,
+            enabled=self._active,
+        )
+        self._set_timer_rate(
+            self._diagnostic_timer,
+            configuration.diagnostic_rate_hz,
+            enabled=True,
+        )
+
+    def _on_set_parameters(
+        self, parameters: list[Parameter]
+    ) -> SetParametersResult:
+        updates = {
+            parameter.name: parameter.value
+            for parameter in parameters
+            if parameter.name in RUNTIME_RATE_PARAMETERS
+        }
+        if not updates:
+            return SetParametersResult(successful=True)
+
+        configuration = self._configuration
+        try:
+            if configuration is None:
+                # Validate values now; configure will read the committed parameters.
+                read_driver_configuration(
+                    lambda name: updates.get(name, self.get_parameter(name).value)
+                )
+                return SetParametersResult(successful=True)
+
+            updated = configuration.with_runtime_rates(updates)
+            adapter = self._adapter
+            old_plan = (
+                None
+                if adapter is None
+                else configuration.polling_plan(adapter.capabilities)
+            )
+            if self._active and adapter is not None:
+                adapter.start_polling(updated.polling_plan(adapter.capabilities))
+            try:
+                self._apply_timer_rates(updated)
+            except Exception:
+                if self._active and adapter is not None and old_plan is not None:
+                    adapter.start_polling(old_plan)
+                self._apply_timer_rates(configuration)
+                raise
+            self._configuration = updated
+            return SetParametersResult(successful=True)
+        except Exception as error:
+            return SetParametersResult(
+                successful=False,
+                reason=self._error_text(error),
+            )
 
     def _create_command_subscriptions(self) -> None:
         if self._command_subscriptions:
@@ -380,11 +470,17 @@ class LinkerbotHandNode(LifecycleNode):
 
     def _publish_cached_state(self) -> None:
         adapter = self._adapter
-        if not self._active or adapter is None:
+        configuration = self._configuration
+        if not self._active or adapter is None or configuration is None:
             return
         try:
             snapshot = adapter.get_snapshot()
+            enabled_sensors = {
+                sensor for sensor, rate in configuration.sensor_rates if rate > 0.0
+            }
             for topic_name, sensor in _STATE_SENSORS.items():
+                if sensor not in enabled_sensors:
+                    continue
                 sample = snapshot.sample(sensor)
                 if sample is None or not sample.valid or sample.stale:
                     continue

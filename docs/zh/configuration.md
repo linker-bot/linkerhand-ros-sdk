@@ -21,20 +21,54 @@ deactivate 不会自动张开、握拳、清错或重放目标。
 | `transport_options_json` | `{}` | 原样传给 SDK 工厂的 JSON 对象，非空时优先 |
 | `command_rate_hz` | `100.0` | SDK 连续命令最大 transport 发送频率 |
 | `auto_reconnect` | `false` | 是否使用 SDK 指数退避自动恢复 |
-| `publish_rate_hz` | `60.0` | ROS 读取缓存并发布状态的频率，不产生 I/O |
+| `publish_rate_hz` | `60.0` | ROS 读取缓存并发布状态的频率；`0` 暂停全部状态话题 |
 | `angles_hz` | `60.0` | SDK 角度查询频率，`0` 表示禁用 |
+| `speeds_hz` | `0.0` | SDK 速度查询频率，`0` 表示禁用 |
+| `torques_hz` | `0.0` | SDK 力矩查询频率，`0` 表示禁用 |
 | `force_hz` | `0.0` | SDK 力传感器查询频率；当前无 ROS 力状态消息 |
 | `temperature_hz` | `1.0` | SDK 温度查询频率，`0` 表示禁用 |
 | `current_hz` | `10.0` | SDK 电流查询频率，`0` 表示禁用 |
 | `faults_hz` | `5.0` | SDK 故障查询频率，`0` 表示禁用 |
-| `diagnostic_rate` | `1.0` | `/diagnostics` 发布频率 |
+| `diagnostic_rate` | `1.0` | `/diagnostics` 发布频率；`0` 表示暂停 |
 
 请求的传感器频率会被限制到 SDK capability 的 `recommended_hz`；型号不支持的传感器
 自动设为 `0`。`publish_rate_hz` 与设备查询频率相互独立，即使把发布频率设得更高也
 不会增加总线查询次数。
 
-节点在 configure 时一次性校验并保存全部参数。configured、active 或 inactive 状态下
-修改参数不会改变当前连接；新值会在 cleanup 后再次 configure 时统一生效。
+上述轮询频率、`publish_rate_hz` 和 `diagnostic_rate` 可在 launch 后动态修改。active
+状态下传感器频率会原子替换 SDK `PollingPlan`，不会重建 CAN 连接；设为 `0` 会停止
+对应设备查询和状态发布。configured/inactive 状态下修改会在下次 activate 生效。
+
+```bash
+# L6 在线启用 30 Hz 力矩反馈，再关闭
+ros2 param set /linkerbot_hand torques_hz 30.0
+ros2 topic echo /linkerbot_hand/state/torques
+ros2 param set /linkerbot_hand torques_hz 0.0
+
+# 暂停并恢复全部缓存状态发布；不会改变 SDK 设备查询频率
+ros2 param set /linkerbot_hand publish_rate_hz 0.0
+ros2 param set /linkerbot_hand publish_rate_hz 60.0
+
+# 暂停并恢复诊断
+ros2 param set /linkerbot_hand diagnostic_rate 0.0
+ros2 param set /linkerbot_hand diagnostic_rate 1.0
+```
+
+当前 SDK capability 的速度、力矩回读能力如下。型号不支持的频率会被限制为 `0`，
+不会发起无效设备查询；型号能力以安装的 SDK 版本为准。
+
+| 型号 | `/state/speeds` | `/state/torques` |
+| --- | --- | --- |
+| L6 | 不支持 | 支持 |
+| O6 | 支持 | 支持 |
+| L20Lite | 支持 | 支持 |
+| L25 | 支持 | 支持 |
+| O20 | 支持 | 不支持 |
+| O30I | 支持 | 支持 |
+| L30 | 支持 | 不支持 |
+
+其他参数在 configure 时保存快照。`model`、`side`、transport、`command_rate_hz` 和
+`auto_reconnect` 仍需 cleanup 后修改并重新 configure，不在线重建连接或调度器。
 
 launch 另外提供 `namespace` 和 `autostart` 参数，它们不是节点参数。
 
@@ -69,6 +103,8 @@ linkerbot_hand:
     auto_reconnect: false
     publish_rate_hz: 60.0
     angles_hz: 60.0
+    speeds_hz: 0.0
+    torques_hz: 0.0
     force_hz: 0.0
     temperature_hz: 1.0
     current_hz: 10.0

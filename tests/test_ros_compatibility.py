@@ -65,6 +65,8 @@ def test_launch_exposes_every_driver_parameter():
         "auto_reconnect",
         "publish_rate_hz",
         "angles_hz",
+        "speeds_hz",
+        "torques_hz",
         "force_hz",
         "temperature_hz",
         "current_hz",
@@ -113,6 +115,12 @@ def test_package_depends_on_split_hand_sdk():
 
     assert '"linkerbot-hand>=0.1.0,<0.2.0"' in setup_source
     assert '"linkerbot>=0.5.4"' not in setup_source
+
+
+def test_package_declares_runtime_parameter_message_dependency():
+    package_source = Path("package.xml").read_text(encoding="utf-8")
+
+    assert "<exec_depend>rcl_interfaces</exec_depend>" in package_source
 
 
 def test_python_and_ros_package_versions_match():

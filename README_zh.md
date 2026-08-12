@@ -84,6 +84,15 @@ ros2 topic echo --once /linkerbot_hand/joint_names
 ros2 topic echo --once /linkerbot_hand/state/angles
 ```
 
+启动后可在线调整或关闭轮询与状态上报，不会重建 CAN 连接：
+
+```bash
+ros2 param set /linkerbot_hand torques_hz 30.0
+ros2 param set /linkerbot_hand torques_hz 0.0
+ros2 param set /linkerbot_hand publish_rate_hz 0.0
+ros2 param set /linkerbot_hand publish_rate_hz 60.0
+```
+
 连续控制应使用常驻客户端，避免每条命令重新启动进程并等待 DDS 发现：
 
 ```bash
