@@ -22,6 +22,8 @@ from linkerbot_hand import (
 )
 from linkerbot_hand.backends.legacy import create_hand_device
 
+CONTINUOUS_COMMAND_NAMES = ("angles", "raw_angles", "speeds", "torques")
+
 
 def normalize_model(model: str) -> str:
     """Return the SDK canonical model name in the historical ROS casing."""
@@ -37,7 +39,9 @@ def _ranges_for_command(
                 "percentage angle control is not supported for this hand side"
             )
         return tuple(NumericRange(0, 100, "percent") for _ in capabilities.joints)
-    if command == "speeds":
+    if command == "raw_angles":
+        ranges = tuple(joint.raw_angle_range for joint in capabilities.joints)
+    elif command == "speeds":
         ranges = tuple(joint.speed_range for joint in capabilities.joints)
     elif command == "torques":
         ranges = tuple(joint.torque_range for joint in capabilities.joints)
@@ -164,6 +168,10 @@ class HandAdapter:
     def submit_angles(self, values: Sequence[float]) -> CommandHandle:
         normalized = normalize_command(self.capabilities, values, "angles")
         return self._device.submit_angles(normalized, policy=CommandPolicy.LATEST)
+
+    def submit_raw_angles(self, values: Sequence[float]) -> CommandHandle:
+        normalized = normalize_command(self.capabilities, values, "raw_angles")
+        return self._device.submit_raw_angles(normalized, policy=CommandPolicy.LATEST)
 
     def submit_speeds(self, values: Sequence[float]) -> CommandHandle:
         normalized = normalize_command(self.capabilities, values, "speeds")

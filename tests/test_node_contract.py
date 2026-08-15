@@ -5,21 +5,20 @@ from dataclasses import dataclass, field
 import pytest
 import rclpy
 from diagnostic_msgs.msg import DiagnosticStatus
-from rclpy.lifecycle import TransitionCallbackReturn
-from rclpy.parameter import Parameter
-from std_msgs.msg import Float64MultiArray
-from std_srvs.srv import Trigger
-
 from linkerbot_hand import (
+    MODEL_CAPABILITIES,
     CommandKind,
     CommandStage,
     HandDevice,
     HandSide,
-    MODEL_CAPABILITIES,
     SensorType,
     get_model_capabilities,
 )
 from linkerbot_hand.testing import FakeBackendFactory, wait_until
+from rclpy.lifecycle import TransitionCallbackReturn
+from rclpy.parameter import Parameter
+from std_msgs.msg import Float64MultiArray
+from std_srvs.srv import Trigger
 
 from linkerbot_hand_ros.adapter import HandAdapter
 from linkerbot_hand_ros.node import LinkerbotHandNode
@@ -134,7 +133,7 @@ def test_activate_opens_device_starts_sdk_polling_and_exposes_commands(node_rig)
     assert node_rig.backend_factory.state.open_count == 1
     assert node_rig.backend_factory.state.active_connections == 1
     assert node._active
-    assert len(node._command_subscriptions) == 3
+    assert len(node._command_subscriptions) == 4
     assert node._state_timer is not None
     assert not node._state_timer.is_canceled()
 
@@ -348,6 +347,26 @@ def test_cached_state_publication_never_adds_device_io(node_rig):
     assert node_rig.backend_factory.state.io_count == io_count
 
 
+def test_cached_raw_angle_publication_uses_protocol_values_without_io(node_rig):
+    node = node_rig.node
+    node.trigger_configure()
+    node.trigger_activate()
+    wait_until(lambda: len(node_rig.backend_factory.state.poll_log) >= 1)
+    node._adapter.stop_polling()
+    io_count = node_rig.backend_factory.state.io_count
+    original = node._state_publishers["raw_angles"]
+    publisher = FakePublisher()
+    node._state_publishers["raw_angles"] = publisher
+    try:
+        node._publish_cached_state()
+    finally:
+        node._state_publishers["raw_angles"] = original
+
+    assert len(publisher.messages) == 1
+    assert list(publisher.messages[0].data) == [255, 255, 204, 178, 153, 128]
+    assert node_rig.backend_factory.state.io_count == io_count
+
+
 def test_command_callback_reports_sdk_acceptance_without_waiting(node_rig):
     node = node_rig.node
     node.trigger_configure()
@@ -371,6 +390,29 @@ def test_command_callback_reports_sdk_acceptance_without_waiting(node_rig):
     wait_until(lambda: handle.done)
     assert handle.stage is CommandStage.DISPATCHED
     assert node._metrics.snapshot().command_successes == 1
+
+
+def test_raw_angle_callback_submits_protocol_values_without_waiting(node_rig):
+    node = node_rig.node
+    node.trigger_configure()
+    node.trigger_activate()
+    original = node._accepted_publishers["raw_angles"]
+    publisher = FakePublisher()
+    node._accepted_publishers["raw_angles"] = publisher
+    message = Float64MultiArray(data=[255.0, 128.0, 204.0, 178.0, 153.0, 0.0])
+    try:
+        started = time.monotonic()
+        node._run_command("raw_angles", message)
+        callback_elapsed = time.monotonic() - started
+    finally:
+        node._accepted_publishers["raw_angles"] = original
+
+    handle = node._latest_handles["raw_angles"]
+    assert callback_elapsed < 0.05
+    assert list(publisher.messages[0].data) == list(message.data)
+    assert handle.command.values == (255, 128, 204, 178, 153, 0)
+    wait_until(lambda: handle.done)
+    assert handle.stage is CommandStage.DISPATCHED
 
 
 def test_accepted_feedback_failure_does_not_reclassify_sdk_command(node_rig):

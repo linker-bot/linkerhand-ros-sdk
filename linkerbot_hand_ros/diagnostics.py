@@ -13,10 +13,10 @@ from linkerbot_hand import (
     HealthStatus,
 )
 
+from .adapter import CONTINUOUS_COMMAND_NAMES
 from .metrics import DriverMetricsSnapshot
 
-
-TRACKED_COMMAND_NAMES = ("angles", "speeds", "torques", "clear_faults")
+TRACKED_COMMAND_NAMES = (*CONTINUOUS_COMMAND_NAMES, "clear_faults")
 
 
 def build_diagnostic_status(
