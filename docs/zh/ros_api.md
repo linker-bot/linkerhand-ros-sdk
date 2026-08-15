@@ -15,6 +15,10 @@
 该值是百分比，不是弧度。SDK capability 是关节顺序、范围、整数约束、传感器能力和
 原始值映射的唯一数据源，ROS 不维护第二份型号表。
 
+`raw_angles` 始终表示 SDK unified API 的协议原值（`protocol_raw`），即 CAN/CAN FD 实际
+发送和读取的坐标。它不会经过 L6/O6/L20Lite/L25 旧 manager 的用户 LUT，也不等同于旧
+`set_raw_angles()` 使用的 `standard_raw`。原始值范围和单位必须逐关节读取 capability。
+
 某些握姿插值轴没有独立百分比回读。为了保持数组长度和 `joint_names` 一致，
 `state/angles` 对这些位置发布 `NaN`。业务到位判断必须拒绝 `NaN`，并且不能把百分比
 直接写入 `sensor_msgs/JointState.position`。
@@ -24,12 +28,15 @@
 | 完整话题 | 类型 | 方向 | 说明 |
 | --- | --- | --- | --- |
 | `/linkerbot_hand/command/angles` | `std_msgs/msg/Float64MultiArray` | 订阅 | 张开度目标，0–100 |
+| `/linkerbot_hand/command/raw_angles` | `std_msgs/msg/Float64MultiArray` | 订阅 | 精确协议原始角度目标，范围逐关节读取 capability |
 | `/linkerbot_hand/command/speeds` | `std_msgs/msg/Float64MultiArray` | 订阅 | SDK capability 定义的速度目标 |
 | `/linkerbot_hand/command/torques` | `std_msgs/msg/Float64MultiArray` | 订阅 | SDK capability 定义的扭矩目标 |
 | `/linkerbot_hand/command/accepted/angles` | `std_msgs/msg/Float64MultiArray` | 发布 | SDK 已接受的归一化角度目标 |
+| `/linkerbot_hand/command/accepted/raw_angles` | `std_msgs/msg/Float64MultiArray` | 发布 | SDK 已接受的协议原始角度目标 |
 | `/linkerbot_hand/command/accepted/speeds` | `std_msgs/msg/Float64MultiArray` | 发布 | SDK 已接受的归一化速度目标 |
 | `/linkerbot_hand/command/accepted/torques` | `std_msgs/msg/Float64MultiArray` | 发布 | SDK 已接受的归一化扭矩目标 |
 | `/linkerbot_hand/state/angles` | `std_msgs/msg/Float64MultiArray` | 发布 | 有效且未过期的缓存角度百分比 |
+| `/linkerbot_hand/state/raw_angles` | `std_msgs/msg/Float64MultiArray` | 发布 | 同次有效角度样本包含的精确协议原值 |
 | `/linkerbot_hand/state/speeds` | `std_msgs/msg/Float64MultiArray` | 发布 | 型号支持时发布有效速度缓存 |
 | `/linkerbot_hand/state/torques` | `std_msgs/msg/Float64MultiArray` | 发布 | 型号支持时发布有效力矩缓存 |
 | `/linkerbot_hand/state/temperature` | `std_msgs/msg/Float64MultiArray` | 发布 | 有效且未过期的缓存温度 |
@@ -72,6 +79,7 @@ SDK `PollingPlan` 决定。轮询频率参数可在 active 状态动态修改，
 
 ```text
 latest_angles_command_id / latest_angles_stage / latest_angles_error_code
+latest_raw_angles_command_id / latest_raw_angles_stage / latest_raw_angles_error_code
 latest_speeds_command_id / latest_speeds_stage / latest_speeds_error_code
 latest_torques_command_id / latest_torques_stage / latest_torques_error_code
 latest_clear_faults_command_id / latest_clear_faults_stage / latest_clear_faults_error_code
@@ -130,6 +138,19 @@ Lifecycle 节点同时提供标准的 `change_state`、`get_state`、
 
 ROS 话题类型为 Float64 数组；驱动会把值为整数的 Float64 转成 SDK 所需整数，带小数
 的整数型命令会被拒绝。
+
+## API 迁移顺序
+
+这里的顺序是实现替换顺序，不是包发布顺序：
+
+1. ROS 只依赖独立 `linkerbot-hand`，型号与范围只读取 `get_capabilities()`。
+2. Lifecycle activate/deactivate 显式启动和停止 SDK `PollingPlan`；ROS 状态定时器只读取缓存。
+3. 百分比 topic 调用 `submit_angles()`，协议 raw topic 调用 `submit_raw_angles()`，两套坐标不混用。
+4. 所有运动 callback 只保存非阻塞 `CommandHandle`，诊断按准确阶段和稳定错误码转换。
+5. 恢复由 SDK 管理且不重放旧目标，最后使用 fake transport 和逐轴实物测试验证。
+
+`linkerbot-hand` 拥有能力、角度换算、轮询、调度和缓存；本 ROS 仓库只拥有参数、
+Lifecycle、topic/service、消息转换和诊断，不重复实现型号映射。
 
 ## 各型号关节顺序
 

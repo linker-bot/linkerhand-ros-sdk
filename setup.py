@@ -26,7 +26,7 @@ setup(
     ],
     install_requires=[
         "setuptools",
-        "linkerbot-hand>=0.1.0,<0.2.0",
+        "linkerbot-hand>=0.1.0.dev1,<0.2.0",
     ],
     extras_require={"test": ["pytest"]},
     python_requires=">=3.10",

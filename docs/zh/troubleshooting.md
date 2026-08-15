@@ -26,16 +26,16 @@ ModuleNotFoundError: No module named 'linkerbot_hand'
 
 ```bash
 python3 -c 'import sys; print(sys.executable)'
-python3 -m pip install 'linkerbot-hand>=0.1.0,<0.2.0'
+python3 -m pip install 'linkerbot-hand>=0.1.0.dev1,<0.2.0'
 python3 -c 'import linkerbot_hand; print(linkerbot_hand.__file__)'
 ```
 
 本地 SDK 源码安装：
 
 ```bash
-python3 -m pip install \
-  -e /home/lxqs/code/linkerbot-python-sdk/packages/linkerbot-common \
-  -e /home/lxqs/code/linkerbot-python-sdk/packages/linkerbot-hand
+git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-transport.git
+git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand.git
+python3 -m pip install -e ./linkerbot-transport -e ./linkerbot-hand
 ```
 
 ## 节点存在但没有命令或状态话题

@@ -4,7 +4,7 @@
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-python3 -m pip install 'linkerbot-hand>=0.1.0,<0.2.0'
+python3 -m pip install 'linkerbot-hand>=0.1.0.dev1,<0.2.0'
 sudo apt update
 sudo apt install python3-colcon-common-extensions python3-rosdep can-utils
 ```
@@ -12,9 +12,9 @@ sudo apt install python3-colcon-common-extensions python3-rosdep can-utils
 使用 SDK 本地源码时：
 
 ```bash
-python3 -m pip install \
-  -e /home/lxqs/code/linkerbot-python-sdk/packages/linkerbot-common \
-  -e /home/lxqs/code/linkerbot-python-sdk/packages/linkerbot-hand
+git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-transport.git
+git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand.git
+python3 -m pip install -e ./linkerbot-transport -e ./linkerbot-hand
 python3 -c 'import linkerbot_hand; print(linkerbot_hand.__file__)'
 ```
 

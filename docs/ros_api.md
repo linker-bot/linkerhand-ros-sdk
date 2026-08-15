@@ -3,6 +3,8 @@
 The lifecycle driver uses the SDK capability model as its only source for joint
 order, ranges, sensor support, and percentage mapping. All models expose
 `100=fully open` and `0=fully closed`. Values are percentages, not radians.
+`raw_angles` always means exact unified SDK protocol values and never classic
+`standard_raw` or the classic user LUT coordinate.
 
 Configure performs no device I/O. Activate opens the one `HandDevice` and
 starts SDK polling. ROS state timers only call `get_snapshot()` and
@@ -42,12 +44,15 @@ Other parameters remain configure-time snapshots.
 | Topic | Type | Direction |
 | --- | --- | --- |
 | `~/command/angles` | `std_msgs/msg/Float64MultiArray` | Subscribe while active |
+| `~/command/raw_angles` | `std_msgs/msg/Float64MultiArray` | Subscribe exact protocol values while active |
 | `~/command/speeds` | `std_msgs/msg/Float64MultiArray` | Subscribe while active |
 | `~/command/torques` | `std_msgs/msg/Float64MultiArray` | Subscribe while active |
 | `~/command/accepted/angles` | `std_msgs/msg/Float64MultiArray` | Publish SDK acceptance |
+| `~/command/accepted/raw_angles` | `std_msgs/msg/Float64MultiArray` | Publish protocol-raw SDK acceptance |
 | `~/command/accepted/speeds` | `std_msgs/msg/Float64MultiArray` | Publish SDK acceptance |
 | `~/command/accepted/torques` | `std_msgs/msg/Float64MultiArray` | Publish SDK acceptance |
 | `~/state/angles` | `std_msgs/msg/Float64MultiArray` | Publish fresh cached percentages |
+| `~/state/raw_angles` | `std_msgs/msg/Float64MultiArray` | Publish exact protocol values from the same cached sample |
 | `~/state/speeds` | `std_msgs/msg/Float64MultiArray` | Publish fresh speed cache when supported |
 | `~/state/torques` | `std_msgs/msg/Float64MultiArray` | Publish fresh torque cache when supported |
 | `~/state/temperature` | `std_msgs/msg/Float64MultiArray` | Publish fresh cache when supported |
