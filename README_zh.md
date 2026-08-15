@@ -24,27 +24,29 @@ SDK 单 I/O worker -> transport -> 灵巧手
 - 连续命令采用 latest-wins，回调不等待 transport 或设备 ACK。
 - `on_deactivate` 停止轮询，`on_cleanup/on_shutdown` 关闭连接。
 - 所有型号统一使用 `100=完全张开，0=完全握拳` 的对外百分比约定。
+- 另行提供协议 `raw_angles` 命令与缓存状态；该坐标绕过 classic 用户 LUT。
 
 ## 环境要求
 
 - Ubuntu 24.04 + ROS 2 Jazzy
 - Python 3.10 或更新版本
-- `linkerbot-hand>=0.1.0,<0.2.0`
+- `linkerbot-hand>=0.1.0.dev1,<0.2.0`
 - 已配置的 SocketCAN/CAN FD 接口，或型号支持的厂商动态库
 
 必须使用 Jazzy：
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-python3 -m pip install 'linkerbot-hand>=0.1.0,<0.2.0'
+python3 -m pip install 'linkerbot-hand>=0.1.0.dev1,<0.2.0'
 ```
 
-尚未发布 wheel 时，可从同机 SDK 源码安装：
+尚未发布 wheel 时，从两个独立仓库安装。`linkerbot-hand` 声明兼容的
+`linkerbot-transport` 依赖，ROS 包不直接依赖 transport：
 
 ```bash
-python3 -m pip install \
-  -e /home/lxqs/code/linkerbot-python-sdk/packages/linkerbot-common \
-  -e /home/lxqs/code/linkerbot-python-sdk/packages/linkerbot-hand
+git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-transport.git
+git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand.git
+python3 -m pip install -e ./linkerbot-transport -e ./linkerbot-hand
 python3 -c 'import linkerbot_hand; print(linkerbot_hand.__file__)'
 ```
 

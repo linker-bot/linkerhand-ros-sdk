@@ -8,19 +8,17 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from linkerbot_hand import HandSDKError, get_model_capabilities
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.publisher import Publisher
 from rclpy.subscription import Subscription
 from std_msgs.msg import Float64MultiArray, String
 
-from linkerbot_hand import HandSDKError, get_model_capabilities
-
-from .adapter import validate_command
+from .adapter import CONTINUOUS_COMMAND_NAMES, validate_command
 from .qos import COMMAND_QOS, METADATA_QOS
 
-
-COMMAND_NAMES = ("angles", "speeds", "torques")
+COMMAND_NAMES = CONTINUOUS_COMMAND_NAMES
 
 
 def _positive_timeout(value: object) -> float:
@@ -235,6 +233,21 @@ class HandCommandClient:
     ) -> CommandReceipt:
         return self.send(
             "angles",
+            values,
+            wait_for_dds_ack=wait_for_dds_ack,
+            timeout_sec=timeout_sec,
+        )
+
+    def send_raw_angles(
+        self,
+        values: Sequence[float],
+        *,
+        wait_for_dds_ack: bool = False,
+        timeout_sec: float = 1.0,
+    ) -> CommandReceipt:
+        """Publish exact protocol angle values without classic user LUT mapping."""
+        return self.send(
+            "raw_angles",
             values,
             wait_for_dds_ack=wait_for_dds_ack,
             timeout_sec=timeout_sec,

@@ -13,25 +13,28 @@ targets without waiting for transport or device acknowledgements.
 
 All models expose the same percentage convention: `100=fully open` and
 `0=fully closed`.
+Separate `raw_angles` command and cached-state topics expose exact protocol
+coordinates without applying the classic user LUT.
 
 ## Requirements
 
 - Ubuntu 24.04 with ROS 2 Jazzy
 - Python 3.10 or newer
-- `linkerbot-hand>=0.1.0,<0.2.0`
+- `linkerbot-hand>=0.1.0.dev1,<0.2.0`
 - A configured SocketCAN/CAN FD interface or supported vendor library
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-python3 -m pip install 'linkerbot-hand>=0.1.0,<0.2.0'
+python3 -m pip install 'linkerbot-hand>=0.1.0.dev1,<0.2.0'
 ```
 
-For local SDK development:
+For local SDK development, install the independent repositories. Installing
+`linkerbot-hand` resolves its compatible `linkerbot-transport` dependency:
 
 ```bash
-python3 -m pip install \
-  -e /home/lxqs/code/linkerbot-python-sdk/packages/linkerbot-common \
-  -e /home/lxqs/code/linkerbot-python-sdk/packages/linkerbot-hand
+git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-transport.git
+git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand.git
+python3 -m pip install -e ./linkerbot-transport -e ./linkerbot-hand
 ```
 
 ## Build

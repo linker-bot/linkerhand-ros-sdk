@@ -1,5 +1,4 @@
 import pytest
-
 from linkerbot_hand import (
     CommandStage,
     HandDevice,
@@ -17,7 +16,6 @@ from linkerbot_hand_ros.adapter import (
     normalize_model,
     validate_command,
 )
-
 
 MODELS = ("o6", "l6", "l20lite", "l25", "o20", "o30i", "l30")
 
@@ -95,6 +93,30 @@ def test_continuous_commands_return_handles_without_waiting(adapter_rig):
     wait_until(lambda: handle.done)
     assert handle.stage is CommandStage.DISPATCHED
     assert backend_factory.state.dispatched_commands[-1] == handle.command
+
+
+def test_raw_angles_use_exact_protocol_coordinates(adapter_rig):
+    adapter, backend_factory = adapter_rig
+    adapter.open()
+
+    handle = adapter.submit_raw_angles([255, 128, 204, 178, 153, 0])
+
+    assert handle.command.values == (255, 128, 204, 178, 153, 0)
+    wait_until(lambda: handle.done)
+    assert handle.stage is CommandStage.DISPATCHED
+    assert backend_factory.state.dispatched_commands[-1] == handle.command
+
+
+def test_raw_angle_validation_uses_joint_protocol_ranges(adapter_rig):
+    adapter, backend_factory = adapter_rig
+    adapter.open()
+
+    with pytest.raises(ValidationError, match=r"\[0, 255\]"):
+        adapter.submit_raw_angles([256] * 6)
+    with pytest.raises(ValidationError, match="must be an integer"):
+        adapter.submit_raw_angles([10.5] * 6)
+
+    assert backend_factory.state.dispatched_commands == []
 
 
 @pytest.mark.parametrize(

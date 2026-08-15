@@ -91,6 +91,24 @@ class HandControlMixin:
 `send_angles()` 默认不等待 DDS ACK，驱动收到后只执行 SDK `submit_angles()` 并立即返回
 callback；transport 由 SDK 唯一 worker 调度。
 
+## 协议原始角度
+
+协议调试或标定需要精确原值时使用独立 topic，不要把值发到百分比角度 topic：
+
+```bash
+ros2 topic pub --once /linkerbot_hand/command/raw_angles \
+  std_msgs/msg/Float64MultiArray "{data: [255, 128, 204, 178, 153, 0]}"
+ros2 topic echo --once /linkerbot_hand/state/raw_angles
+```
+
+上述数组仅是 L6 的形状示例，实机值应按 SDK capability 的逐关节范围选择。这里的 raw 是
+`protocol_raw`，绕过 classic 用户 LUT；旧 `set_raw_angles()` 的 `standard_raw` 不通过 ROS
+暴露。常驻 Python 业务节点可调用：
+
+```python
+receipt = self.hand.send_raw_angles([255, 128, 204, 178, 153, 0])
+```
+
 ## 状态监听
 
 ```bash

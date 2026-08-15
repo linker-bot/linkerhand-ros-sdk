@@ -82,6 +82,7 @@ def test_client_creates_persistent_topics_with_shared_qos():
     assert command_client.driver_name == "/left/linkerbot_hand"
     assert [publisher.topic for publisher in node.publishers] == [
         "/left/linkerbot_hand/command/angles",
+        "/left/linkerbot_hand/command/raw_angles",
         "/left/linkerbot_hand/command/speeds",
         "/left/linkerbot_hand/command/torques",
     ]
@@ -106,7 +107,7 @@ def test_client_rolls_back_partially_created_ros_entities():
     with pytest.raises(RuntimeError, match="injected subscription creation failure"):
         HandCommandClient(node)
 
-    assert len(node.destroyed_publishers) == 3
+    assert len(node.destroyed_publishers) == 4
     assert len(node.destroyed_subscriptions) == 1
 
 
@@ -170,7 +171,7 @@ def test_client_reuses_publisher_without_waiting_for_ack_by_default(ready_client
     assert second_receipt.sequence == 2
     assert receipt.dds_acknowledged is None
     assert receipt.dds_ack_latency_ms is None
-    assert len(node.publishers) == 3
+    assert len(node.publishers) == 4
     assert len(node.publishers[0].messages) == 2
     assert list(node.publishers[0].messages[0].data) == [
         100.0,
@@ -207,6 +208,18 @@ def test_client_uses_model_specific_validation(ready_client):
         command_client.send_angles([101] * 6)
 
 
+def test_client_sends_exact_protocol_raw_angles(ready_client):
+    node, command_client = ready_client
+
+    receipt = command_client.send_raw_angles([255, 128, 204, 178, 153, 0])
+
+    assert receipt.command == "raw_angles"
+    assert receipt.values == (255.0, 128.0, 204.0, 178.0, 153.0, 0.0)
+    assert list(node.publishers[1].messages[0].data) == list(receipt.values)
+    with pytest.raises(ValueError, match=r"\[0, 255\]"):
+        command_client.send_raw_angles([256] * 6)
+
+
 def test_client_tracks_driver_accepted_values(ready_client):
     node, command_client = ready_client
 
@@ -232,8 +245,8 @@ def test_client_destroy_is_idempotent(ready_client):
     command_client.destroy()
     command_client.destroy()
 
-    assert len(node.destroyed_publishers) == 3
-    assert len(node.destroyed_subscriptions) == 5
+    assert len(node.destroyed_publishers) == 4
+    assert len(node.destroyed_subscriptions) == 6
     with pytest.raises(RuntimeError, match="destroyed"):
         command_client.send_angles([100] * 6)
     with pytest.raises(RuntimeError, match="destroyed"):

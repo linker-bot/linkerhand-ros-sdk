@@ -6,11 +6,11 @@
 ## 依赖
 
 ```bash
-python3 -m pip install --upgrade 'linkerbot-hand>=0.1.0,<0.2.0'
+python3 -m pip install --upgrade 'linkerbot-hand>=0.1.0.dev1,<0.2.0'
 ```
 
-如果同一环境还运行机械臂，可以保留 umbrella `linkerbot`；只需确认其依赖解析到了兼容
-的 `linkerbot-hand` 0.1.x。ROS 驱动本身只直接依赖手部发行包。
+ROS 驱动只直接依赖独立发行的 `linkerbot-hand`，由 hand 传递依赖兼容的
+`linkerbot-transport`；不依赖旧聚合 `linkerbot`、机械臂包或 `linkerbot-python-sdk` 仓库。
 
 ## 参数映射
 

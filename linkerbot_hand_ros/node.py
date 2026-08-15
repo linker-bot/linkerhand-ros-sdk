@@ -8,6 +8,12 @@ from typing import Any
 
 import rclpy
 from diagnostic_msgs.msg import DiagnosticArray
+from linkerbot_hand import (
+    CommandHandle,
+    HandSDKError,
+    SensorSample,
+    SensorType,
+)
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.lifecycle import LifecycleNode, LifecycleState, TransitionCallbackReturn
@@ -15,14 +21,7 @@ from rclpy.parameter import Parameter
 from std_msgs.msg import Float64MultiArray, String
 from std_srvs.srv import Trigger
 
-from linkerbot_hand import (
-    CommandHandle,
-    HandSDKError,
-    SensorSample,
-    SensorType,
-)
-
-from .adapter import HandAdapter
+from .adapter import CONTINUOUS_COMMAND_NAMES, HandAdapter
 from .configuration import (
     RUNTIME_RATE_PARAMETERS,
     DriverConfiguration,
@@ -31,7 +30,6 @@ from .configuration import (
 from .diagnostics import build_diagnostic_status
 from .metrics import DriverMetrics
 from .qos import COMMAND_QOS, METADATA_QOS, STATE_QOS
-
 
 _STATE_SENSORS = {
     "angles": SensorType.ANGLES,
@@ -235,7 +233,10 @@ class LinkerbotHandNode(LifecycleNode):
             self._state_publishers[name] = self.create_lifecycle_publisher(
                 Float64MultiArray, f"~/state/{name}", STATE_QOS
             )
-        for command in ("angles", "speeds", "torques"):
+        self._state_publishers["raw_angles"] = self.create_lifecycle_publisher(
+            Float64MultiArray, "~/state/raw_angles", STATE_QOS
+        )
+        for command in CONTINUOUS_COMMAND_NAMES:
             self._accepted_publishers[command] = self.create_publisher(
                 Float64MultiArray,
                 f"~/command/accepted/{command}",
@@ -353,7 +354,7 @@ class LinkerbotHandNode(LifecycleNode):
             return
         subscriptions: list[Any] = []
         try:
-            for command in ("angles", "speeds", "torques"):
+            for command in CONTINUOUS_COMMAND_NAMES:
                 subscriptions.append(
                     self.create_subscription(
                         Float64MultiArray,
@@ -437,6 +438,12 @@ class LinkerbotHandNode(LifecycleNode):
             values.append(numeric)
         return values
 
+    @staticmethod
+    def _raw_numeric_values(sample: SensorSample) -> list[float] | None:
+        if sample.raw_values is None:
+            return None
+        return [float(value) for value in sample.raw_values]
+
     def _run_command(self, command: str, message: Float64MultiArray) -> None:
         adapter = self._adapter
         if not self._active or adapter is None:
@@ -488,6 +495,11 @@ class LinkerbotHandNode(LifecycleNode):
                 if publisher is not None:
                     publisher.publish(self._message(self._numeric_values(sample)))
                     if sensor is SensorType.ANGLES:
+                        raw_values = self._raw_numeric_values(sample)
+                        if raw_values is not None:
+                            self._state_publishers["raw_angles"].publish(
+                                self._message(raw_values)
+                            )
                         self._metrics.record_state_success()
         except Exception as error:
             self._metrics.record_state_error(error)
@@ -541,6 +553,11 @@ class LinkerbotHandNode(LifecycleNode):
             self._state_publishers["angles"].publish(
                 self._message(self._numeric_values(sample))
             )
+            raw_values = self._raw_numeric_values(sample)
+            if raw_values is not None:
+                self._state_publishers["raw_angles"].publish(
+                    self._message(raw_values)
+                )
             self._metrics.record_state_success()
             response.success = True
             response.message = "fresh cached angle state published (no device I/O)"
