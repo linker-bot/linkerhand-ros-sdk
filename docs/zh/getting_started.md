@@ -108,5 +108,6 @@ ros2 service call /linkerbot_hand/read_now std_srvs/srv/Trigger '{}'
 ros2 run linkerbot_hand_ros angle_controller
 ```
 
-建议先从中间值做小范围测试。统一约定为全 `100` 完全张开、全 `0` 完全握拳；首次
-实机验证不应直接从一个机械端点跳到另一个端点。
+建议先从中间值做小范围测试。L6 的全 `100` 整手目标为完全张开、全 `0` 整手目标为
+完全握拳；其中 `thumb_abd` 是方向轴，单独解释时 0/100 表示 capability 声明的位置
+端点。首次实机验证不应直接从一个机械端点跳到另一个端点。

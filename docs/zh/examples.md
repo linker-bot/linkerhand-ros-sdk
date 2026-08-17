@@ -10,7 +10,7 @@ ros2 topic hz /linkerbot_hand/state/angles
 
 ## L6 张开与握拳
 
-所有型号统一为 `100=完全张开，0=完全握拳`。L6 顺序为：
+L6 的全 `100` 整手目标为完全张开、全 `0` 整手目标为完全握拳。L6 顺序为：
 
 ```text
 thumb_flex, thumb_abd, index, middle, ring, pinky
@@ -32,6 +32,9 @@ ros2 topic pub --once /linkerbot_hand/command/angles \
 [100, 100, 100, 100, 100, 100]
 [0, 0, 0, 0, 0, 0]
 ```
+
+该整手姿态约定不表示每个轴都是屈伸轴。`thumb_abd` 等方向轴的单轴 0/100 是 SDK
+capability 声明的两个位置端点；其他型号也必须按各自 capability 解释方向轴。
 
 `ros2 topic pub --once` 会为每条命令创建临时进程并等待 DDS 发现，不能用它的总耗时
 衡量 ROS 回调、SDK dispatch 或 CAN 延迟，也不适合连续控制。
@@ -141,5 +144,5 @@ ros2 topic pub --once /linkerbot_hand/command/torques \
   "{data: [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100]}"
 ```
 
-L30 的百分比角度仍遵循全 100 张开、全 0 握拳，不再由 ROS 按协议最小/最大值自行
-解释或反向。
+L30 的屈伸轴仍遵循 100 张开、0 握拳；侧摆、横滚、旋转和手腕等方向轴按 SDK
+capability 的位置端点解释。ROS 不按协议最小/最大值自行推断或反向。

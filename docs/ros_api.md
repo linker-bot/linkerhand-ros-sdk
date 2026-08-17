@@ -1,8 +1,9 @@
 # ROS 2 API
 
 The lifecycle driver uses the SDK capability model as its only source for joint
-order, ranges, sensor support, and percentage mapping. All models expose
-`100=fully open` and `0=fully closed`. Values are percentages, not radians.
+order, ranges, sensor support, and percentage mapping. Flexion axes expose
+`100=open` and `0=closed`; directional axes use capability-declared position
+endpoints. Values are normalized percentages, not radians.
 `raw_angles` always means exact unified SDK protocol values and never classic
 `standard_raw` or the classic user LUT coordinate.
 
@@ -27,6 +28,9 @@ starts SDK polling. ROS state timers only call `get_snapshot()` and
 | `temperature_hz` | `1.0` | SDK temperature polling rate |
 | `current_hz` | `10.0` | SDK current polling rate |
 | `faults_hz` | `5.0` | SDK fault polling rate |
+| `voltage_hz` | `0.0` | SDK voltage polling rate; zero disables |
+| `acceleration_hz` | `0.0` | SDK acceleration polling rate; zero disables |
+| `motion_time_hz` | `0.0` | SDK motion-time polling rate; zero disables |
 | `diagnostic_rate` | `1.0` | `/diagnostics` publication rate; zero pauses |
 
 Requested sensor rates are capped at each SDK capability's recommended rate;
@@ -37,7 +41,8 @@ The launch-only arguments are `namespace` and `autostart`.
 Polling rates, `publish_rate_hz`, and `diagnostic_rate` are runtime-adjustable.
 An active sensor-rate update atomically replaces the SDK polling plan without
 reopening the transport. Zero stops that sensor's queries and state topic.
-Other parameters remain configure-time snapshots.
+Static parameters are rejected after configure. Deactivate and cleanup before
+changing model, side, transport, command rate, or reconnect policy.
 
 ## Topics
 
@@ -58,6 +63,9 @@ Other parameters remain configure-time snapshots.
 | `~/state/temperature` | `std_msgs/msg/Float64MultiArray` | Publish fresh cache when supported |
 | `~/state/current` | `std_msgs/msg/Float64MultiArray` | Publish fresh cache when supported |
 | `~/state/fault` | `std_msgs/msg/Float64MultiArray` | Publish fresh cache when supported |
+| `~/state/voltage` | `std_msgs/msg/Float64MultiArray` | Publish fresh voltage cache when supported |
+| `~/state/acceleration` | `std_msgs/msg/Float64MultiArray` | Publish fresh acceleration cache when supported |
+| `~/state/motion_time` | `std_msgs/msg/Float64MultiArray` | Publish fresh motion-time cache when supported |
 | `~/joint_names` | `std_msgs/msg/String` | Publish SDK joint order |
 | `~/model` | `std_msgs/msg/String` | Publish normalized model |
 | `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | SDK health and command stages |
@@ -65,7 +73,7 @@ Other parameters remain configure-time snapshots.
 An accepted command is only at SDK `ACCEPTED` stage. It has not necessarily
 been dispatched, acknowledged by the device, or physically completed. Recent
 `accepted/dispatched/acknowledged/failed/superseded` stages are exposed in
-diagnostics, including the most recent `clear_faults` service command.
+diagnostics, including management service commands.
 Continuous commands use latest-wins at both ROS QoS and SDK layers.
 
 An unavailable percentage readback is represented by `NaN` to preserve array
@@ -77,6 +85,13 @@ shape. Invalid or stale samples are not published.
 | --- | --- | --- |
 | `~/read_now` | `std_srvs/srv/Trigger` | Republish fresh angle cache without device I/O |
 | `~/clear_faults` | `std_srvs/srv/Trigger` | Asynchronously submit clear-faults when supported |
+| `~/enable` | `std_srvs/srv/Trigger` | Asynchronously submit device enable when supported |
+| `~/disable` | `std_srvs/srv/Trigger` | Asynchronously submit device disable when supported |
+| `~/calibrate` | `std_srvs/srv/Trigger` | Asynchronously submit calibration when supported |
+
+Trigger success means SDK acceptance only. Inspect diagnostics for dispatch or
+protocol acknowledgement. Tactile force remains in the SDK cache but is not
+flattened into a numeric array; it requires a dedicated structured ROS message.
 
 ## Command Ranges
 

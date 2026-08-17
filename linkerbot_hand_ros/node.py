@@ -23,7 +23,9 @@ from std_srvs.srv import Trigger
 
 from .adapter import CONTINUOUS_COMMAND_NAMES, HandAdapter
 from .configuration import (
+    DRIVER_PARAMETERS,
     RUNTIME_RATE_PARAMETERS,
+    STATIC_PARAMETERS,
     DriverConfiguration,
     read_driver_configuration,
 )
@@ -38,6 +40,9 @@ _STATE_SENSORS = {
     "temperature": SensorType.TEMPERATURE,
     "current": SensorType.CURRENT,
     "fault": SensorType.FAULTS,
+    "voltage": SensorType.VOLTAGE,
+    "acceleration": SensorType.ACCELERATION,
+    "motion_time": SensorType.MOTION_TIME,
 }
 
 
@@ -67,6 +72,9 @@ class LinkerbotHandNode(LifecycleNode):
         self.declare_parameter("temperature_hz", 1.0)
         self.declare_parameter("current_hz", 10.0)
         self.declare_parameter("faults_hz", 5.0)
+        self.declare_parameter("voltage_hz", 0.0)
+        self.declare_parameter("acceleration_hz", 0.0)
+        self.declare_parameter("motion_time_hz", 0.0)
         self.declare_parameter("diagnostic_rate", 1.0)
 
         self._adapter_factory = adapter_factory
@@ -186,7 +194,13 @@ class LinkerbotHandNode(LifecycleNode):
     def on_cleanup(self, state: LifecycleState) -> TransitionCallbackReturn:
         self._active = False
         self._destroy_command_subscriptions()
-        managed_result = super().on_cleanup(state)
+        try:
+            managed_result = super().on_cleanup(state)
+        except Exception as error:
+            managed_result = TransitionCallbackReturn.ERROR
+            self.get_logger().error(
+                f"managed ROS cleanup failed: {self._error_text(error)}"
+            )
         released = self._release_adapter(close=True)
         if released:
             self._adapter = None
@@ -201,7 +215,13 @@ class LinkerbotHandNode(LifecycleNode):
     def on_shutdown(self, state: LifecycleState) -> TransitionCallbackReturn:
         self._active = False
         self._destroy_command_subscriptions()
-        managed_result = super().on_shutdown(state)
+        try:
+            managed_result = super().on_shutdown(state)
+        except Exception as error:
+            managed_result = TransitionCallbackReturn.ERROR
+            self.get_logger().error(
+                f"managed ROS shutdown failed: {self._error_text(error)}"
+            )
         released = self._release_adapter(close=True)
         if released:
             self._adapter = None
@@ -217,7 +237,13 @@ class LinkerbotHandNode(LifecycleNode):
         self._destroy_command_subscriptions()
         if self._state_timer is not None:
             self._state_timer.cancel()
-        managed_result = super().on_error(state)
+        try:
+            managed_result = super().on_error(state)
+        except Exception as error:
+            managed_result = TransitionCallbackReturn.ERROR
+            self.get_logger().error(
+                f"managed ROS error cleanup failed: {self._error_text(error)}"
+            )
         released = self._release_adapter(close=True)
         if released:
             self._adapter = None
@@ -258,6 +284,19 @@ class LinkerbotHandNode(LifecycleNode):
                 callback_group=self.default_callback_group,
             )
         )
+        for service_name, callback in (
+            ("enable", self._enable),
+            ("disable", self._disable),
+            ("calibrate", self._calibrate),
+        ):
+            self._driver_services.append(
+                self.create_service(
+                    Trigger,
+                    f"~/{service_name}",
+                    callback,
+                    callback_group=self.default_callback_group,
+                )
+            )
         self._driver_services.append(
             self.create_service(
                 Trigger,
@@ -308,6 +347,35 @@ class LinkerbotHandNode(LifecycleNode):
     def _on_set_parameters(
         self, parameters: list[Parameter]
     ) -> SetParametersResult:
+        proposed = {
+            parameter.name: parameter.value
+            for parameter in parameters
+            if parameter.name in DRIVER_PARAMETERS
+        }
+        static_updates = {
+            parameter.name
+            for parameter in parameters
+            if parameter.name in STATIC_PARAMETERS
+        }
+        if self._configuration is not None and static_updates:
+            names = ", ".join(sorted(static_updates))
+            return SetParametersResult(
+                successful=False,
+                reason=(
+                    f"static parameters require cleanup before update: {names}"
+                ),
+            )
+        if self._configuration is None and proposed:
+            try:
+                read_driver_configuration(
+                    lambda name: proposed.get(name, self.get_parameter(name).value)
+                )
+            except Exception as error:
+                return SetParametersResult(
+                    successful=False,
+                    reason=self._error_text(error),
+                )
+            return SetParametersResult(successful=True)
         updates = {
             parameter.name: parameter.value
             for parameter in parameters
@@ -318,13 +386,6 @@ class LinkerbotHandNode(LifecycleNode):
 
         configuration = self._configuration
         try:
-            if configuration is None:
-                # Validate values now; configure will read the committed parameters.
-                read_driver_configuration(
-                    lambda name: updates.get(name, self.get_parameter(name).value)
-                )
-                return SetParametersResult(successful=True)
-
             updated = configuration.with_runtime_rates(updates)
             adapter = self._adapter
             old_plan = (
@@ -569,6 +630,41 @@ class LinkerbotHandNode(LifecycleNode):
     def _clear_faults(
         self, _request: Trigger.Request, response: Trigger.Response
     ) -> Trigger.Response:
+        return self._run_discrete_operation(
+            "clear_faults",
+            "fault clearing",
+            "clear_faults",
+            response,
+        )
+
+    def _enable(
+        self, _request: Trigger.Request, response: Trigger.Response
+    ) -> Trigger.Response:
+        return self._run_discrete_operation(
+            "enable", "device enable", "enable", response
+        )
+
+    def _disable(
+        self, _request: Trigger.Request, response: Trigger.Response
+    ) -> Trigger.Response:
+        return self._run_discrete_operation(
+            "disable", "device disable", "enable", response
+        )
+
+    def _calibrate(
+        self, _request: Trigger.Request, response: Trigger.Response
+    ) -> Trigger.Response:
+        return self._run_discrete_operation(
+            "calibrate", "device calibration", "calibration", response
+        )
+
+    def _run_discrete_operation(
+        self,
+        operation: str,
+        description: str,
+        feature: str,
+        response: Trigger.Response,
+    ) -> Trigger.Response:
         adapter = self._adapter
         if not self._active or adapter is None:
             error = RuntimeError("driver is not active")
@@ -576,19 +672,20 @@ class LinkerbotHandNode(LifecycleNode):
             response.success = False
             response.message = "lifecycle node is not active"
             return response
-        if not adapter.capabilities.features.clear_faults:
-            error = RuntimeError("fault clearing is not supported by this model")
+        if not getattr(adapter.capabilities.features, feature):
+            message = f"{description} is not supported by this model"
+            error = RuntimeError(message)
             self._metrics.record_command_error(error)
             response.success = False
-            response.message = "fault clearing is not supported by this model"
+            response.message = message
             return response
         try:
-            handle = adapter.clear_faults()
-            self._latest_handles["clear_faults"] = handle
+            handle = getattr(adapter, operation)()
+            self._latest_handles[operation] = handle
             self._metrics.record_command_success()
             response.success = True
             response.message = (
-                f"fault clear command accepted by SDK (id={handle.command_id}); "
+                f"{description} command accepted by SDK (id={handle.command_id}); "
                 "device dispatch is asynchronous"
             )
         except Exception as error:

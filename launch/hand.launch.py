@@ -23,6 +23,9 @@ def generate_launch_description():
         DeclareLaunchArgument("temperature_hz", default_value="1.0"),
         DeclareLaunchArgument("current_hz", default_value="10.0"),
         DeclareLaunchArgument("faults_hz", default_value="5.0"),
+        DeclareLaunchArgument("voltage_hz", default_value="0.0"),
+        DeclareLaunchArgument("acceleration_hz", default_value="0.0"),
+        DeclareLaunchArgument("motion_time_hz", default_value="0.0"),
         DeclareLaunchArgument("diagnostic_rate", default_value="1.0"),
         DeclareLaunchArgument("namespace", default_value=""),
         DeclareLaunchArgument("autostart", default_value="true"),
@@ -73,6 +76,15 @@ def generate_launch_description():
                 ),
                 "faults_hz": ParameterValue(
                     LaunchConfiguration("faults_hz"), value_type=float
+                ),
+                "voltage_hz": ParameterValue(
+                    LaunchConfiguration("voltage_hz"), value_type=float
+                ),
+                "acceleration_hz": ParameterValue(
+                    LaunchConfiguration("acceleration_hz"), value_type=float
+                ),
+                "motion_time_hz": ParameterValue(
+                    LaunchConfiguration("motion_time_hz"), value_type=float
                 ),
                 "diagnostic_rate": ParameterValue(
                     LaunchConfiguration("diagnostic_rate"), value_type=float

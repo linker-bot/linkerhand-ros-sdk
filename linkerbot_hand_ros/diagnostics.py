@@ -16,7 +16,13 @@ from linkerbot_hand import (
 from .adapter import CONTINUOUS_COMMAND_NAMES
 from .metrics import DriverMetricsSnapshot
 
-TRACKED_COMMAND_NAMES = (*CONTINUOUS_COMMAND_NAMES, "clear_faults")
+TRACKED_COMMAND_NAMES = (
+    *CONTINUOUS_COMMAND_NAMES,
+    "clear_faults",
+    "enable",
+    "disable",
+    "calibrate",
+)
 
 
 def build_diagnostic_status(

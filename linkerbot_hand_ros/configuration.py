@@ -26,10 +26,26 @@ SENSOR_RATE_PARAMETERS = {
     SensorType.TEMPERATURE: "temperature_hz",
     SensorType.CURRENT: "current_hz",
     SensorType.FAULTS: "faults_hz",
+    SensorType.VOLTAGE: "voltage_hz",
+    SensorType.ACCELERATION: "acceleration_hz",
+    SensorType.MOTION_TIME: "motion_time_hz",
 }
 RUNTIME_RATE_PARAMETERS = frozenset(
     (*SENSOR_RATE_PARAMETERS.values(), "publish_rate_hz", "diagnostic_rate")
 )
+STATIC_PARAMETERS = frozenset(
+    {
+        "model",
+        "side",
+        "transport_options_json",
+        "interface_name",
+        "interface_type",
+        "library_path",
+        "command_rate_hz",
+        "auto_reconnect",
+    }
+)
+DRIVER_PARAMETERS = frozenset((*STATIC_PARAMETERS, *RUNTIME_RATE_PARAMETERS))
 RESERVED_TRANSPORT_OPTIONS = {"model", "side", "session_config", "clock"}
 
 
@@ -96,6 +112,7 @@ def read_driver_configuration(read_parameter: ParameterReader) -> DriverConfigur
     """Read and validate all node parameters without performing device I/O."""
     model = str(read_parameter("model"))
     side = str(read_parameter("side"))
+    get_model_capabilities(model, side=side)
     command_rate_hz = _finite_rate(
         "command_rate_hz", read_parameter("command_rate_hz"), allow_zero=False
     )
@@ -209,8 +226,10 @@ def _finite_rate(name: str, value: object, *, allow_zero: bool) -> float:
 
 __all__ = [
     "DriverConfiguration",
+    "DRIVER_PARAMETERS",
     "RUNTIME_RATE_PARAMETERS",
     "SENSOR_RATE_PARAMETERS",
+    "STATIC_PARAMETERS",
     "legacy_transport_options",
     "parse_transport_options",
     "read_driver_configuration",

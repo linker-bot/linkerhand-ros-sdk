@@ -15,7 +15,7 @@ from linkerbot_hand import (
     get_model_capabilities,
 )
 from linkerbot_hand.testing import FakeBackendFactory, wait_until
-from rclpy.lifecycle import TransitionCallbackReturn
+from rclpy.lifecycle import LifecycleNode, TransitionCallbackReturn
 from rclpy.parameter import Parameter
 from std_msgs.msg import Float64MultiArray
 from std_srvs.srv import Trigger
@@ -89,6 +89,9 @@ def make_node_rig(
             Parameter("temperature_hz", value=0.0),
             Parameter("current_hz", value=0.0),
             Parameter("faults_hz", value=0.0),
+            Parameter("voltage_hz", value=0.0),
+            Parameter("acceleration_hz", value=0.0),
+            Parameter("motion_time_hz", value=0.0),
         ],
     )
     return NodeRig(node, backend_factory, adapter_calls)
@@ -276,6 +279,100 @@ def test_runtime_publication_rates_pause_resume_and_reject_invalid(node_rig):
     )
     assert not result.successful
     assert node.get_parameter("angles_hz").value == 60.0
+
+
+def test_static_parameters_require_cleanup_before_update(node_rig):
+    node = node_rig.node
+
+    unconfigured = node.set_parameters_atomically(
+        [Parameter("command_rate_hz", value=80.0)]
+    )
+    assert unconfigured.successful
+    assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+
+    configured = node.set_parameters_atomically(
+        [Parameter("command_rate_hz", value=70.0)]
+    )
+    assert not configured.successful
+    assert "require cleanup" in configured.reason
+    assert node.get_parameter("command_rate_hz").value == 80.0
+
+    assert node.trigger_cleanup() == TransitionCallbackReturn.SUCCESS
+    after_cleanup = node.set_parameters_atomically(
+        [Parameter("command_rate_hz", value=70.0)]
+    )
+    assert after_cleanup.successful
+    assert node.get_parameter("command_rate_hz").value == 70.0
+
+
+def test_unconfigured_parameter_transaction_validates_complete_configuration(node_rig):
+    node = node_rig.node
+
+    invalid_model = node.set_parameters_atomically(
+        [Parameter("model", value="unknown-hand")]
+    )
+    invalid_side = node.set_parameters_atomically(
+        [Parameter("side", value="up")]
+    )
+    invalid_transport = node.set_parameters_atomically(
+        [Parameter("transport_options_json", value="[]")]
+    )
+
+    assert not invalid_model.successful
+    assert "unsupported hand model" in invalid_model.reason
+    assert not invalid_side.successful
+    assert "side must be" in invalid_side.reason
+    assert not invalid_transport.successful
+    assert "JSON object" in invalid_transport.reason
+    assert node.get_parameter("model").value == "L6"
+    assert node.get_parameter("side").value == "left"
+    assert node.get_parameter("transport_options_json").value == "{}"
+
+
+def test_o30i_runtime_numeric_sensor_polling_and_publication():
+    rclpy.init()
+    rig = make_node_rig(model="O30i", angles_hz=0.0)
+    node = rig.node
+    state = rig.backend_factory.state
+    sensor_values = {
+        SensorType.VOLTAGE: (24.1,) * 20,
+        SensorType.ACCELERATION: (3.0,) * 20,
+        SensorType.MOTION_TIME: (12.0,) * 20,
+    }
+    try:
+        for sensor, values in sensor_values.items():
+            state.set_reading(sensor, values)
+        assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+        assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+
+        result = node.set_parameters_atomically(
+            [
+                Parameter("voltage_hz", value=1.0),
+                Parameter("acceleration_hz", value=10.0),
+                Parameter("motion_time_hz", value=10.0),
+            ]
+        )
+        assert result.successful
+        for sensor in sensor_values:
+            wait_until(lambda sensor=sensor: sensor in state.poll_log)
+
+        replacements = {}
+        originals = {}
+        for topic_name in ("voltage", "acceleration", "motion_time"):
+            originals[topic_name] = node._state_publishers[topic_name]
+            replacements[topic_name] = FakePublisher()
+            node._state_publishers[topic_name] = replacements[topic_name]
+        try:
+            node._publish_cached_state()
+        finally:
+            node._state_publishers.update(originals)
+
+        assert list(replacements["voltage"].messages[-1].data) == [24.1] * 20
+        assert list(replacements["acceleration"].messages[-1].data) == [3.0] * 20
+        assert list(replacements["motion_time"].messages[-1].data) == [12.0] * 20
+    finally:
+        node.destroy_node()
+        rclpy.try_shutdown()
 
 
 def test_inactive_rate_update_applies_on_next_activate(node_rig):
@@ -509,6 +606,75 @@ def test_deactivate_stops_polling_but_cleanup_owns_connection_close(node_rig):
     assert node_rig.backend_factory.state.close_count == 1
 
 
+def test_active_shutdown_stops_worker_and_closes_connection(node_rig):
+    node = node_rig.node
+    node.trigger_configure()
+    node.trigger_activate()
+    wait_until(lambda: len(node_rig.backend_factory.state.poll_log) >= 1)
+
+    assert node.trigger_shutdown() == TransitionCallbackReturn.SUCCESS
+    assert not node._active
+    assert node._adapter is None
+    assert node._configuration is None
+    assert node._command_subscriptions == []
+    assert node_rig.backend_factory.state.active_connections == 0
+    assert node_rig.backend_factory.state.close_count == 1
+
+
+@pytest.mark.parametrize(
+    ("callback_name", "base_callback_name"),
+    (
+        ("on_cleanup", "on_cleanup"),
+        ("on_shutdown", "on_shutdown"),
+        ("on_error", "on_error"),
+    ),
+)
+def test_teardown_releases_sdk_when_managed_ros_callback_raises(
+    node_rig, monkeypatch, callback_name, base_callback_name
+):
+    node = node_rig.node
+    node.trigger_configure()
+    node.trigger_activate()
+
+    def fail_managed_callback(_node, _state):
+        raise RuntimeError("injected managed entity failure")
+
+    monkeypatch.setattr(LifecycleNode, base_callback_name, fail_managed_callback)
+
+    result = getattr(node, callback_name)(node._state_machine.current_state)
+
+    assert result == TransitionCallbackReturn.ERROR
+    assert node._adapter is None
+    assert node._configuration is None
+    assert node_rig.backend_factory.state.active_connections == 0
+    assert node_rig.backend_factory.state.close_count == 1
+
+
+def test_deactivate_failure_enters_error_cleanup_and_closes_connection(node_rig):
+    node = node_rig.node
+    node.trigger_configure()
+    node.trigger_activate()
+    adapter = node._adapter
+    real_stop_polling = adapter.stop_polling
+    stop_attempts = 0
+
+    def stop_once_then_succeed():
+        nonlocal stop_attempts
+        stop_attempts += 1
+        if stop_attempts == 1:
+            raise RuntimeError("injected stop failure")
+        real_stop_polling()
+
+    adapter.stop_polling = stop_once_then_succeed
+
+    assert node.trigger_deactivate() == TransitionCallbackReturn.ERROR
+    assert stop_attempts == 2
+    assert node._adapter is None
+    assert node._configuration is None
+    assert node_rig.backend_factory.state.active_connections == 0
+    assert node_rig.backend_factory.state.close_count == 1
+
+
 def test_cleanup_retries_close_from_lifecycle_error_path(node_rig):
     node = node_rig.node
     node.trigger_configure()
@@ -576,6 +742,48 @@ def test_clear_faults_service_returns_at_sdk_acceptance_stage(node_rig):
         for command in node_rig.backend_factory.state.dispatched_commands
     )
     assert handle.stage is CommandStage.DISPATCHED
+
+
+@pytest.mark.parametrize(
+    ("operation", "command_kind"),
+    (
+        ("enable", CommandKind.ENABLE),
+        ("disable", CommandKind.DISABLE),
+        ("calibrate", CommandKind.CALIBRATE),
+    ),
+)
+def test_l30_management_services_return_at_sdk_acceptance(operation, command_kind):
+    rclpy.init()
+    rig = make_node_rig(model="L30", angles_hz=0.0)
+    node = rig.node
+    try:
+        assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+        assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+
+        response = getattr(node, f"_{operation}")(
+            Trigger.Request(), Trigger.Response()
+        )
+
+        assert response.success
+        assert "accepted by SDK" in response.message
+        handle = node._latest_handles[operation]
+        wait_until(lambda: handle.done)
+        assert handle.command.kind is command_kind
+        assert handle.stage is CommandStage.ACKNOWLEDGED
+    finally:
+        node.destroy_node()
+        rclpy.try_shutdown()
+
+
+def test_unsupported_management_service_reports_model_capability(node_rig):
+    node = node_rig.node
+    assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+    assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+
+    response = node._enable(Trigger.Request(), Trigger.Response())
+
+    assert not response.success
+    assert response.message == "device enable is not supported by this model"
 
 
 def test_invalid_transport_json_fails_configure_before_factory_or_io():

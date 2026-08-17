@@ -11,8 +11,9 @@ activate opens the single device connection and starts SDK-owned polling. ROS
 timers only publish cached snapshots, and command callbacks submit latest-wins
 targets without waiting for transport or device acknowledgements.
 
-All models expose the same percentage convention: `100=fully open` and
-`0=fully closed`.
+Flexion axes use `100=fully open` and `0=fully closed`. Directional axes such
+as abduction and rotation use the capability-declared zero/hundred endpoints;
+they must not be described as open/closed.
 Separate `raw_angles` command and cached-state topics expose exact protocol
 coordinates without applying the classic user LUT.
 
@@ -70,6 +71,10 @@ ros2 param set /linkerbot_hand torques_hz 0.0
 ros2 param set /linkerbot_hand publish_rate_hz 0.0
 ros2 param set /linkerbot_hand publish_rate_hz 60.0
 ```
+
+Static connection parameters are accepted only while unconfigured. Run
+`deactivate` and `cleanup` before changing model, side, transport, command
+rate, or reconnect policy.
 
 The launch file defaults to `autostart:=true`. Set it to `false` when an
 external lifecycle manager owns transitions.

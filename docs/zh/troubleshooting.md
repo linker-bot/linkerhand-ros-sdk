@@ -89,6 +89,9 @@ ros2 param get /linkerbot_hand speeds_hz
 ros2 param get /linkerbot_hand torques_hz
 ros2 param get /linkerbot_hand current_hz
 ros2 param get /linkerbot_hand faults_hz
+ros2 param get /linkerbot_hand voltage_hz
+ros2 param get /linkerbot_hand acceleration_hz
+ros2 param get /linkerbot_hand motion_time_hz
 ros2 topic echo --once /diagnostics
 ```
 
@@ -102,6 +105,20 @@ SDK 轮询频率，而不是降低 `publish_rate_hz` 来假设总线查询会同
 `NaN` 表示该轴没有独立百分比回读，不是 0，也不是握拳。数组仍保持与
 `joint_names` 相同长度。业务到位判断应跳过不支持回读的轴，或使用后续强类型状态
 接口中的有效标志。
+
+## 静态参数修改被拒绝
+
+节点 configured、inactive 或 active 时，修改 `model/side/transport_options_json`、旧 transport
+参数、`command_rate_hz` 或 `auto_reconnect` 会返回 `successful=false`。这是为了避免参数
+显示值与现有 `HandDevice` 不一致。按以下顺序切换：
+
+```bash
+ros2 lifecycle set /linkerbot_hand deactivate
+ros2 lifecycle set /linkerbot_hand cleanup
+ros2 param set /linkerbot_hand model o30i
+ros2 lifecycle set /linkerbot_hand configure
+ros2 lifecycle set /linkerbot_hand activate
+```
 
 ## 命令被拒绝
 
@@ -158,3 +175,6 @@ ros2 service call /linkerbot_hand/clear_faults std_srvs/srv/Trigger '{}'
 当前 capability 中 L6、L25 和 O20 支持清错。服务成功只表示异步命令进入 SDK，不代表
 故障已经消失；仍需观察 fault 状态和命令阶段。不要反复清除仍在发生的过温、过流或
 机械卡滞故障。
+
+L30 的 `/enable`、`/disable`、`/calibrate` 同样按 capability 工作；服务成功仅表示 SDK
+接受异步操作。其他型号返回不支持不是 ROS 故障。

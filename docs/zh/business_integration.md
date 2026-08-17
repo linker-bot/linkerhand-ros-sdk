@@ -122,11 +122,18 @@ ros2 lifecycle set /linkerbot_hand cleanup
 - activate 失败时节点关闭候选连接，不留下第二个连接或 worker。
 - deactivate 先撤销命令订阅者，再停止 SDK 轮询，但保留连接。
 - cleanup/shutdown 即使停止轮询失败也会继续尝试关闭。
+- active 直接 shutdown 同样会停止 SDK worker、关闭连接并销毁驱动实体。
+- deactivate 失败会进入 Lifecycle errorprocessing；错误回调再次有界 stop/close，成功后
+  回到 unconfigured，不让 ROS 状态与连接所有权分叉。
+
+静态参数只允许在 unconfigured 状态修改。在线修改仅限各传感器 `*_hz`、
+`publish_rate_hz` 和 `diagnostic_rate`；切换型号、左右手、transport、命令频率或恢复策略
+必须执行 `deactivate -> cleanup -> set parameters -> configure -> activate`。
 
 ## 断线恢复
 
 `auto_reconnect=true` 时 SDK 在自身 worker 中恢复。恢复不会重新执行断线前或断线期间的
-角度、速度、扭矩、张开、握拳或清错命令。`connection_generation` 增加后，业务节点应
+角度、速度、扭矩或离散管理命令。`connection_generation` 增加后，业务节点应
 清除旧到位窗口，等待新一代角度样本，再显式下发新目标。
 
 ## 监控字段

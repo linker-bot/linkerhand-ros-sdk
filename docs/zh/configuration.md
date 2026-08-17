@@ -29,6 +29,9 @@ deactivate 不会自动张开、握拳、清错或重放目标。
 | `temperature_hz` | `1.0` | SDK 温度查询频率，`0` 表示禁用 |
 | `current_hz` | `10.0` | SDK 电流查询频率，`0` 表示禁用 |
 | `faults_hz` | `5.0` | SDK 故障查询频率，`0` 表示禁用 |
+| `voltage_hz` | `0.0` | SDK 电压查询频率，`0` 表示禁用 |
+| `acceleration_hz` | `0.0` | SDK 加速度查询频率，`0` 表示禁用 |
+| `motion_time_hz` | `0.0` | SDK 运动时间查询频率，`0` 表示禁用 |
 | `diagnostic_rate` | `1.0` | `/diagnostics` 发布频率；`0` 表示暂停 |
 
 请求的传感器频率会被限制到 SDK capability 的 `recommended_hz`；型号不支持的传感器
@@ -68,7 +71,14 @@ ros2 param set /linkerbot_hand diagnostic_rate 1.0
 | L30 | 支持 | 不支持 |
 
 其他参数在 configure 时保存快照。`model`、`side`、transport、`command_rate_hz` 和
-`auto_reconnect` 仍需 cleanup 后修改并重新 configure，不在线重建连接或调度器。
+`auto_reconnect` 在 configured/inactive/active 状态会被明确拒绝；必须先 deactivate、
+cleanup，修改后再 configure/activate。unconfigured 状态设置参数时会立即使用 SDK
+能力和完整候选配置校验型号、side、JSON 和频率，不会把无效值暂存到参数服务器。
+
+O30I 支持 `voltage/acceleration/motion_time`，O6 支持 `acceleration`；其他型号若 capability
+未声明，对应非零频率会被限制为 `0`，不会发送无效查询。`force_hz` 可以启动 SDK 触觉
+矩阵轮询，但当前 ROS 兼容接口不会将二维触觉矩阵有损压成 `Float64MultiArray`，需等待
+专用强类型消息。
 
 launch 另外提供 `namespace` 和 `autostart` 参数，它们不是节点参数。
 
@@ -109,6 +119,9 @@ linkerbot_hand:
     temperature_hz: 1.0
     current_hz: 10.0
     faults_hz: 5.0
+    voltage_hz: 0.0
+    acceleration_hz: 0.0
+    motion_time_hz: 0.0
     diagnostic_rate: 1.0
 ```
 

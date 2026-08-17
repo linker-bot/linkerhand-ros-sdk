@@ -23,7 +23,8 @@ SDK 单 I/O worker -> transport -> 灵巧手
 - ROS 发布定时器只读取 SDK 缓存，不产生设备 I/O。
 - 连续命令采用 latest-wins，回调不等待 transport 或设备 ACK。
 - `on_deactivate` 停止轮询，`on_cleanup/on_shutdown` 关闭连接。
-- 所有型号统一使用 `100=完全张开，0=完全握拳` 的对外百分比约定。
+- 屈伸轴统一使用 `100=完全张开，0=完全握拳`；侧摆、旋转等方向轴的 0/100
+  表示 capability 定义的两个位置端点，不能解释成张开/握拳。
 - 另行提供协议 `raw_angles` 命令与缓存状态；该坐标绕过 classic 用户 LUT。
 
 ## 环境要求
@@ -95,6 +96,9 @@ ros2 param set /linkerbot_hand publish_rate_hz 0.0
 ros2 param set /linkerbot_hand publish_rate_hz 60.0
 ```
 
+`model`、`side`、transport、命令频率和重连策略只允许在 unconfigured 状态修改；
+已配置后必须先 deactivate 和 cleanup，避免参数显示值与实际连接不一致。
+
 连续控制应使用常驻客户端，避免每条命令重新启动进程并等待 DDS 发现：
 
 ```bash
@@ -125,7 +129,8 @@ ros2 run linkerbot_hand_ros angle_controller
 
 ## 安全说明
 
-`100/0` 是统一的张开度目标，不代表弧度，也不代表所有轴都有可观测的百分比回读。
+屈伸轴的 `100/0` 是统一的张开度目标，方向轴的 `100/0` 是位置端点；这些值不代表
+弧度，也不代表所有轴都有可观测的百分比回读。
 首次连接实物时应先验证型号、左右手、关节顺序、总线和急停，从中间值、低速度和保守
 扭矩开始。DDS ACK、SDK `ACCEPTED`、设备协议 ACK 和机械到位是四种不同状态，业务
 安全逻辑必须根据有效且未过期的状态反馈判断到位。

@@ -13,4 +13,7 @@ linkerbot_hand:
     temperature_hz: 1.0
     current_hz: 10.0
     faults_hz: 5.0
+    voltage_hz: 0.0
+    acceleration_hz: 0.0
+    motion_time_hz: 0.0
     diagnostic_rate: 1.0

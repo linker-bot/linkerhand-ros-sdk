@@ -184,6 +184,15 @@ class HandAdapter:
     def clear_faults(self) -> CommandHandle:
         return self._device.clear_faults()
 
+    def enable(self) -> CommandHandle:
+        return self._device.enable()
+
+    def disable(self) -> CommandHandle:
+        return self._device.disable()
+
+    def calibrate(self) -> CommandHandle:
+        return self._device.calibrate()
+
     def get_snapshot(self) -> HandSnapshot:
         return self._device.get_snapshot()
 

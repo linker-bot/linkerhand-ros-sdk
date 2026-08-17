@@ -19,7 +19,7 @@ ROS 驱动只直接依赖独立发行的 `linkerbot-hand`，由 hand 传递依�
 | `poll_rate` | `angles_hz` | 设备角度查询由 SDK 执行 |
 | 无 | `publish_rate_hz` | ROS 缓存发布频率，与设备查询解耦 |
 | `publish_optional_state` | 删除 | 将不需要的传感器频率设为 0 |
-| `optional_state_rate` | `temperature_hz/current_hz/faults_hz` | 每种传感器独立配置 |
+| `optional_state_rate` | 各传感器 `*_hz` | 每种传感器独立配置，包括 voltage/acceleration/motion_time |
 | `timeout_ms` | 删除 | 阻塞读取已从 ROS 路径移除 |
 | 无 | `command_rate_hz` | SDK transport 连续命令限频 |
 | 无 | `auto_reconnect` | SDK 恢复策略 |
@@ -46,9 +46,13 @@ ros2 launch linkerbot_hand_ros hand.launch.py \
 - inactive 状态没有运动命令订阅者。
 - `command/accepted/*` 只对应 SDK `ACCEPTED`，不是 transport 已发送。
 - 最近 `dispatched/acknowledged/failed/superseded` 阶段通过诊断观察。
-- 所有型号统一为 `100=完全张开，0=完全握拳`。
+- 屈伸轴统一为 `100=完全张开，0=完全握拳`；方向轴的 0/100 表示 capability
+  声明的两个位置端点。
 - 无百分比回读的轴在兼容角度数组中为 `NaN`。
 - 自动重连不重放旧目标，generation 变化后业务必须显式下发新目标。
+- 静态参数在 configure 后不再表面接受；切换连接配置必须先 cleanup。
+- L30 的 enable/disable/calibrate 通过异步 Trigger 服务进入 SDK 离散 FIFO。
+- force 触觉矩阵暂不展开为兼容数值数组，等待专用强类型 ROS 消息。
 
 ## 上线核对
 

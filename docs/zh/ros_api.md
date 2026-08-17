@@ -5,15 +5,17 @@
 
 ## 角度约定
 
-所有型号对外统一为：
+所有屈伸轴对外统一为：
 
 ```text
 100 = 完全张开
 0   = 完全握拳
 ```
 
-该值是百分比，不是弧度。SDK capability 是关节顺序、范围、整数约束、传感器能力和
-原始值映射的唯一数据源，ROS 不维护第二份型号表。
+该值是百分比，不是弧度。侧摆、横滚、旋转和手腕等方向轴使用 capability 声明的
+`zero_endpoint` 和 `hundred_endpoint`，0/100 是两个位置端点，不是握拳/张开。SDK
+capability 是关节顺序、范围、整数约束、传感器能力和原始值映射的唯一数据源，ROS
+不维护第二份型号表。
 
 `raw_angles` 始终表示 SDK unified API 的协议原值（`protocol_raw`），即 CAN/CAN FD 实际
 发送和读取的坐标。它不会经过 L6/O6/L20Lite/L25 旧 manager 的用户 LUT，也不等同于旧
@@ -42,6 +44,9 @@
 | `/linkerbot_hand/state/temperature` | `std_msgs/msg/Float64MultiArray` | 发布 | 有效且未过期的缓存温度 |
 | `/linkerbot_hand/state/current` | `std_msgs/msg/Float64MultiArray` | 发布 | 有效且未过期的缓存电流 |
 | `/linkerbot_hand/state/fault` | `std_msgs/msg/Float64MultiArray` | 发布 | 有效且未过期的缓存故障值 |
+| `/linkerbot_hand/state/voltage` | `std_msgs/msg/Float64MultiArray` | 发布 | 型号支持时发布有效电压缓存 |
+| `/linkerbot_hand/state/acceleration` | `std_msgs/msg/Float64MultiArray` | 发布 | 型号支持时发布有效加速度缓存 |
+| `/linkerbot_hand/state/motion_time` | `std_msgs/msg/Float64MultiArray` | 发布 | 型号支持时发布有效运动时间缓存 |
 | `/linkerbot_hand/joint_names` | `std_msgs/msg/String` | 发布 | 逗号分隔的 SDK 关节顺序 |
 | `/linkerbot_hand/model` | `std_msgs/msg/String` | 发布 | 小写规范化型号名 |
 | `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | 发布 | SDK 健康、缓存年龄和命令阶段 |
@@ -75,7 +80,7 @@ SDK `PollingPlan` 决定。轮询频率参数可在 active 状态动态修改，
 | `failed` | 发送、通信或设备确认失败 |
 | `superseded` | 发送前被更新目标覆盖，符合 latest-wins |
 
-最近三类连续命令的 ID、stage 和错误码位于 `/diagnostics`：
+最近连续命令和离散管理操作的 ID、stage 和错误码位于 `/diagnostics`：
 
 ```text
 latest_angles_command_id / latest_angles_stage / latest_angles_error_code
@@ -83,6 +88,9 @@ latest_raw_angles_command_id / latest_raw_angles_stage / latest_raw_angles_error
 latest_speeds_command_id / latest_speeds_stage / latest_speeds_error_code
 latest_torques_command_id / latest_torques_stage / latest_torques_error_code
 latest_clear_faults_command_id / latest_clear_faults_stage / latest_clear_faults_error_code
+latest_enable_command_id / latest_enable_stage / latest_enable_error_code
+latest_disable_command_id / latest_disable_stage / latest_disable_error_code
+latest_calibrate_command_id / latest_calibrate_stage / latest_calibrate_error_code
 ```
 
 O30I 的连续命令支持设备协议 ACK。L6 等不支持 ACK 的型号以 `dispatched` 为成功终态。
@@ -95,14 +103,26 @@ O30I 的连续命令支持设备协议 ACK。L6 等不支持 ACK 的型号以 `d
 | --- | --- | --- |
 | `/linkerbot_hand/read_now` | `std_srvs/srv/Trigger` | 立即发布当前新鲜角度缓存，不产生设备 I/O |
 | `/linkerbot_hand/clear_faults` | `std_srvs/srv/Trigger` | 提交异步清错命令，成功仅表示 SDK 接受 |
+| `/linkerbot_hand/enable` | `std_srvs/srv/Trigger` | 型号支持时提交异步使能命令 |
+| `/linkerbot_hand/disable` | `std_srvs/srv/Trigger` | 型号支持时提交异步禁用命令 |
+| `/linkerbot_hand/calibrate` | `std_srvs/srv/Trigger` | 型号支持时提交异步标定命令 |
 
 ```bash
 ros2 service call /linkerbot_hand/read_now std_srvs/srv/Trigger '{}'
 ros2 service call /linkerbot_hand/clear_faults std_srvs/srv/Trigger '{}'
+ros2 service call /linkerbot_hand/enable std_srvs/srv/Trigger '{}'
+ros2 service call /linkerbot_hand/disable std_srvs/srv/Trigger '{}'
+ros2 service call /linkerbot_hand/calibrate std_srvs/srv/Trigger '{}'
 ```
 
 当前 SDK capability 中 L6、L25 和 O20 支持清错；其他型号会明确返回
-`success=false`。inactive 状态下两个服务都不会操作设备。
+`success=false`。L30 支持 enable、disable 和 calibrate；其他型号会按 capability 拒绝。
+Trigger 的 `success=true` 只表示 SDK 接受，dispatch 或协议 ACK 应从诊断读取。inactive
+状态下所有管理服务都不会操作设备。
+
+触觉 force 是按手指组织的二维矩阵，当前不会有损展开为数值数组 Topic；`force_hz` 仅控制
+SDK 缓存轮询。正式 ROS 对接需要后续增加包含矩阵形状、在线状态、采样时间和 generation
+的专用强类型消息。
 
 Lifecycle 节点同时提供标准的 `change_state`、`get_state`、
 `get_available_states` 和 `get_available_transitions` 服务。

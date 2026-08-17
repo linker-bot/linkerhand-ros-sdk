@@ -30,6 +30,9 @@ def _parameters(**overrides):
         "temperature_hz": 1.0,
         "current_hz": 10.0,
         "faults_hz": 5.0,
+        "voltage_hz": 0.0,
+        "acceleration_hz": 0.0,
+        "motion_time_hz": 0.0,
         "diagnostic_rate": 1.0,
     }
     values.update(overrides)
@@ -63,6 +66,9 @@ def test_polling_plan_caps_rates_and_disables_unsupported_sensors():
             temperature_hz=999.0,
             current_hz=999.0,
             faults_hz=999.0,
+            voltage_hz=999.0,
+            acceleration_hz=999.0,
+            motion_time_hz=999.0,
         ).__getitem__
     )
     capabilities = get_model_capabilities("o30i")
@@ -73,6 +79,15 @@ def test_polling_plan_caps_rates_and_disables_unsupported_sensors():
     assert plan.angles_hz == capabilities.sensor(SensorType.ANGLES).recommended_hz
     assert plan.speeds_hz == capabilities.sensor(SensorType.SPEEDS).recommended_hz
     assert plan.torques_hz == capabilities.sensor(SensorType.TORQUES).recommended_hz
+    assert plan.voltage_hz == capabilities.sensor(SensorType.VOLTAGE).recommended_hz
+    assert (
+        plan.acceleration_hz
+        == capabilities.sensor(SensorType.ACCELERATION).recommended_hz
+    )
+    assert (
+        plan.motion_time_hz
+        == capabilities.sensor(SensorType.MOTION_TIME).recommended_hz
+    )
     assert (
         plan.temperature_hz
         == capabilities.sensor(SensorType.TEMPERATURE).recommended_hz
@@ -101,6 +116,22 @@ def test_configuration_rejects_reserved_transport_keys_and_non_finite_rates():
 
     with pytest.raises(ValueError, match="command_rate_hz must be finite"):
         read_driver_configuration(_parameters(command_rate_hz=True).__getitem__)
+
+
+def test_configuration_always_validates_sdk_model_and_side_with_json_transport():
+    transport = '{"interface_name":"can0","interface_type":"socketcan"}'
+
+    with pytest.raises(ValueError, match="unsupported hand model"):
+        read_driver_configuration(
+            _parameters(
+                model="unknown-hand", transport_options_json=transport
+            ).__getitem__
+        )
+
+    with pytest.raises(ValueError, match="side must be"):
+        read_driver_configuration(
+            _parameters(side="up", transport_options_json=transport).__getitem__
+        )
 
 
 def test_runtime_rates_can_be_updated_and_disabled():
@@ -146,6 +177,9 @@ def test_polling_plan_uses_sdk_sensor_capabilities_for_every_model(model):
             temperature_hz=999.0,
             current_hz=999.0,
             faults_hz=999.0,
+            voltage_hz=999.0,
+            acceleration_hz=999.0,
+            motion_time_hz=999.0,
         ).__getitem__
     )
     capabilities = get_model_capabilities(model)
