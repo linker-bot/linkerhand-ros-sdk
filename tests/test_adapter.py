@@ -58,6 +58,36 @@ def test_adapter_construction_performs_no_device_io(adapter_rig):
     assert backend_factory.state.io_count == 0
 
 
+def test_adapter_rejects_injected_device_with_different_known_side():
+    capabilities = get_model_capabilities("l6", side=HandSide.RIGHT)
+    device = HandDevice(capabilities, FakeBackendFactory(capabilities))
+
+    try:
+        with pytest.raises(
+            ValidationError, match="device side right.*requested side left"
+        ):
+            HandAdapter("l6", side="left", device=device)
+    finally:
+        device.close()
+
+
+@pytest.mark.parametrize(
+    ("device_side", "requested_side"),
+    (
+        (HandSide.UNKNOWN, HandSide.LEFT),
+        (HandSide.RIGHT, HandSide.UNKNOWN),
+    ),
+)
+def test_adapter_accepts_injected_device_when_either_side_is_unknown(
+    device_side, requested_side
+):
+    capabilities = get_model_capabilities("l6", side=device_side)
+    device = HandDevice(capabilities, FakeBackendFactory(capabilities))
+
+    adapter = HandAdapter("l6", side=requested_side.value, device=device)
+    adapter.close()
+
+
 def test_adapter_uses_sdk_polling_and_cached_snapshot(adapter_rig):
     adapter, backend_factory = adapter_rig
     backend_factory.state.set_reading(

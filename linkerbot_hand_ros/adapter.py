@@ -11,6 +11,7 @@ from linkerbot_hand import (
     CommandPolicy,
     DeviceCapabilities,
     HandDevice,
+    HandSide,
     HandSnapshot,
     HealthStatus,
     NumericRange,
@@ -142,6 +143,15 @@ class HandAdapter:
             raise ValidationError(
                 f"injected device model {capabilities.model} does not match "
                 f"requested model {requested.model}"
+            )
+        if (
+            capabilities.side is not HandSide.UNKNOWN
+            and requested.side is not HandSide.UNKNOWN
+            and capabilities.side is not requested.side
+        ):
+            raise ValidationError(
+                f"injected device side {capabilities.side.value} does not match "
+                f"requested side {requested.side.value}"
             )
 
     @property
