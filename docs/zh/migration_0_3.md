@@ -6,7 +6,7 @@
 ## 依赖
 
 ```bash
-python3 -m pip install --upgrade 'linkerbot-hand>=0.1.0.dev1,<0.2.0'
+python3 -m pip install --upgrade 'linkerbot-hand>=0.1.0,<0.2.0'
 ```
 
 ROS 驱动只直接依赖独立发行的 `linkerbot-hand`，由 hand 传递依赖兼容的

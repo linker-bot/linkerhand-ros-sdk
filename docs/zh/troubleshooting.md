@@ -26,7 +26,7 @@ ModuleNotFoundError: No module named 'linkerbot_hand'
 
 ```bash
 python3 -c 'import sys; print(sys.executable)'
-python3 -m pip install 'linkerbot-hand>=0.1.0.dev1,<0.2.0'
+python3 -m pip install 'linkerbot-hand>=0.1.0,<0.2.0'
 python3 -c 'import linkerbot_hand; print(linkerbot_hand.__file__)'
 ```
 

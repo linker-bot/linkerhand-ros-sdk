@@ -4,7 +4,7 @@
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-python3 -m pip install 'linkerbot-hand>=0.1.0.dev1,<0.2.0'
+python3 -m pip install 'linkerbot-hand>=0.1.0,<0.2.0'
 sudo apt update
 sudo apt install python3-colcon-common-extensions python3-rosdep can-utils
 ```

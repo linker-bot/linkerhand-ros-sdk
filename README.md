@@ -21,12 +21,12 @@ coordinates without applying the classic user LUT.
 
 - Ubuntu 24.04 with ROS 2 Jazzy
 - Python 3.10 or newer
-- `linkerbot-hand>=0.1.0.dev1,<0.2.0`
+- `linkerbot-hand>=0.1.0,<0.2.0`
 - A configured SocketCAN/CAN FD interface or supported vendor library
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-python3 -m pip install 'linkerbot-hand>=0.1.0.dev1,<0.2.0'
+python3 -m pip install 'linkerbot-hand>=0.1.0,<0.2.0'
 ```
 
 For local SDK development, install the independent repositories. Installing
