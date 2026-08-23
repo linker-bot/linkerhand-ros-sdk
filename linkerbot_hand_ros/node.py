@@ -385,6 +385,11 @@ class LinkerbotHandNode(LifecycleNode):
             return SetParametersResult(successful=True)
 
         configuration = self._configuration
+        if configuration is None:
+            return SetParametersResult(
+                successful=False,
+                reason="driver configuration is unavailable",
+            )
         try:
             updated = configuration.with_runtime_rates(updates)
             adapter = self._adapter

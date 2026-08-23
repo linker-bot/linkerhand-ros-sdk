@@ -54,7 +54,7 @@ def test_configuration_is_snapshotted_and_json_options_take_precedence():
     assert dict(configuration.sensor_rates)[SensorType.ANGLES] == 60.0
 
 
-def test_polling_plan_caps_rates_and_disables_unsupported_sensors():
+def test_polling_plan_preserves_rates_and_disables_unsupported_sensors():
     configuration = read_driver_configuration(
         _parameters(
             model="o30i",
@@ -76,22 +76,13 @@ def test_polling_plan_caps_rates_and_disables_unsupported_sensors():
     plan = configuration.polling_plan(capabilities)
 
     assert plan.force_hz == 0.0
-    assert plan.angles_hz == capabilities.sensor(SensorType.ANGLES).recommended_hz
-    assert plan.speeds_hz == capabilities.sensor(SensorType.SPEEDS).recommended_hz
-    assert plan.torques_hz == capabilities.sensor(SensorType.TORQUES).recommended_hz
-    assert plan.voltage_hz == capabilities.sensor(SensorType.VOLTAGE).recommended_hz
-    assert (
-        plan.acceleration_hz
-        == capabilities.sensor(SensorType.ACCELERATION).recommended_hz
-    )
-    assert (
-        plan.motion_time_hz
-        == capabilities.sensor(SensorType.MOTION_TIME).recommended_hz
-    )
-    assert (
-        plan.temperature_hz
-        == capabilities.sensor(SensorType.TEMPERATURE).recommended_hz
-    )
+    assert plan.angles_hz == 999.0
+    assert plan.speeds_hz == 999.0
+    assert plan.torques_hz == 999.0
+    assert plan.voltage_hz == 999.0
+    assert plan.acceleration_hz == 999.0
+    assert plan.motion_time_hz == 999.0
+    assert plan.temperature_hz == 999.0
 
 
 @pytest.mark.parametrize(
@@ -188,11 +179,7 @@ def test_polling_plan_uses_sdk_sensor_capabilities_for_every_model(model):
 
     for sensor in SENSOR_RATE_PARAMETERS:
         sensor_capability = capabilities.sensor(sensor)
-        expected = (
-            0.0
-            if sensor_capability is None
-            else sensor_capability.recommended_hz
-        )
+        expected = 0.0 if sensor_capability is None else 999.0
         assert rates[sensor] == expected
 
 
@@ -207,11 +194,7 @@ def test_runtime_speed_and_torque_rates_can_be_disabled_for_every_model(model):
 
     for sensor in (SensorType.SPEEDS, SensorType.TORQUES):
         sensor_capability = capabilities.sensor(sensor)
-        expected = (
-            0.0
-            if sensor_capability is None
-            else sensor_capability.recommended_hz
-        )
+        expected = 0.0 if sensor_capability is None else 999.0
         assert enabled[sensor] == expected
 
     disabled = configuration.with_runtime_rates(

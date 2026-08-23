@@ -65,16 +65,12 @@ class DriverConfiguration:
     sensor_rates: tuple[tuple[SensorType, float], ...]
 
     def polling_plan(self, capabilities: DeviceCapabilities) -> PollingPlan:
-        """Build a capability-limited SDK polling plan."""
+        """Build an SDK polling plan with unsupported sensors disabled."""
         rates: dict[str, float] = {}
         for sensor, requested in self.sensor_rates:
             sensor_capability = capabilities.sensor(sensor)
             parameter_name = SENSOR_RATE_PARAMETERS[sensor]
-            rates[parameter_name] = (
-                0.0
-                if sensor_capability is None
-                else min(requested, sensor_capability.recommended_hz)
-            )
+            rates[parameter_name] = 0.0 if sensor_capability is None else requested
         return PollingPlan(**rates)
 
     def with_runtime_rates(self, updates: dict[str, object]) -> "DriverConfiguration":
@@ -209,14 +205,10 @@ def legacy_transport_options(
 
 
 def _finite_rate(name: str, value: object, *, allow_zero: bool) -> float:
-    if isinstance(value, bool):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         qualifier = "non-negative" if allow_zero else "positive"
         raise ValueError(f"{name} must be finite and {qualifier}")
-    try:
-        rate = float(value)
-    except (TypeError, ValueError, OverflowError) as error:
-        qualifier = "non-negative" if allow_zero else "positive"
-        raise ValueError(f"{name} must be finite and {qualifier}") from error
+    rate = float(value)
     invalid = not math.isfinite(rate) or rate < 0.0 or (not allow_zero and rate == 0.0)
     if invalid:
         qualifier = "non-negative" if allow_zero else "positive"

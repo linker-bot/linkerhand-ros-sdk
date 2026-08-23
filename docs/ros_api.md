@@ -33,9 +33,10 @@ starts SDK polling. ROS state timers only call `get_snapshot()` and
 | `motion_time_hz` | `0.0` | SDK motion-time polling rate; zero disables |
 | `diagnostic_rate` | `1.0` | `/diagnostics` publication rate; zero pauses |
 
-Requested sensor rates are capped at each SDK capability's recommended rate;
-unsupported sensors are disabled. Legacy `interface_name`, `interface_type`,
-and `library_path` parameters apply only when `transport_options_json` is `{}`.
+Requested rates are passed to the SDK unchanged for supported sensors;
+`recommended_hz` is guidance rather than a limit. Unsupported sensors are
+disabled. Legacy `interface_name`, `interface_type`, and `library_path`
+parameters apply only when `transport_options_json` is `{}`.
 The launch-only arguments are `namespace` and `autostart`.
 
 Polling rates, `publish_rate_hz`, and `diagnostic_rate` are runtime-adjustable.

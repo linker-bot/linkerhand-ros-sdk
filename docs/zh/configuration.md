@@ -34,9 +34,9 @@ deactivate 不会自动张开、握拳、清错或重放目标。
 | `motion_time_hz` | `0.0` | SDK 运动时间查询频率，`0` 表示禁用 |
 | `diagnostic_rate` | `1.0` | `/diagnostics` 发布频率；`0` 表示暂停 |
 
-请求的传感器频率会被限制到 SDK capability 的 `recommended_hz`；型号不支持的传感器
-自动设为 `0`。`publish_rate_hz` 与设备查询频率相互独立，即使把发布频率设得更高也
-不会增加总线查询次数。
+型号支持的传感器频率会按用户请求值原样交给 SDK；capability 的 `recommended_hz`
+仅是推荐值，不是硬上限。型号不支持的传感器自动设为 `0`。`publish_rate_hz` 与设备
+查询频率相互独立，即使把发布频率设得更高也不会增加总线查询次数。
 
 上述轮询频率、`publish_rate_hz` 和 `diagnostic_rate` 可在 launch 后动态修改。active
 状态下传感器频率会原子替换 SDK `PollingPlan`，不会重建 CAN 连接；设为 `0` 会停止
