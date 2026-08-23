@@ -77,9 +77,7 @@ def main(args: list[str] | None = None) -> None:
     if parsed.print_interval <= 0.0:
         raise SystemExit("--print-interval 必须大于 0")
     rclpy.init(args=raw_args)
-    node = StateMonitor(
-        parsed.names_topic, parsed.angles_topic, parsed.print_interval
-    )
+    node = StateMonitor(parsed.names_topic, parsed.angles_topic, parsed.print_interval)
     try:
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):

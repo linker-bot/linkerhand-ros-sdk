@@ -344,9 +344,7 @@ class LinkerbotHandNode(LifecycleNode):
             enabled=True,
         )
 
-    def _on_set_parameters(
-        self, parameters: list[Parameter]
-    ) -> SetParametersResult:
+    def _on_set_parameters(self, parameters: list[Parameter]) -> SetParametersResult:
         proposed = {
             parameter.name: parameter.value
             for parameter in parameters
@@ -361,9 +359,7 @@ class LinkerbotHandNode(LifecycleNode):
             names = ", ".join(sorted(static_updates))
             return SetParametersResult(
                 successful=False,
-                reason=(
-                    f"static parameters require cleanup before update: {names}"
-                ),
+                reason=(f"static parameters require cleanup before update: {names}"),
             )
         if self._configuration is None and proposed:
             try:
@@ -621,9 +617,7 @@ class LinkerbotHandNode(LifecycleNode):
             )
             raw_values = self._raw_numeric_values(sample)
             if raw_values is not None:
-                self._state_publishers["raw_angles"].publish(
-                    self._message(raw_values)
-                )
+                self._state_publishers["raw_angles"].publish(self._message(raw_values))
             self._metrics.record_state_success()
             response.success = True
             response.message = "fresh cached angle state published (no device I/O)"

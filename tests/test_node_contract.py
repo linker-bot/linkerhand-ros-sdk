@@ -154,9 +154,7 @@ def test_runtime_sensor_rates_reconfigure_sdk_polling_and_state_topics(node_rig)
             Parameter("torques_hz", value=30.0),
         ]
     )
-    wait_until(
-        lambda: SensorType.TORQUES in state.poll_log
-    )
+    wait_until(lambda: SensorType.TORQUES in state.poll_log)
     original_torques = node._state_publishers["torques"]
     torques = FakePublisher()
     node._state_publishers["torques"] = torques
@@ -274,9 +272,7 @@ def test_runtime_publication_rates_pause_resume_and_reject_invalid(node_rig):
     assert node._state_timer.timer_period_ns == 50_000_000
     assert node._diagnostic_timer.timer_period_ns == 500_000_000
 
-    result = node.set_parameters_atomically(
-        [Parameter("angles_hz", value=-1.0)]
-    )
+    result = node.set_parameters_atomically([Parameter("angles_hz", value=-1.0)])
     assert not result.successful
     assert node.get_parameter("angles_hz").value == 60.0
 
@@ -311,9 +307,7 @@ def test_unconfigured_parameter_transaction_validates_complete_configuration(nod
     invalid_model = node.set_parameters_atomically(
         [Parameter("model", value="unknown-hand")]
     )
-    invalid_side = node.set_parameters_atomically(
-        [Parameter("side", value="up")]
-    )
+    invalid_side = node.set_parameters_atomically([Parameter("side", value="up")])
     invalid_transport = node.set_parameters_atomically(
         [Parameter("transport_options_json", value="[]")]
     )
@@ -383,9 +377,7 @@ def test_inactive_rate_update_applies_on_next_activate(node_rig):
     wait_until(lambda: SensorType.ANGLES in state.poll_log)
     node.trigger_deactivate()
 
-    result = node.set_parameters_atomically(
-        [Parameter("angles_hz", value=0.0)]
-    )
+    result = node.set_parameters_atomically([Parameter("angles_hz", value=0.0)])
     state.poll_log.clear()
     node.trigger_activate()
     time.sleep(0.05)
@@ -393,9 +385,7 @@ def test_inactive_rate_update_applies_on_next_activate(node_rig):
     assert result.successful
     assert SensorType.ANGLES not in state.poll_log
 
-    result = node.set_parameters_atomically(
-        [Parameter("angles_hz", value=60.0)]
-    )
+    result = node.set_parameters_atomically([Parameter("angles_hz", value=60.0)])
     wait_until(lambda: SensorType.ANGLES in state.poll_log)
 
     assert result.successful
@@ -760,9 +750,7 @@ def test_l30_management_services_return_at_sdk_acceptance(operation, command_kin
         assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
         assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
 
-        response = getattr(node, f"_{operation}")(
-            Trigger.Request(), Trigger.Response()
-        )
+        response = getattr(node, f"_{operation}")(Trigger.Request(), Trigger.Response())
 
         assert response.success
         assert "accepted by SDK" in response.message

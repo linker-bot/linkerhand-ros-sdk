@@ -92,9 +92,7 @@ def main(args: list[str] | None = None) -> None:
             try:
                 values = _parse_values(stripped)
                 if not command_client.is_ready():
-                    if not spin_until_ready(
-                        node, command_client, parsed.wait_timeout
-                    ):
+                    if not spin_until_ready(node, command_client, parsed.wait_timeout):
                         raise RuntimeError(f"等待驱动就绪超时: {driver_name}")
                 receipt = command_client.send_angles(
                     values,
