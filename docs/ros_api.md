@@ -98,10 +98,19 @@ flattened into a numeric array; it requires a dedicated structured ROS message.
 
 | Model | Angles | Speeds | Torques |
 | --- | --- | --- | --- |
-| O6, L6, L20Lite, L25 | 0–100 | 0–100 | 0–100 |
-| O20 | 0–100 | 0–100 integer | 0–1000 integer |
+| L6 | 0–100 | 0–100 dimensionless | 0–1400 mA |
+| O6 | 0–100 | 0–180 RPM | 0–1000 mA |
+| L20Lite, L25 | 0–100 | 0–100 dimensionless | 0–100 dimensionless |
+| O20 | 0–100 | target 0–100 integer | 0–1000 integer at 6.5 mA/LSB |
 | O30I | 0–100 | 0–255 integer | 0–255 integer |
-| L30 | 0–100 | 1–250 integer | 60–800 integer |
+| L30 | 0–100 | 1–250 protocol units | 390–5200 mA, quantized to 6.5 mA |
+
+L30 current state is mA; each sample's protocol integer is retained in the SDK
+raw cache. L6 speed is write-only: its accepted target is available on the
+accepted command topic, while no measured speed state is published. O6 speed
+state is RPM and torque state is mA; O20 speed state is RPM. Exact protocol
+values remain in the SDK sensor sample raw cache and are not duplicated as ROS
+numeric state topics.
 
 For full lifecycle, diagnostics, joint orders, and business semantics, see the
 [Chinese API reference](zh/ros_api.md).

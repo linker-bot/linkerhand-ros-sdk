@@ -49,6 +49,22 @@ def test_sdk_capabilities_are_the_only_model_metadata_source():
     assert normalize_model("L20-Lite") == "l20lite"
 
 
+def test_adapter_uses_sdk_physical_unit_contracts_without_local_model_specs():
+    l6 = get_model_capabilities("L6")
+    o6 = get_model_capabilities("O6")
+    o20 = get_model_capabilities("O20")
+    l30 = get_model_capabilities("L30")
+
+    assert l6.sensor(SensorType.SPEEDS) is None
+    assert l6.joints[0].torque_range.unit == "mA"
+    assert o6.joints[0].speed_range.unit == "rpm"
+    assert o6.sensor(SensorType.SPEEDS).unit == "rpm"
+    assert o20.joints[0].speed_range.unit == "protocol_unit"
+    assert o20.sensor(SensorType.SPEEDS).unit == "rpm"
+    assert l30.joints[0].torque_range.unit == "mA"
+    assert l30.joints[0].torque_range.integer_only is False
+
+
 def test_adapter_construction_performs_no_device_io(adapter_rig):
     adapter, backend_factory = adapter_rig
 
@@ -194,8 +210,9 @@ def test_validation_uses_each_joint_range_from_sdk_capabilities():
         100.0,
         100.0,
     ]
-    with pytest.raises(ValidationError, match=r"\[60, 800\]"):
-        validate_command("l30", [59.0] * 17, "torques")
+    with pytest.raises(ValidationError, match=r"\[390\.0, 5200\.0\]"):
+        validate_command("l30", [389.0] * 17, "torques")
+    assert validate_command("l30", [650.25] * 17, "torques") == [650.25] * 17
     with pytest.raises(ValidationError, match="unsupported command"):
         normalize_command(get_model_capabilities("l6"), [1] * 6, "position")
 

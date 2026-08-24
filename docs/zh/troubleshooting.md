@@ -127,7 +127,7 @@ ros2 lifecycle set /linkerbot_hand activate
 - Lifecycle 不是 active。
 - 数组长度不等于 SDK joint count。
 - 包含 `NaN/inf` 或超出 capability 范围。
-- O20、O30I、L30 的整数型速度或扭矩带小数。
+- O20/O30I 的整数型速度或扭矩带小数；L30 电流上限允许 mA 小数并按 6.5 mA 量化。
 - SDK 正在重连或连接不可用。
 
 ```bash

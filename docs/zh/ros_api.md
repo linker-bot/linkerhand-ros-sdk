@@ -35,8 +35,8 @@ capability 是关节顺序、范围、整数约束、传感器能力和原始值
 | `/linkerbot_hand/command/torques` | `std_msgs/msg/Float64MultiArray` | 订阅 | SDK capability 定义的扭矩目标 |
 | `/linkerbot_hand/command/accepted/angles` | `std_msgs/msg/Float64MultiArray` | 发布 | SDK 已接受的归一化角度目标 |
 | `/linkerbot_hand/command/accepted/raw_angles` | `std_msgs/msg/Float64MultiArray` | 发布 | SDK 已接受的协议原始角度目标 |
-| `/linkerbot_hand/command/accepted/speeds` | `std_msgs/msg/Float64MultiArray` | 发布 | SDK 已接受的归一化速度目标 |
-| `/linkerbot_hand/command/accepted/torques` | `std_msgs/msg/Float64MultiArray` | 发布 | SDK 已接受的归一化扭矩目标 |
+| `/linkerbot_hand/command/accepted/speeds` | `std_msgs/msg/Float64MultiArray` | 发布 | SDK 已接受的速度目标，单位来自 capability |
+| `/linkerbot_hand/command/accepted/torques` | `std_msgs/msg/Float64MultiArray` | 发布 | SDK 已接受的电流/扭矩限制目标，单位来自 capability |
 | `/linkerbot_hand/state/angles` | `std_msgs/msg/Float64MultiArray` | 发布 | 有效且未过期的缓存角度百分比 |
 | `/linkerbot_hand/state/raw_angles` | `std_msgs/msg/Float64MultiArray` | 发布 | 同次有效角度样本包含的精确协议原值 |
 | `/linkerbot_hand/state/speeds` | `std_msgs/msg/Float64MultiArray` | 发布 | 型号支持时发布有效速度缓存 |
@@ -151,13 +151,19 @@ Lifecycle 节点同时提供标准的 `change_state`、`get_state`、
 
 | 型号 | 角度 | 速度 | 扭矩 |
 | --- | --- | --- | --- |
-| O6、L6、L20Lite、L25 | 0–100 | 0–100 | 0–100 |
-| O20 | 0–100 | 0–100 整数 | 0–1000 整数 |
+| L6 | 0–100 | 0–100 无量纲 | 0–1400 mA |
+| O6 | 0–100 | 0–180 RPM | 0–1000 mA |
+| L20Lite、L25 | 0–100 | 0–100 无量纲 | 0–100 无量纲 |
+| O20 | 0–100 | 目标 0–100 整数、无量纲 | 0–1000 整数，每单位 6.5 mA |
 | O30I | 0–100 | 0–255 整数 | 0–255 整数 |
-| L30 | 0–100 | 1–250 整数 | 60–800 整数 |
+| L30 | 0–100 | 1–250 整数、协议单位 | 390–5200 mA，发送时按 6.5 mA 量化 |
 
-ROS 话题类型为 Float64 数组；驱动会把值为整数的 Float64 转成 SDK 所需整数，带小数
-的整数型命令会被拒绝。
+ROS 话题类型为 Float64 数组；驱动会按 SDK capability 校验并把要求整数的 Float64 转成
+整数，带小数的整数型命令会被拒绝。L6 能设置速度，但没有当前速度查询；因此目标会出现在
+`command/accepted/speeds`，不会发布伪造的 `/state/speeds`。O6 的 `/state/speeds` 为 RPM、
+`/state/torques` 为 mA、`/state/acceleration` 为度/秒²；O20 的 `/state/speeds` 为 RPM。
+L30 的 `/state/current` 为 mA。协议原值保存在 SDK `SensorSample.raw_values`，当前 ROS
+数值状态话题只发布公共单位值。
 
 ## API 迁移顺序
 

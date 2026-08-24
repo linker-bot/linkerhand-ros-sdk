@@ -70,6 +70,10 @@ ros2 param set /linkerbot_hand diagnostic_rate 1.0
 | O30I | 支持 | 支持 |
 | L30 | 支持 | 不支持 |
 
+状态数值单位由 SDK `SensorCapability.unit` 决定：O6 速度为 RPM、扭矩为 mA、加速度为
+度/秒²，O20 当前速度为 RPM。L6 不支持速度反馈，`speeds_hz` 即使非零也会被 capability
+限制为 0；最近设置目标只通过 accepted 命令话题表达。
+
 其他参数在 configure 时保存快照。`model`、`side`、transport、`command_rate_hz` 和
 `auto_reconnect` 在 configured/inactive/active 状态会被明确拒绝；必须先 deactivate、
 cleanup，修改后再 configure/activate。unconfigured 状态设置参数时会立即使用 SDK
