@@ -141,9 +141,14 @@ Lifecycle 节点同时提供标准的 `change_state`、`get_state`、
 
 关键字段包括 `connection_state`、`connected`、`connection_generation`、
 `reconnect_count`、`consecutive_errors`、`pending_commands`、
-`superseded_commands`、各传感器 `*_age_s`、SDK 稳定错误码和最近命令阶段。
+`superseded_commands`、各传感器 `*_age_s`、`*_sequence`、`*_valid`、
+`*_stale`、`*_collected_at`、`*_connection_generation`、SDK 稳定错误码和最近命令阶段。
 `ros_accepted_feedback_errors` 单独统计 SDK 已接受命令之后的 ROS 反馈发布失败，
 不会把可能已经执行的命令误记为 rejected。
+
+`state/*` 可能按 ROS 发布定时器重复发布同一缓存。测量真实设备 polling 频率必须使用同一
+`*_connection_generation` 内的 `*_sequence` 增量，不能只读取 `ros2 topic hz`。完整测试
+流程见[关节命令与状态频率测试](frequency_benchmark.md)。
 
 ## 命令范围
 

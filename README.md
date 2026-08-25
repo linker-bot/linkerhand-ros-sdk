@@ -24,6 +24,10 @@ coordinates without applying the classic user LUT.
 - `linkerbot-hand>=0.1.0,<0.2.0`
 - A configured SocketCAN/CAN FD interface or supported vendor library
 
+The released `linkerbot-hand v0.1.0` supports the unified API. Its successor
+contains corrected physical units for speed and current limits; use the latest
+SDK source for hardware unit validation until that version is released.
+
 ```bash
 source /opt/ros/jazzy/setup.bash
 python3 -m pip install 'linkerbot-hand>=0.1.0,<0.2.0'
@@ -85,8 +89,13 @@ Use the persistent controller for repeated commands:
 ros2 run linkerbot_hand_ros angle_controller
 ```
 
+The installed `frequency_benchmark` executable measures command delivery and
+real SDK sample-sequence rates separately. See the
+[Chinese frequency benchmark guide](docs/zh/frequency_benchmark.md) before
+running 50–100 Hz tests on hardware.
+
 See [the Chinese integration guide](docs/zh/business_integration.md) and the
-[ROS API reference](docs/ros_api.md) for lifecycle, parameters, topics,
+[ROS API reference](docs/zh/ros_api.md) for lifecycle, parameters, topics,
 services, diagnostics, and command semantics.
 
 ## Safety

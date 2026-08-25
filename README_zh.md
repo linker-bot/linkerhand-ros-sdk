@@ -34,6 +34,9 @@ SDK 单 I/O worker -> transport -> 灵巧手
 - `linkerbot-hand>=0.1.0,<0.2.0`
 - 已配置的 SocketCAN/CAN FD 接口，或型号支持的厂商动态库
 
+已发布的 `linkerbot-hand v0.1.0` 支持统一 API；其后的版本才包含最新速度和电流限制
+物理单位修正。在该版本发布前，实机验证单位和频率必须按下方方式安装 SDK 最新源码。
+
 必须使用 Jazzy：
 
 ```bash
@@ -124,6 +127,7 @@ ros2 run linkerbot_hand_ros angle_controller
 - [话题、服务、诊断与关节顺序](docs/zh/ros_api.md)
 - [正式业务节点集成](docs/zh/business_integration.md)
 - [命令行与 Python 示例](docs/zh/examples.md)
+- [50–100 Hz 收发与频率上限测试](docs/zh/frequency_benchmark.md)
 - [故障排查](docs/zh/troubleshooting.md)
 - [从 0.2.x 迁移到 0.3.0](docs/zh/migration_0_3.md)
 

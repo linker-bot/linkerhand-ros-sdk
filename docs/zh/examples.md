@@ -94,6 +94,21 @@ class HandControlMixin:
 `send_angles()` 默认不等待 DDS ACK，驱动收到后只执行 SDK `submit_angles()` 并立即返回
 callback；transport 由 SDK 唯一 worker 调度。
 
+## 50–100 Hz 收发测试
+
+仓库提供常驻基准程序，它同时统计 ROS publish/accepted、SDK 命令覆盖和设备采样序号，
+不会把重复发布缓存误认为新的设备状态：
+
+```bash
+LIMIT=<已确认安全的该型号限制值>
+ros2 run linkerbot_hand_ros frequency_benchmark \
+  --mode control --torque-value "$LIMIT" \
+  --rates 50 60 80 100 --duration 30 --repetitions 3
+```
+
+默认不会主动改变当前姿态。力矩/电流限制的单位、型号反馈差异、通过标准和频率上限探索
+方法见[关节命令与状态频率测试](frequency_benchmark.md)。
+
 ## 协议原始角度
 
 协议调试或标定需要精确原值时使用独立 topic，不要把值发到百分比角度 topic：
