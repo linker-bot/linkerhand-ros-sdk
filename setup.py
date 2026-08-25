@@ -1,6 +1,6 @@
 from glob import glob
-from setuptools import find_packages, setup
 
+from setuptools import find_packages, setup
 
 PACKAGE_NAME = "linkerbot_hand_ros"
 
@@ -40,6 +40,10 @@ setup(
             "hand_node = linkerbot_hand_ros.node:main",
             "angle_command = linkerbot_hand_ros.examples.angle_command:main",
             "angle_controller = linkerbot_hand_ros.examples.angle_controller:main",
+            (
+                "frequency_benchmark = "
+                "linkerbot_hand_ros.examples.frequency_benchmark:main"
+            ),
             "state_monitor = linkerbot_hand_ros.examples.state_monitor:main",
         ],
     },

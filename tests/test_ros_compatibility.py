@@ -24,6 +24,7 @@ def test_entry_points_use_idempotent_rclpy_shutdown():
         Path("linkerbot_hand_ros/node.py"),
         Path("linkerbot_hand_ros/examples/angle_command.py"),
         Path("linkerbot_hand_ros/examples/angle_controller.py"),
+        Path("linkerbot_hand_ros/examples/frequency_benchmark.py"),
         Path("linkerbot_hand_ros/examples/state_monitor.py"),
     )
 

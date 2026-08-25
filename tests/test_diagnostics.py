@@ -1,7 +1,6 @@
 from dataclasses import replace
 
 from diagnostic_msgs.msg import DiagnosticStatus
-
 from linkerbot_hand import HandDevice, HandSide, PollingPlan, SensorType
 from linkerbot_hand.models import get_model_capabilities
 from linkerbot_hand.testing import FakeBackendFactory, wait_until
@@ -60,13 +59,14 @@ def test_ros_boundary_failure_is_reported_as_warning():
         device.stop_polling()
         metrics = DriverMetrics()
         metrics.record_command_error(ValueError("invalid target"))
+        snapshot = device.get_snapshot()
 
         status = build_diagnostic_status(
             node_name="/linkerbot_hand",
             active=True,
             capabilities=device.get_capabilities(),
             health=device.get_health(),
-            snapshot=device.get_snapshot(),
+            snapshot=snapshot,
             metrics=metrics.snapshot(),
             latest_handles={},
         )
@@ -75,5 +75,12 @@ def test_ros_boundary_failure_is_reported_as_warning():
         assert status.message == "latest ROS driver operation failed"
         values = {item.key: item.value for item in status.values}
         assert values["ros_recent_error"] == "invalid target"
+        assert values["angles_sequence"] == str(snapshot.angles.sequence)
+        assert values["angles_valid"] == "True"
+        assert values["angles_stale"] == "False"
+        assert values["angles_collected_at"] == f"{snapshot.angles.collected_at:.6f}"
+        assert values["angles_connection_generation"] == str(
+            snapshot.angles.connection_generation
+        )
     finally:
         device.close()

@@ -86,6 +86,25 @@ def build_diagnostic_status(
         )
         for age in health.data_ages
     )
+    for sample in snapshot.samples:
+        prefix = sample.sensor.value
+        values.extend(
+            (
+                _value(f"{prefix}_sequence", sample.sequence),
+                _value(f"{prefix}_valid", sample.valid),
+                _value(f"{prefix}_stale", sample.stale),
+                _value(
+                    f"{prefix}_collected_at",
+                    "never"
+                    if sample.collected_at is None
+                    else f"{sample.collected_at:.6f}",
+                ),
+                _value(
+                    f"{prefix}_connection_generation",
+                    sample.connection_generation,
+                ),
+            )
+        )
     for command in TRACKED_COMMAND_NAMES:
         handle = latest_handles.get(command)
         values.extend(
