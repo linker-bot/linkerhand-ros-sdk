@@ -21,15 +21,18 @@ coordinates without applying the classic user LUT.
 
 - Ubuntu 24.04 with ROS 2 Jazzy
 - Python 3.10 or newer
-- `linkerbot-hand>=0.1.1,<0.2.0`
+- `linkerbot-hand>=0.1.2,<0.2.0`
 - A configured SocketCAN/CAN FD interface or supported vendor library
 
-`linkerbot-hand v0.1.1` provides the physical-unit contract required by this
-driver for speed, current, and current-limit validation.
+`linkerbot-hand v0.1.2` provides the physical-unit contract required by this
+driver and remains compatible with ROS 2 Jazzy's NumPy 1.x environment.
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-python3 -m pip install 'linkerbot-hand>=0.1.1,<0.2.0'
+python3 -m pip install \
+  --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
+  --extra-index-url https://pypi.org/simple \
+  'linkerbot-hand>=0.1.2,<0.2.0'
 ```
 
 For local SDK development, install the independent repositories. Installing
@@ -49,10 +52,15 @@ cd ~/linkerbot_ws/src
 git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand-ros.git
 cd ~/linkerbot_ws
 source /opt/ros/jazzy/setup.bash
-rosdep install --from-paths src --ignore-src -r -y
+rosdep install --from-paths src --ignore-src -y --rosdistro jazzy
 colcon build --symlink-install
 source ~/linkerbot_ws/install/setup.bash
 ```
+
+Ubuntu 24.04's `/usr/bin/rosdep` may print a `pkg_resources is deprecated`
+warning. That warning comes from the system rosdep launcher and does not affect
+dependency resolution. Any `ERROR:` line is still a failure and must not be
+ignored.
 
 ## Run
 

@@ -1,4 +1,5 @@
 import ast
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
@@ -117,7 +118,7 @@ def test_ros_driver_contains_no_direct_blocking_sdk_reads():
 def test_package_depends_on_split_hand_sdk():
     setup_source = Path("setup.py").read_text(encoding="utf-8")
 
-    assert '"linkerbot-hand>=0.1.1,<0.2.0"' in setup_source
+    assert '"linkerbot-hand>=0.1.2,<0.2.0"' in setup_source
     assert '"linkerbot>=0.5.4"' not in setup_source
     assert '"linkerbot-transport' not in setup_source
 
@@ -140,11 +141,56 @@ def test_package_declares_runtime_parameter_message_dependency():
     assert "<exec_depend>rcl_interfaces</exec_depend>" in package_source
 
 
+def test_package_declares_ament_python_only_as_build_type():
+    package = ET.parse("package.xml").getroot()
+    buildtool_dependencies = {
+        dependency.text for dependency in package.findall("buildtool_depend")
+    }
+
+    assert "ament_python" not in buildtool_dependencies
+    assert package.findtext("./export/build_type") == "ament_python"
+
+
+def test_rosdep_instructions_fail_on_unresolved_dependencies():
+    documentation = (
+        Path("README.md"),
+        Path("README_zh.md"),
+        Path("docs/zh/getting_started.md"),
+    )
+
+    for path in documentation:
+        commands = [
+            line
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.startswith("rosdep install ")
+        ]
+        assert commands
+        assert all("--rosdistro jazzy" in command for command in commands)
+        assert all(" -r " not in command for command in commands)
+
+
+def test_sdk_install_instructions_include_private_and_public_indexes():
+    documentation = (
+        Path("README.md"),
+        Path("README_zh.md"),
+        Path("docs/zh/getting_started.md"),
+        Path("docs/zh/troubleshooting.md"),
+        Path("docs/zh/migration_0_3.md"),
+    )
+    private_index = "https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple"
+    public_index = "https://pypi.org/simple"
+
+    for path in documentation:
+        source = path.read_text(encoding="utf-8")
+        assert private_index in source
+        assert public_index in source
+
+
 def test_python_and_ros_package_versions_match():
     setup_source = Path("setup.py").read_text(encoding="utf-8")
     package_source = Path("package.xml").read_text(encoding="utf-8")
     module_source = Path("linkerbot_hand_ros/__init__.py").read_text(encoding="utf-8")
 
-    assert 'version="0.3.1"' in setup_source
-    assert "<version>0.3.1</version>" in package_source
-    assert '__version__ = "0.3.1"' in module_source
+    assert 'version="0.3.2"' in setup_source
+    assert "<version>0.3.2</version>" in package_source
+    assert '__version__ = "0.3.2"' in module_source

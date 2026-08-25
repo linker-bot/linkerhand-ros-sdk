@@ -4,7 +4,10 @@
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-python3 -m pip install 'linkerbot-hand>=0.1.1,<0.2.0'
+python3 -m pip install \
+  --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
+  --extra-index-url https://pypi.org/simple \
+  'linkerbot-hand>=0.1.2,<0.2.0'
 sudo apt update
 sudo apt install python3-colcon-common-extensions python3-rosdep can-utils
 ```
@@ -49,10 +52,13 @@ cd ~/linkerbot_ws/src
 git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand-ros.git
 cd ~/linkerbot_ws
 source /opt/ros/jazzy/setup.bash
-rosdep install --from-paths src --ignore-src -r -y
+rosdep install --from-paths src --ignore-src -y --rosdistro jazzy
 colcon build --symlink-install
 source ~/linkerbot_ws/install/setup.bash
 ```
+
+Ubuntu 24.04 的 `/usr/bin/rosdep` 可能输出 `pkg_resources is deprecated`，这是系统
+rosdep 启动脚本的弃用警告；任何 `ERROR:` 仍代表真实失败，不能忽略。
 
 ## 4. 启动 Lifecycle 驱动
 
