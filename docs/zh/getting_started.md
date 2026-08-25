@@ -4,13 +4,10 @@
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-python3 -m pip install 'linkerbot-hand>=0.1.0,<0.2.0'
+python3 -m pip install 'linkerbot-hand>=0.1.1,<0.2.0'
 sudo apt update
 sudo apt install python3-colcon-common-extensions python3-rosdep can-utils
 ```
-
-`v0.1.0` 支持统一 API，但不含其后合入的最新速度和电流限制单位修正。进行物理单位或
-频率实测时，在下一版 SDK 发布前应使用下方源码安装方式。
 
 使用 SDK 本地源码时：
 

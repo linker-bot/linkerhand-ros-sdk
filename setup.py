@@ -1,13 +1,15 @@
 from glob import glob
+from pathlib import Path
 
 from setuptools import find_packages, setup
 
 PACKAGE_NAME = "linkerbot_hand_ros"
+LONG_DESCRIPTION = Path(__file__).with_name("README.md").read_text(encoding="utf-8")
 
 
 setup(
     name=PACKAGE_NAME,
-    version="0.3.0",
+    version="0.3.1",
     packages=find_packages(exclude=("tests",)),
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{PACKAGE_NAME}"]),
@@ -26,7 +28,7 @@ setup(
     ],
     install_requires=[
         "setuptools",
-        "linkerbot-hand>=0.1.0,<0.2.0",
+        "linkerbot-hand>=0.1.1,<0.2.0",
     ],
     extras_require={"test": ["pytest"]},
     python_requires=">=3.10",
@@ -34,6 +36,8 @@ setup(
     maintainer="zhuzhixiang",
     maintainer_email="1849346915@qq.com",
     description="ROS 2 driver for Linkerbot dexterous hands",
+    long_description=LONG_DESCRIPTION,
+    long_description_content_type="text/markdown",
     license="Apache-2.0",
     entry_points={
         "console_scripts": [

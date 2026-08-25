@@ -117,7 +117,7 @@ def test_ros_driver_contains_no_direct_blocking_sdk_reads():
 def test_package_depends_on_split_hand_sdk():
     setup_source = Path("setup.py").read_text(encoding="utf-8")
 
-    assert '"linkerbot-hand>=0.1.0,<0.2.0"' in setup_source
+    assert '"linkerbot-hand>=0.1.1,<0.2.0"' in setup_source
     assert '"linkerbot>=0.5.4"' not in setup_source
     assert '"linkerbot-transport' not in setup_source
 
@@ -145,6 +145,6 @@ def test_python_and_ros_package_versions_match():
     package_source = Path("package.xml").read_text(encoding="utf-8")
     module_source = Path("linkerbot_hand_ros/__init__.py").read_text(encoding="utf-8")
 
-    assert 'version="0.3.0"' in setup_source
-    assert "<version>0.3.0</version>" in package_source
-    assert '__version__ = "0.3.0"' in module_source
+    assert 'version="0.3.1"' in setup_source
+    assert "<version>0.3.1</version>" in package_source
+    assert '__version__ = "0.3.1"' in module_source

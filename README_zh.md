@@ -31,17 +31,16 @@ SDK 单 I/O worker -> transport -> 灵巧手
 
 - Ubuntu 24.04 + ROS 2 Jazzy
 - Python 3.10 或更新版本
-- `linkerbot-hand>=0.1.0,<0.2.0`
+- `linkerbot-hand>=0.1.1,<0.2.0`
 - 已配置的 SocketCAN/CAN FD 接口，或型号支持的厂商动态库
 
-已发布的 `linkerbot-hand v0.1.0` 支持统一 API；其后的版本才包含最新速度和电流限制
-物理单位修正。在该版本发布前，实机验证单位和频率必须按下方方式安装 SDK 最新源码。
+`linkerbot-hand v0.1.1` 已包含当前驱动所需的速度、电流和电流限制物理单位契约。
 
 必须使用 Jazzy：
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-python3 -m pip install 'linkerbot-hand>=0.1.0,<0.2.0'
+python3 -m pip install 'linkerbot-hand>=0.1.1,<0.2.0'
 ```
 
 本地开发 SDK 时，可从两个独立仓库安装。`linkerbot-hand` 声明兼容的

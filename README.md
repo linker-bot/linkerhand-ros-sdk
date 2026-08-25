@@ -21,16 +21,15 @@ coordinates without applying the classic user LUT.
 
 - Ubuntu 24.04 with ROS 2 Jazzy
 - Python 3.10 or newer
-- `linkerbot-hand>=0.1.0,<0.2.0`
+- `linkerbot-hand>=0.1.1,<0.2.0`
 - A configured SocketCAN/CAN FD interface or supported vendor library
 
-The released `linkerbot-hand v0.1.0` supports the unified API. Its successor
-contains corrected physical units for speed and current limits; use the latest
-SDK source for hardware unit validation until that version is released.
+`linkerbot-hand v0.1.1` provides the physical-unit contract required by this
+driver for speed, current, and current-limit validation.
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-python3 -m pip install 'linkerbot-hand>=0.1.0,<0.2.0'
+python3 -m pip install 'linkerbot-hand>=0.1.1,<0.2.0'
 ```
 
 For local SDK development, install the independent repositories. Installing

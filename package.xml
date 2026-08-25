@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>linkerbot_hand_ros</name>
-  <version>0.3.0</version>
+  <version>0.3.1</version>
   <description>ROS 2 driver for Linkerbot dexterous hands.</description>
   <maintainer email="1849346915@qq.com">zhuzhixiang</maintainer>
   <license>Apache-2.0</license>

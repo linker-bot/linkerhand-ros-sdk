@@ -17,8 +17,8 @@
 - CAN/CAN FD 接口、型号、左右手、关节顺序和急停已经单独验证。
 - 测试期间停止其他角度、速度和力矩命令发布者，否则 accepted 和覆盖计数无法归因。
 - `command_rate_hz` 是静态参数，启动时应大于等于最高候选命令频率，并留出调度余量。
-- 当前物理单位修正位于 `linkerbot-hand` 的 `v0.1.0` 之后。发布下一版 SDK 前，测试物理单位
-  必须安装该仓库最新源码，不能只安装 PyPI/Gitea 上的 `0.1.0`。
+- 必须安装 `linkerbot-hand>=0.1.1,<0.2.0`，该版本包含当前速度、电流和电流限制物理单位
+  契约。
 
 ```bash
 git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-transport.git
