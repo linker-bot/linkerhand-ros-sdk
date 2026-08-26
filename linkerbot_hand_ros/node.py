@@ -13,12 +13,18 @@ from linkerbot_hand import (
     HandSDKError,
     SensorSample,
     SensorType,
+    TactileState,
 )
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.lifecycle import LifecycleNode, LifecycleState, TransitionCallbackReturn
 from rclpy.parameter import Parameter
-from std_msgs.msg import Float64MultiArray, String
+from std_msgs.msg import (
+    Float64MultiArray,
+    MultiArrayDimension,
+    MultiArrayLayout,
+    String,
+)
 from std_srvs.srv import Trigger
 
 from .adapter import CONTINUOUS_COMMAND_NAMES, HandAdapter
@@ -43,6 +49,7 @@ _STATE_SENSORS = {
     "voltage": SensorType.VOLTAGE,
     "acceleration": SensorType.ACCELERATION,
     "motion_time": SensorType.MOTION_TIME,
+    "force": SensorType.FORCE,
 }
 
 
@@ -501,10 +508,69 @@ class LinkerbotHandNode(LifecycleNode):
         return values
 
     @staticmethod
-    def _raw_numeric_values(sample: SensorSample) -> list[float] | None:
-        if sample.raw_values is None:
-            return None
-        return [float(value) for value in sample.raw_values]
+    def _tactile_message(sample: SensorSample) -> Float64MultiArray:
+        """Flatten one full-hand tactile sample with a 3-D ROS layout."""
+        tactile = sample.values
+        if not tactile or any(not isinstance(value, TactileState) for value in tactile):
+            raise ValueError("force cache does not contain tactile matrices")
+        first = tactile[0]
+        rows = first.rows
+        columns = first.columns
+        if any(
+            value.rows != rows or value.columns != columns
+            for value in tactile
+            if isinstance(value, TactileState)
+        ):
+            raise ValueError("force cache contains inconsistent matrix shapes")
+        values = [
+            float(cell)
+            for finger in tactile
+            if isinstance(finger, TactileState)
+            for row in finger.values
+            for cell in row
+        ]
+        finger_count = len(tactile)
+        return Float64MultiArray(
+            layout=MultiArrayLayout(
+                dim=[
+                    MultiArrayDimension(
+                        label="finger",
+                        size=finger_count,
+                        stride=finger_count * rows * columns,
+                    ),
+                    MultiArrayDimension(
+                        label="row",
+                        size=rows,
+                        stride=rows * columns,
+                    ),
+                    MultiArrayDimension(
+                        label="column",
+                        size=columns,
+                        stride=columns,
+                    ),
+                ],
+                data_offset=0,
+            ),
+            data=values,
+        )
+
+    @classmethod
+    def _state_message(cls, sample: SensorSample) -> Float64MultiArray:
+        """Convert a cached numeric vector or tactile matrix to a ROS message."""
+        if sample.sensor is SensorType.FORCE:
+            return cls._tactile_message(sample)
+        return cls._message(cls._numeric_values(sample))
+
+    @classmethod
+    def _angle_messages(
+        cls,
+        adapter: HandAdapter,
+        sample: SensorSample,
+    ) -> tuple[Float64MultiArray, Float64MultiArray]:
+        """Build mapped and protocol-native messages from one cached sample."""
+        raw_values = cls._numeric_values(sample)
+        percentages = adapter.raw_to_percent(raw_values)
+        return cls._message(list(percentages)), cls._message(raw_values)
 
     def _run_command(self, command: str, message: Float64MultiArray) -> None:
         adapter = self._adapter
@@ -526,7 +592,7 @@ class LinkerbotHandNode(LifecycleNode):
 
         self._latest_handles[command] = handle
         self._metrics.record_command_success()
-        accepted = [float(value) for value in handle.command.values]
+        accepted = [float(value) for value in message.data]
         try:
             self._accepted_publishers[command].publish(self._message(accepted))
             self._metrics.record_feedback_success()
@@ -555,14 +621,13 @@ class LinkerbotHandNode(LifecycleNode):
                     continue
                 publisher = self._state_publishers.get(topic_name)
                 if publisher is not None:
-                    publisher.publish(self._message(self._numeric_values(sample)))
                     if sensor is SensorType.ANGLES:
-                        raw_values = self._raw_numeric_values(sample)
-                        if raw_values is not None:
-                            self._state_publishers["raw_angles"].publish(
-                                self._message(raw_values)
-                            )
+                        percentages, raw_values = self._angle_messages(adapter, sample)
+                        publisher.publish(percentages)
+                        self._state_publishers["raw_angles"].publish(raw_values)
                         self._metrics.record_state_success()
+                    else:
+                        publisher.publish(self._state_message(sample))
         except Exception as error:
             self._metrics.record_state_error(error)
             self.get_logger().error(
@@ -612,12 +677,9 @@ class LinkerbotHandNode(LifecycleNode):
                 response.success = False
                 response.message = "no fresh cached angle state is available"
                 return response
-            self._state_publishers["angles"].publish(
-                self._message(self._numeric_values(sample))
-            )
-            raw_values = self._raw_numeric_values(sample)
-            if raw_values is not None:
-                self._state_publishers["raw_angles"].publish(self._message(raw_values))
+            percentages, raw_values = self._angle_messages(adapter, sample)
+            self._state_publishers["angles"].publish(percentages)
+            self._state_publishers["raw_angles"].publish(raw_values)
             self._metrics.record_state_success()
             response.success = True
             response.message = "fresh cached angle state published (no device I/O)"

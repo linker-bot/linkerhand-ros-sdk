@@ -1,4 +1,3 @@
-import math
 import time
 from dataclasses import dataclass, field
 
@@ -12,6 +11,7 @@ from linkerbot_hand import (
     HandDevice,
     HandSide,
     SensorType,
+    TactileState,
     get_model_capabilities,
 )
 from linkerbot_hand.testing import FakeBackendFactory, wait_until
@@ -53,17 +53,14 @@ def make_node_rig(
 ) -> NodeRig:
     capabilities = get_model_capabilities(model, side=HandSide.LEFT)
     backend_factory = FakeBackendFactory(capabilities)
-    angle_values = (100.0,) * capabilities.joint_count
     raw_angle_values = tuple(
         joint.percentage_mapping.raw_open for joint in capabilities.joints
     )
     if capabilities.model == "L6":
-        angle_values = (100.0, None, 80.0, 70.0, 60.0, 50.0)
         raw_angle_values = (255, 255, 204, 178, 153, 128)
     backend_factory.state.set_reading(
         SensorType.ANGLES,
-        angle_values,
-        raw_values=raw_angle_values,
+        raw_angle_values,
     )
     adapter_calls = []
 
@@ -187,6 +184,52 @@ def test_runtime_sensor_rates_reconfigure_sdk_polling_and_state_topics(node_rig)
     assert result.successful
     assert state.poll_log.count(SensorType.TORQUES) == torque_polls_after_disable
     assert torques.messages == []
+
+
+def test_o6_force_state_publishes_five_by_ten_by_four_layout() -> None:
+    rclpy.init()
+    rig = make_node_rig(model="O6", angles_hz=0.0)
+    node = rig.node
+    state = rig.backend_factory.state
+    tactile = tuple(
+        TactileState(
+            finger=finger,
+            rows=10,
+            columns=4,
+            values=tuple(tuple(index for _ in range(4)) for _ in range(10)),
+        )
+        for index, finger in enumerate(
+            ("thumb", "index", "middle", "ring", "pinky"), start=1
+        )
+    )
+    state.set_reading(SensorType.FORCE, tactile)
+    try:
+        assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+        assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+        result = node.set_parameters_atomically([Parameter("force_hz", value=10.0)])
+        assert result.successful
+        wait_until(lambda: SensorType.FORCE in state.poll_log)
+
+        original = node._state_publishers["force"]
+        publisher = FakePublisher()
+        node._state_publishers["force"] = publisher
+        try:
+            node._publish_cached_state()
+        finally:
+            node._state_publishers["force"] = original
+
+        message = publisher.messages[-1]
+        assert [(dim.label, dim.size, dim.stride) for dim in message.layout.dim] == [
+            ("finger", 5, 200),
+            ("row", 10, 40),
+            ("column", 4, 4),
+        ]
+        assert len(message.data) == 200
+        assert list(message.data[:4]) == [1.0] * 4
+        assert list(message.data[-4:]) == [5.0] * 4
+    finally:
+        node.destroy_node()
+        rclpy.try_shutdown()
 
 
 @pytest.mark.parametrize("model", MODEL_CAPABILITIES)
@@ -428,9 +471,10 @@ def test_cached_state_publication_never_adds_device_io(node_rig):
         node._state_publishers["angles"] = original
 
     assert len(publisher.messages) == 1000
-    assert list(publisher.messages[-1].data[:1]) == [100.0]
-    assert math.isnan(publisher.messages[-1].data[1])
-    assert list(publisher.messages[-1].data[2:]) == [80.0, 70.0, 60.0, 50.0]
+    assert list(publisher.messages[-1].data) == pytest.approx(
+        [100.0, 100.0, 80.0, 70.0, 60.0, 50.0],
+        abs=0.21,
+    )
     assert node_rig.backend_factory.state.io_count == io_count
 
 
@@ -541,7 +585,7 @@ def test_command_burst_keeps_latest_sdk_target_without_history_queue():
         wait_until(lambda: latest.done)
 
         assert latest.stage is CommandStage.DISPATCHED
-        assert latest.command.values == (47.0,) * 6
+        assert latest.command.values == (120,) * 6
         assert rig.backend_factory.state.dispatched_commands[-1] == latest.command
         assert len(rig.backend_factory.state.dispatched_commands) < 250
         assert node._adapter.get_health().superseded_commands > 0

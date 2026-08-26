@@ -49,20 +49,22 @@ def test_sdk_capabilities_are_the_only_model_metadata_source():
     assert normalize_model("L20-Lite") == "l20lite"
 
 
-def test_adapter_uses_sdk_physical_unit_contracts_without_local_model_specs():
+def test_adapter_uses_sdk_protocol_and_physical_metadata_without_model_specs():
     l6 = get_model_capabilities("L6")
     o6 = get_model_capabilities("O6")
     o20 = get_model_capabilities("O20")
     l30 = get_model_capabilities("L30")
 
     assert l6.sensor(SensorType.SPEEDS) is None
-    assert l6.joints[0].torque_range.unit == "mA"
-    assert o6.joints[0].speed_range.unit == "rpm"
-    assert o6.sensor(SensorType.SPEEDS).unit == "rpm"
-    assert o20.joints[0].speed_range.unit == "protocol_unit"
-    assert o20.sensor(SensorType.SPEEDS).unit == "rpm"
-    assert l30.joints[0].torque_range.unit == "mA"
-    assert l30.joints[0].torque_range.integer_only is False
+    assert l6.joints[0].torque_range.unit == "count"
+    assert l6.joints[0].torque_range.physical_unit == "mA"
+    assert o6.joints[0].speed_range.unit == "count"
+    assert o6.sensor(SensorType.SPEEDS).physical_unit == "rpm"
+    assert o20.joints[0].speed_range.unit == "count"
+    assert o20.sensor(SensorType.SPEEDS).physical_unit == "rpm"
+    assert l30.joints[0].torque_range.unit == "count"
+    assert l30.joints[0].torque_range.physical_unit == "mA"
+    assert l30.joints[0].torque_range.integer_only is True
 
 
 def test_adapter_construction_performs_no_device_io(adapter_rig):
@@ -108,8 +110,7 @@ def test_adapter_uses_sdk_polling_and_cached_snapshot(adapter_rig):
     adapter, backend_factory = adapter_rig
     backend_factory.state.set_reading(
         SensorType.ANGLES,
-        (100.0, None, 80.0, 70.0, 60.0, 50.0),
-        raw_values=(255, 255, 204, 178, 153, 128),
+        (255, 255, 204, 178, 153, 128),
     )
 
     adapter.open()
@@ -122,7 +123,7 @@ def test_adapter_uses_sdk_polling_and_cached_snapshot(adapter_rig):
     health = adapter.get_health()
 
     assert snapshot.angles is not None
-    assert snapshot.angles.values == (100.0, None, 80.0, 70.0, 60.0, 50.0)
+    assert snapshot.angles.values == (255, 255, 204, 178, 153, 128)
     assert snapshot.angles.valid
     assert not snapshot.angles.stale
     assert health.connected
@@ -135,7 +136,7 @@ def test_continuous_commands_return_handles_without_waiting(adapter_rig):
 
     handle = adapter.submit_angles([100, 50, 80, 70, 60, 50])
 
-    assert handle.command.values == (100.0, 50.0, 80.0, 70.0, 60.0, 50.0)
+    assert handle.command.values == (255, 128, 204, 178, 153, 128)
     wait_until(lambda: handle.done)
     assert handle.stage is CommandStage.DISPATCHED
     assert backend_factory.state.dispatched_commands[-1] == handle.command
@@ -210,9 +211,9 @@ def test_validation_uses_each_joint_range_from_sdk_capabilities():
         100.0,
         100.0,
     ]
-    with pytest.raises(ValidationError, match=r"\[390\.0, 5200\.0\]"):
-        validate_command("l30", [389.0] * 17, "torques")
-    assert validate_command("l30", [650.25] * 17, "torques") == [650.25] * 17
+    with pytest.raises(ValidationError, match=r"\[60, 800\]"):
+        validate_command("l30", [59.0] * 17, "torques")
+    assert validate_command("l30", [650.0] * 17, "torques") == [650] * 17
     with pytest.raises(ValidationError, match="unsupported command"):
         normalize_command(get_model_capabilities("l6"), [1] * 6, "position")
 

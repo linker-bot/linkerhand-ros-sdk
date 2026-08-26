@@ -177,11 +177,14 @@ class HandAdapter:
 
     def submit_angles(self, values: Sequence[float]) -> CommandHandle:
         normalized = normalize_command(self.capabilities, values, "angles")
-        return self._device.submit_angles(normalized, policy=CommandPolicy.LATEST)
+        return self._device.submit_percentage_angles(
+            normalized,
+            policy=CommandPolicy.LATEST,
+        )
 
     def submit_raw_angles(self, values: Sequence[float]) -> CommandHandle:
         normalized = normalize_command(self.capabilities, values, "raw_angles")
-        return self._device.submit_raw_angles(normalized, policy=CommandPolicy.LATEST)
+        return self._device.submit_angles(normalized, policy=CommandPolicy.LATEST)
 
     def submit_speeds(self, values: Sequence[float]) -> CommandHandle:
         normalized = normalize_command(self.capabilities, values, "speeds")
@@ -208,6 +211,10 @@ class HandAdapter:
 
     def get_health(self) -> HealthStatus:
         return self._device.get_health()
+
+    def raw_to_percent(self, values: Sequence[float | int]) -> tuple[float, ...]:
+        """Convert protocol-native positions through the SDK capability map."""
+        return self._device.raw_to_percent(values)
 
     def close(self) -> None:
         self._device.close()
