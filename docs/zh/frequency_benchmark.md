@@ -17,8 +17,8 @@
 - CAN/CAN FD 接口、型号、左右手、关节顺序和急停已经单独验证。
 - 测试期间停止其他角度、速度和力矩命令发布者，否则 accepted 和覆盖计数无法归因。
 - `command_rate_hz` 是静态参数，启动时应大于等于最高候选命令频率，并留出调度余量。
-- 必须安装 `linkerbot-hand>=0.1.2,<0.2.0`，该版本包含当前速度、电流和电流限制物理单位
-  契约。
+- 必须安装 `linkerbot-hand>=0.2.1,<0.3.0`，该版本包含协议原始值与物理元数据契约，
+  以及 O6 `04-B` 触觉能力识别。
 
 ```bash
 git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-transport.git
@@ -71,12 +71,12 @@ ros2 run linkerbot_hand_ros frequency_benchmark \
 
 | 型号 | 设置话题 `command/torques` | 第二反馈 | capability 推荐频率 |
 | --- | --- | --- | --- |
-| L6 | 电流限制，mA | `state/torques`，mA | 角度 60 Hz，负载 30 Hz |
-| O6 | 转矩限制，mA | `state/torques`，mA | 角度 60 Hz，负载 30 Hz |
-| L20Lite、L25 | 无量纲限制 | `state/torques`，无量纲 | 角度 60 Hz，负载 30 Hz |
+| L6 | `0–255` count | `state/torques`，count | 角度 60 Hz，负载 30 Hz |
+| O6 | `0–255` count | `state/torques`，count | 角度 60 Hz，负载 30 Hz |
+| L20Lite、L25 | `0–255` count | `state/torques`，count | 角度 60 Hz，负载 30 Hz |
 | O30I | `0–255` 协议值 | `state/torques`，协议值 | 角度 30 Hz，负载 30 Hz |
-| O20 | 目标限制，`0–1000` 整数，每单位 6.5 mA | `state/current`，mA | 角度 30 Hz，电流 10 Hz |
-| L30 | 电流上限，mA | `state/current`，mA | 角度 60 Hz，电流 10 Hz |
+| O20 | `0–1000` count | `state/current`，mA | 角度 30 Hz，电流 10 Hz |
+| L30 | `60–800` count | `state/current`，count | 角度 60 Hz，电流 10 Hz |
 
 O20、L30 的电流反馈不能描述成机械关节扭矩。推荐频率不是硬上限，但 50–100 Hz 组合测试
 很可能先受负载反馈 polling 限制；失败结果应保留，不能通过提高 ROS 发布频率掩盖。
@@ -101,9 +101,10 @@ ros2 run linkerbot_hand_ros frequency_benchmark \
   --rates 50 60 80 100 --duration 30 --repetitions 3
 ```
 
-若当前 `state/angles` 含 `NaN`，工具不会猜测目标，而会停止并要求显式传入
+若混用旧驱动导致 `state/angles` 含 `NaN`，工具不会猜测目标，而会停止并要求显式传入
 `--angle-values`。显式目标可以继续做命令压力测试，但严格的“全部关节角度状态有限”判据
-仍会失败并报告原因。方向轴的 0/100 是 capability 定义的位置端点，不应解释为握拳/张开。
+仍会失败并报告原因。当前 0.3.3 驱动遇到无法映射的整组样本时不会发布百分比角度。
+方向轴的 0/100 是 capability 定义的位置端点，不应解释为握拳/张开。
 
 ## 其他压力模式
 

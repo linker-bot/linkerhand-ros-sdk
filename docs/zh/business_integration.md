@@ -98,7 +98,7 @@ receipt = self.hand.send_angles(
 
 1. Lifecycle 驱动 active 且诊断 `connected=true`。
 2. 目标已被 SDK 接受，且没有进入 `failed`。
-3. 角度样本属于当前 `connection_generation`，有效、未过期且不含待判断轴的 `NaN`。
+3. 角度样本属于当前 `connection_generation`，有效、未过期且全部数值有限。
 4. 目标误差在允许范围内持续稳定时间。
 5. 电流、故障、业务超时和独立急停均满足安全策略。
 

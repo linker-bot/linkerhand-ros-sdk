@@ -7,7 +7,7 @@ source /opt/ros/jazzy/setup.bash
 python3 -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
-  'linkerbot-hand>=0.1.2,<0.2.0'
+  'linkerbot-hand>=0.2.1,<0.3.0'
 sudo apt update
 sudo apt install python3-colcon-common-extensions python3-rosdep can-utils
 ```

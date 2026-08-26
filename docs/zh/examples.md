@@ -91,8 +91,8 @@ class HandControlMixin:
         return self.hand.send_angles(values)
 ```
 
-`send_angles()` 默认不等待 DDS ACK，驱动收到后只执行 SDK `submit_angles()` 并立即返回
-callback；transport 由 SDK 唯一 worker 调度。
+`send_angles()` 默认不等待 DDS ACK，驱动收到后只执行 SDK
+`submit_percentage_angles()` 并立即返回 callback；transport 由 SDK 唯一 worker 调度。
 
 ## 50–100 Hz 收发测试
 
@@ -141,13 +141,13 @@ ros2 run linkerbot_hand_ros state_monitor \
   --angles-topic /left_hand/linkerbot_hand/state/angles
 ```
 
-程序按 `joint_names` 输出百分比。某个轴没有独立百分比回读时显示 `nan`；业务代码必须
-把它当作不可用于到位判断，而不是 0。
+程序按 `joint_names` 输出百分比。无效、过期或无法完成 SDK 映射的整组样本不会发布；
+业务代码还必须使用 diagnostics 检查 generation、valid 和 stale。
 
 ## L30 范围示例
 
-L30 有 17 个关节，速度为 1–250 整数协议值，所谓“扭矩设置”实际是 390–5200 mA 的
-电流上限。以下只是数组形状示例，
+L30 有 17 个关节，速度为 1–250 整数协议值，所谓“扭矩设置”实际是 60–800 的协议
+count；capability 另行声明 `6.5 mA/count` 的物理换算元数据。以下只是数组形状示例，
 不要在未确认实物安全时直接执行端点命令：
 
 ```bash

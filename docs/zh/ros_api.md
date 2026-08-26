@@ -21,9 +21,9 @@ capability 是关节顺序、范围、整数约束、传感器能力和原始值
 发送和读取的坐标。它不会经过 L6/O6/L20Lite/L25 旧 manager 的用户 LUT，也不等同于旧
 `set_raw_angles()` 使用的 `standard_raw`。原始值范围和单位必须逐关节读取 capability。
 
-某些握姿插值轴没有独立百分比回读。为了保持数组长度和 `joint_names` 一致，
-`state/angles` 对这些位置发布 `NaN`。业务到位判断必须拒绝 `NaN`，并且不能把百分比
-直接写入 `sensor_msgs/JointState.position`。
+协议角度样本由 SDK capability 映射后发布到 `state/angles`。无效、过期或无法完成映射的
+整组样本不会发布。百分比不能直接写入 `sensor_msgs/JointState.position`；只有 capability
+明确提供真实物理角度映射时，业务层才能转换成弧度。
 
 ## 话题
 
@@ -120,9 +120,11 @@ ros2 service call /linkerbot_hand/calibrate std_srvs/srv/Trigger '{}'
 Trigger 的 `success=true` 只表示 SDK 接受，dispatch 或协议 ACK 应从诊断读取。inactive
 状态下所有管理服务都不会操作设备。
 
-触觉 force 是按手指组织的二维矩阵，当前不会有损展开为数值数组 Topic；`force_hz` 仅控制
-SDK 缓存轮询。正式 ROS 对接需要后续增加包含矩阵形状、在线状态、采样时间和 generation
-的专用强类型消息。
+触觉 force 通过 `/linkerbot_hand/state/force` 发布行优先三维
+`Float64MultiArray`，布局维度为 `finger/row/column`，手指顺序为
+`thumb/index/middle/ring/pinky`。O6 `04-B` 的布局为 `5x10x4`，L6 为
+`5x12x6`。兼容消息仅携带数值和形状；采集时间、序号、有效性、过期状态和 connection
+generation 仍通过 SDK snapshot 与 ROS diagnostics 获取。
 
 Lifecycle 节点同时提供标准的 `change_state`、`get_state`、
 `get_available_states` 和 `get_available_transitions` 服务。
@@ -152,23 +154,21 @@ Lifecycle 节点同时提供标准的 `change_state`、`get_state`、
 
 ## 命令范围
 
-以下为当前 SDK 0.1.x capability 摘要，运行时仍以实际 capability 为准：
+以下为当前 SDK 0.2.x capability 摘要，运行时仍以实际 capability 为准：
 
-| 型号 | 角度 | 速度 | 扭矩 |
+| 型号 | 百分比角度 | 协议速度 | 协议扭矩/电流限制 |
 | --- | --- | --- | --- |
-| L6 | 0–100 | 0–100 无量纲 | 0–1400 mA |
-| O6 | 0–100 | 0–180 RPM | 0–1000 mA |
-| L20Lite、L25 | 0–100 | 0–100 无量纲 | 0–100 无量纲 |
-| O20 | 0–100 | 目标 0–100 整数、无量纲 | 0–1000 整数，每单位 6.5 mA |
+| L6、O6、L20Lite、L25 | 0–100 | 0–255 整数 count | 0–255 整数 count |
+| O20 | 0–100 | 0–100 整数 count | 0–1000 整数 count |
 | O30I | 0–100 | 0–255 整数 | 0–255 整数 |
-| L30 | 0–100 | 1–250 整数、协议单位 | 390–5200 mA，发送时按 6.5 mA 量化 |
+| L30 | 0–100 | 1–250 整数 count | 60–800 整数 count |
 
 ROS 话题类型为 Float64 数组；驱动会按 SDK capability 校验并把要求整数的 Float64 转成
-整数，带小数的整数型命令会被拒绝。L6 能设置速度，但没有当前速度查询；因此目标会出现在
-`command/accepted/speeds`，不会发布伪造的 `/state/speeds`。O6 的 `/state/speeds` 为 RPM、
-`/state/torques` 为 mA、`/state/acceleration` 为度/秒²；O20 的 `/state/speeds` 为 RPM。
-L30 的 `/state/current` 为 mA。协议原值保存在 SDK `SensorSample.raw_values`，当前 ROS
-数值状态话题只发布公共单位值。
+整数，带小数的整数型命令会被拒绝。除百分比角度外，ROS 数值命令和状态话题直接暴露
+SDK `SensorSample.values`，单位读取 `SensorCapability.unit`。SDK 0.2.x 默认使用协议解析
+值，常见为 `count`；`physical_unit/scale/offset` 是物理解释元数据，ROS 不隐式换算。
+O20 当前电流已经由协议解析为 mA。L6 能设置速度，但没有当前速度查询；因此目标会出现在
+`command/accepted/speeds`，不会发布伪造的 `/state/speeds`。
 
 ## API 迁移顺序
 
@@ -176,7 +176,8 @@ L30 的 `/state/current` 为 mA。协议原值保存在 SDK `SensorSample.raw_va
 
 1. ROS 只依赖独立 `linkerbot-hand`，型号与范围只读取 `get_capabilities()`。
 2. Lifecycle activate/deactivate 显式启动和停止 SDK `PollingPlan`；ROS 状态定时器只读取缓存。
-3. 百分比 topic 调用 `submit_angles()`，协议 raw topic 调用 `submit_raw_angles()`，两套坐标不混用。
+3. 百分比 topic 调用 `submit_percentage_angles()`，协议 raw topic 调用
+   `submit_angles()`，两套坐标不混用。
 4. 所有运动 callback 只保存非阻塞 `CommandHandle`，诊断按准确阶段和稳定错误码转换。
 5. 恢复由 SDK 管理且不重放旧目标，最后使用 fake transport 和逐轴实物测试验证。
 

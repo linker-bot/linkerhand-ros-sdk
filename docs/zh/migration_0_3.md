@@ -1,6 +1,6 @@
 # 从 0.2.x 迁移到 0.3.0
 
-0.3.0 将驱动迁移到拆分后的 `linkerbot-hand` 0.1.x 和 ROS 2 Lifecycle。现有 Topic 名称
+0.3.0 将驱动迁移到拆分后的 `linkerbot-hand` 和 ROS 2 Lifecycle。现有 Topic 名称
 和 `HandCommandClient` 保持兼容，但启动、参数、状态来源和确认语义发生变化。
 
 ## 依赖
@@ -9,7 +9,7 @@
 python3 -m pip install --upgrade \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
-  'linkerbot-hand>=0.1.2,<0.2.0'
+  'linkerbot-hand>=0.2.1,<0.3.0'
 ```
 
 ROS 驱动只直接依赖独立发行的 `linkerbot-hand`，由 hand 传递依赖兼容的
@@ -51,11 +51,13 @@ ros2 launch linkerbot_hand_ros hand.launch.py \
 - 最近 `dispatched/acknowledged/failed/superseded` 阶段通过诊断观察。
 - 屈伸轴统一为 `100=完全张开，0=完全握拳`；方向轴的 0/100 表示 capability
   声明的两个位置端点。
-- 无百分比回读的轴在兼容角度数组中为 `NaN`。
+- 从 0.3.3 起，协议角度必须能通过 SDK capability 完成整组百分比映射，否则不发布
+  `state/angles`。
 - 自动重连不重放旧目标，generation 变化后业务必须显式下发新目标。
 - 静态参数在 configure 后不再表面接受；切换连接配置必须先 cleanup。
 - L30 的 enable/disable/calibrate 通过异步 Trigger 服务进入 SDK 离散 FIFO。
-- force 触觉矩阵暂不展开为兼容数值数组，等待专用强类型 ROS 消息。
+- 从 0.3.3 起，force 触觉矩阵通过带 `finger/row/column` 布局的
+  `Float64MultiArray` 发布；时间、序号和连接代次仍从 diagnostics 获取。
 
 ## 上线核对
 

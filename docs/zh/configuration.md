@@ -25,7 +25,7 @@ deactivate 不会自动张开、握拳、清错或重放目标。
 | `angles_hz` | `60.0` | SDK 角度查询频率，`0` 表示禁用 |
 | `speeds_hz` | `0.0` | SDK 速度查询频率，`0` 表示禁用 |
 | `torques_hz` | `0.0` | SDK 力矩查询频率，`0` 表示禁用 |
-| `force_hz` | `0.0` | SDK 力传感器查询频率；当前无 ROS 力状态消息 |
+| `force_hz` | `0.0` | SDK 整手触觉查询频率；`0` 表示禁用 |
 | `temperature_hz` | `1.0` | SDK 温度查询频率，`0` 表示禁用 |
 | `current_hz` | `10.0` | SDK 电流查询频率，`0` 表示禁用 |
 | `faults_hz` | `5.0` | SDK 故障查询频率，`0` 表示禁用 |
@@ -70,9 +70,10 @@ ros2 param set /linkerbot_hand diagnostic_rate 1.0
 | O30I | 支持 | 支持 |
 | L30 | 支持 | 不支持 |
 
-状态数值单位由 SDK `SensorCapability.unit` 决定：O6 速度为 RPM、扭矩为 mA、加速度为
-度/秒²，O20 当前速度为 RPM。L6 不支持速度反馈，`speeds_hz` 即使非零也会被 capability
-限制为 0；最近设置目标只通过 accepted 命令话题表达。
+状态数值单位由 SDK `SensorCapability.unit` 决定。SDK 0.2.x 默认暴露协议解析值，常见为
+`count`；`physical_unit/scale/offset` 只提供物理解释元数据，ROS 不做隐式换算。O20 当前
+电流已经由协议解析为 mA。L6 不支持速度反馈，`speeds_hz` 即使非零也会被 capability
+限制为 0；最近设置的协议目标只通过 accepted 命令话题表达。
 
 其他参数在 configure 时保存快照。`model`、`side`、transport、`command_rate_hz` 和
 `auto_reconnect` 在 configured/inactive/active 状态会被明确拒绝；必须先 deactivate、
@@ -80,9 +81,10 @@ cleanup，修改后再 configure/activate。unconfigured 状态设置参数时�
 能力和完整候选配置校验型号、side、JSON 和频率，不会把无效值暂存到参数服务器。
 
 O30I 支持 `voltage/acceleration/motion_time`，O6 支持 `acceleration`；其他型号若 capability
-未声明，对应非零频率会被限制为 `0`，不会发送无效查询。`force_hz` 可以启动 SDK 触觉
-矩阵轮询，但当前 ROS 兼容接口不会将二维触觉矩阵有损压成 `Float64MultiArray`，需等待
-专用强类型消息。
+未声明，对应非零频率会被限制为 `0`，不会发送无效查询。`force_hz` 启动 SDK 整手触觉
+矩阵轮询，并通过 `/linkerbot_hand/state/force` 发布行优先的三维
+`Float64MultiArray`。布局维度依次为 `finger/row/column`，手指顺序为
+`thumb/index/middle/ring/pinky`；O6 `04-B` 为 `5x10x4`，L6 为 `5x12x6`。
 
 launch 另外提供 `namespace` 和 `autostart` 参数，它们不是节点参数。
 

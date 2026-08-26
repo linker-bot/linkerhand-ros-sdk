@@ -21,18 +21,19 @@ coordinates without applying the classic user LUT.
 
 - Ubuntu 24.04 with ROS 2 Jazzy
 - Python 3.10 or newer
-- `linkerbot-hand>=0.1.2,<0.2.0`
+- `linkerbot-hand>=0.2.1,<0.3.0`
 - A configured SocketCAN/CAN FD interface or supported vendor library
 
-`linkerbot-hand v0.1.2` provides the physical-unit contract required by this
-driver and remains compatible with ROS 2 Jazzy's NumPy 1.x environment.
+`linkerbot-hand v0.2.1` provides protocol-native telemetry and O6 04-B tactile
+capability detection while remaining compatible with ROS 2 Jazzy's NumPy 1.x
+environment.
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 python3 -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
-  'linkerbot-hand>=0.1.2,<0.2.0'
+  'linkerbot-hand>=0.2.1,<0.3.0'
 ```
 
 For local SDK development, install the independent repositories. Installing

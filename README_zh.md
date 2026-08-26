@@ -31,11 +31,11 @@ SDK 单 I/O worker -> transport -> 灵巧手
 
 - Ubuntu 24.04 + ROS 2 Jazzy
 - Python 3.10 或更新版本
-- `linkerbot-hand>=0.1.2,<0.2.0`
+- `linkerbot-hand>=0.2.1,<0.3.0`
 - 已配置的 SocketCAN/CAN FD 接口，或型号支持的厂商动态库
 
-`linkerbot-hand v0.1.2` 已包含当前驱动所需的物理单位契约，并兼容 ROS 2 Jazzy 的
-NumPy 1.x 环境。
+`linkerbot-hand v0.2.1` 已包含当前驱动所需的协议原始值契约和 O6 `04-B`
+触觉能力识别，并兼容 ROS 2 Jazzy 的 NumPy 1.x 环境。
 
 必须使用 Jazzy：
 
@@ -44,7 +44,7 @@ source /opt/ros/jazzy/setup.bash
 python3 -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
-  'linkerbot-hand>=0.1.2,<0.2.0'
+  'linkerbot-hand>=0.2.1,<0.3.0'
 ```
 
 本地开发 SDK 时，可从两个独立仓库安装。`linkerbot-hand` 声明兼容的

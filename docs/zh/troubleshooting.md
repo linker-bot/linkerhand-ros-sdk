@@ -29,7 +29,7 @@ python3 -c 'import sys; print(sys.executable)'
 python3 -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
-  'linkerbot-hand>=0.1.2,<0.2.0'
+  'linkerbot-hand>=0.2.1,<0.3.0'
 python3 -c 'import linkerbot_hand; print(linkerbot_hand.__file__)'
 ```
 
@@ -67,7 +67,7 @@ configure 不访问硬件。失败通常是参数问题：
 - `transport_options_json` 不是 JSON 对象。
 - JSON 中包含由节点管理的 `model/side/session_config/clock`。
 - 型号、side 或频率值无效。
-- ROS 环境中的 `linkerbot-hand` 版本不在 0.1.x。
+- ROS 环境中的 `linkerbot-hand` 版本不在 `>=0.2.1,<0.3.0`。
 
 ```bash
 ros2 param dump /linkerbot_hand
@@ -103,11 +103,12 @@ SDK 轮询频率，而不是降低 `publish_rate_hz` 来假设总线查询会同
 仍无状态，检查当前 SDK capability 是否支持该型号的传感器。诊断中的 `*_age_s`、
 `consecutive_errors` 和 `recent_error_code` 用于区分未采样、过期和 transport 错误。
 
-## 状态数组中出现 nan
+## 百分比角度状态没有发布
 
-`NaN` 表示该轴没有独立百分比回读，不是 0，也不是握拳。数组仍保持与
-`joint_names` 相同长度。业务到位判断应跳过不支持回读的轴，或使用后续强类型状态
-接口中的有效标志。
+当前驱动只有在整组协议角度能通过 SDK capability 完成映射时才发布
+`state/angles`。先检查 diagnostics 中的 `angles_valid`、`angles_stale` 和
+`ros_state_errors`，再核对 SDK 与 ROS 包版本。旧驱动发布的 `NaN` 不可用于到位判断，
+也不能解释为 0 或握拳。
 
 ## 静态参数修改被拒绝
 
@@ -130,7 +131,7 @@ ros2 lifecycle set /linkerbot_hand activate
 - Lifecycle 不是 active。
 - 数组长度不等于 SDK joint count。
 - 包含 `NaN/inf` 或超出 capability 范围。
-- O20/O30I 的整数型速度或扭矩带小数；L30 电流上限允许 mA 小数并按 6.5 mA 量化。
+- O20/O30I 的整数型速度或扭矩带小数；L30 电流上限必须使用 60–800 的整数协议 count。
 - SDK 正在重连或连接不可用。
 
 ```bash

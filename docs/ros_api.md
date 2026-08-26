@@ -24,7 +24,7 @@ starts SDK polling. ROS state timers only call `get_snapshot()` and
 | `angles_hz` | `60.0` | SDK angle polling rate; zero disables |
 | `speeds_hz` | `0.0` | SDK speed polling rate; zero disables |
 | `torques_hz` | `0.0` | SDK torque polling rate; zero disables |
-| `force_hz` | `0.0` | SDK force polling rate; no ROS force message yet |
+| `force_hz` | `0.0` | SDK full-hand tactile polling rate; zero disables |
 | `temperature_hz` | `1.0` | SDK temperature polling rate |
 | `current_hz` | `10.0` | SDK current polling rate |
 | `faults_hz` | `5.0` | SDK fault polling rate |
@@ -67,6 +67,7 @@ changing model, side, transport, command rate, or reconnect policy.
 | `~/state/voltage` | `std_msgs/msg/Float64MultiArray` | Publish fresh voltage cache when supported |
 | `~/state/acceleration` | `std_msgs/msg/Float64MultiArray` | Publish fresh acceleration cache when supported |
 | `~/state/motion_time` | `std_msgs/msg/Float64MultiArray` | Publish fresh motion-time cache when supported |
+| `~/state/force` | `std_msgs/msg/Float64MultiArray` | Publish fresh full-hand tactile matrices when supported |
 | `~/joint_names` | `std_msgs/msg/String` | Publish SDK joint order |
 | `~/model` | `std_msgs/msg/String` | Publish normalized model |
 | `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | SDK health and command stages |
@@ -77,8 +78,9 @@ been dispatched, acknowledged by the device, or physically completed. Recent
 diagnostics, including management service commands.
 Continuous commands use latest-wins at both ROS QoS and SDK layers.
 
-An unavailable percentage readback is represented by `NaN` to preserve array
-shape. Invalid or stale samples are not published.
+Protocol angle samples are converted through the SDK capability map before
+percentage publication. Invalid, stale, or unconvertible samples are not
+published.
 
 ## Services
 
@@ -91,26 +93,31 @@ shape. Invalid or stale samples are not published.
 | `~/calibrate` | `std_srvs/srv/Trigger` | Asynchronously submit calibration when supported |
 
 Trigger success means SDK acceptance only. Inspect diagnostics for dispatch or
-protocol acknowledgement. Tactile force remains in the SDK cache but is not
-flattened into a numeric array; it requires a dedicated structured ROS message.
+protocol acknowledgement.
+
+`~/state/force` uses a row-major three-dimensional layout labelled `finger`,
+`row`, and `column`. Finger order is `thumb`, `index`, `middle`, `ring`,
+`pinky`. O6 `04-B` publishes `5x10x4` values; L6 publishes `5x12x6` values.
+The compatibility message contains numeric cells and shape only. Sample time,
+sequence, validity, staleness, and connection generation remain available in
+SDK snapshots and ROS diagnostics.
 
 ## Command Ranges
 
-| Model | Angles | Speeds | Torques |
+| Model | Percentage angles | Protocol speeds | Protocol torque/current limit |
 | --- | --- | --- | --- |
-| L6 | 0–100 | 0–100 dimensionless | 0–1400 mA |
-| O6 | 0–100 | 0–180 RPM | 0–1000 mA |
-| L20Lite, L25 | 0–100 | 0–100 dimensionless | 0–100 dimensionless |
-| O20 | 0–100 | target 0–100 integer | 0–1000 integer at 6.5 mA/LSB |
+| L6, O6, L20Lite, L25 | 0–100 | 0–255 integer count | 0–255 integer count |
+| O20 | 0–100 | 0–100 integer count | 0–1000 integer count |
 | O30I | 0–100 | 0–255 integer | 0–255 integer |
-| L30 | 0–100 | 1–250 protocol units | 390–5200 mA, quantized to 6.5 mA |
+| L30 | 0–100 | 1–250 integer count | 60–800 integer count |
 
-L30 current state is mA; each sample's protocol integer is retained in the SDK
-raw cache. L6 speed is write-only: its accepted target is available on the
-accepted command topic, while no measured speed state is published. O6 speed
-state is RPM and torque state is mA; O20 speed state is RPM. Exact protocol
-values remain in the SDK sensor sample raw cache and are not duplicated as ROS
-numeric state topics.
+Except for percentage angles, ROS numeric command and state topics expose
+`SensorSample.values` in the SDK capability `unit`. In SDK 0.2.x this is the
+decoded protocol value, commonly `count`; physical interpretation is metadata
+in `physical_unit/scale/offset` and is not applied implicitly. O20 current is
+already decoded in mA. L6 speed is write-only: its accepted protocol target is
+available on the accepted command topic, while no measured speed state is
+published.
 
 For full lifecycle, diagnostics, joint orders, and business semantics, see the
 [Chinese API reference](zh/ros_api.md).
