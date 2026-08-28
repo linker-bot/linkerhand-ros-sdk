@@ -1,255 +1,184 @@
+"""Typed persistent client contract tests."""
+
+from __future__ import annotations
+
 import threading
-import time
-from types import SimpleNamespace
+from dataclasses import replace
 
 import pytest
-
-from linkerbot_hand_ros import client
+import rclpy
+from linkerbot_hand import CommandSemantic, get_declared_capabilities
 from linkerbot_hand_ros.client import HandCommandClient
-from linkerbot_hand_ros.qos import COMMAND_QOS, METADATA_QOS
+from linkerbot_hand_ros.conversion import capabilities_to_message
+from rclpy.node import Node
+
+from linkerbot_hand_msgs.msg import HandCommandStatus
 
 
-class FakePublisher:
-    def __init__(self, topic, qos):
-        self.topic = topic
-        self.qos = qos
-        self.messages = []
-        self.subscription_count = 1
-        self.acknowledged = True
+class RecordingPublisher:
+    def __init__(self, subscriptions: int = 1) -> None:
+        self.messages: list[object] = []
+        self.subscriptions = subscriptions
 
-    def get_subscription_count(self):
-        return self.subscription_count
-
-    def publish(self, message):
+    def publish(self, message: object) -> None:
         self.messages.append(message)
 
-    def wait_for_all_acked(self, timeout):
-        self.timeout = timeout
-        return self.acknowledged
+    def get_subscription_count(self) -> int:
+        return self.subscriptions
 
 
-class FakeSubscription:
-    def __init__(self, topic, callback, qos):
-        self.topic = topic
-        self.callback = callback
-        self.qos = qos
+class FailingConstructionNode:
+    def __init__(self) -> None:
+        self.created: list[object] = []
+        self.destroyed: list[object] = []
 
-
-class FakeNode:
-    def __init__(self):
-        self.publishers = []
-        self.subscriptions = []
-        self.destroyed_publishers = []
-        self.destroyed_subscriptions = []
-
-    def create_publisher(self, _message_type, topic, qos):
-        publisher = FakePublisher(topic, qos)
-        self.publishers.append(publisher)
+    def create_publisher(self, *_args, **_kwargs):
+        if len(self.created) == 2:
+            raise RuntimeError("publisher construction failed")
+        publisher = object()
+        self.created.append(publisher)
         return publisher
 
-    def create_subscription(self, _message_type, topic, callback, qos):
-        subscription = FakeSubscription(topic, callback, qos)
-        self.subscriptions.append(subscription)
-        return subscription
+    def destroy_publisher(self, publisher) -> None:
+        self.destroyed.append(publisher)
 
-    def destroy_publisher(self, publisher):
-        self.destroyed_publishers.append(publisher)
-
-    def destroy_subscription(self, subscription):
-        self.destroyed_subscriptions.append(subscription)
-
-    def receive(self, topic, data):
-        subscription = next(item for item in self.subscriptions if item.topic == topic)
-        subscription.callback(SimpleNamespace(data=data))
+    def destroy_subscription(self, _subscription) -> None:
+        raise AssertionError("no subscription should exist after publisher failure")
 
 
 @pytest.fixture
-def ready_client():
-    node = FakeNode()
-    command_client = HandCommandClient(node)
-    node.receive(
-        "/linkerbot_hand/joint_names",
-        "thumb_flex,thumb_abd,index,middle,ring,pinky",
+def client_rig():
+    rclpy.init()
+    node = Node("typed_hand_client_test")
+    client = HandCommandClient(node)
+    angle = RecordingPublisher()
+    original_angle = client._angle_publisher
+    client._angle_publisher = angle
+    raw_originals = dict(client._raw_publishers)
+    raw = {name: RecordingPublisher() for name in client._raw_publishers}
+    client._raw_publishers.update(raw)
+    capabilities = get_declared_capabilities("l6", side="left")
+    capabilities = replace(
+        capabilities,
+        identity=replace(capabilities.identity, verified=True),
     )
-    node.receive("/linkerbot_hand/model", "l6")
-    return node, command_client
+    client._update_capabilities(capabilities_to_message(capabilities))
+    try:
+        yield client, angle, raw
+    finally:
+        client._angle_publisher = original_angle
+        client._raw_publishers.update(raw_originals)
+        client.destroy()
+        node.destroy_node()
+        rclpy.try_shutdown()
 
 
-def test_client_creates_persistent_topics_with_shared_qos():
-    node = FakeNode()
-    command_client = HandCommandClient(node, driver_name="/left/linkerbot_hand/")
+def test_percent_and_raw_angles_use_one_typed_topic(client_rig):
+    client, angle, _raw = client_rig
+    percent = client.set_percent_angles([100, 50, 100, 100, 100, 100])
+    capabilities = get_declared_capabilities("l6", side="left")
+    command = capabilities.command(CommandSemantic.ANGLES)
+    assert command is not None
+    raw_values = [command.range_for(index).minimum for index in range(6)]
+    raw = client.set_angles(raw_values)
 
-    assert command_client.driver_name == "/left/linkerbot_hand"
-    assert [publisher.topic for publisher in node.publishers] == [
-        "/left/linkerbot_hand/command/angles",
-        "/left/linkerbot_hand/command/raw_angles",
-        "/left/linkerbot_hand/command/speeds",
-        "/left/linkerbot_hand/command/torques",
-    ]
-    assert all(publisher.qos is COMMAND_QOS for publisher in node.publishers)
-    assert all(subscription.qos is METADATA_QOS for subscription in node.subscriptions)
+    assert percent.user_sequence == 1
+    assert raw.user_sequence == 2
+    assert percent.representation == "percent"
+    assert raw.representation == "raw"
+    assert angle.messages[0].representation == angle.messages[0].REPRESENTATION_PERCENT
+    assert angle.messages[1].representation == angle.messages[1].REPRESENTATION_RAW
 
 
-def test_client_rolls_back_partially_created_ros_entities():
-    node = FakeNode()
-    original_create_subscription = node.create_subscription
-    subscription_calls = 0
+def test_client_validates_from_published_capability_not_model_table(client_rig):
+    client, _angle, _raw = client_rig
 
-    def fail_second_subscription(*args, **kwargs):
-        nonlocal subscription_calls
-        subscription_calls += 1
-        if subscription_calls == 2:
-            raise RuntimeError("injected subscription creation failure")
-        return original_create_subscription(*args, **kwargs)
+    with pytest.raises(ValueError, match="0..100"):
+        client.set_percent_angles([101] * 6)
+    with pytest.raises(ValueError, match="integer protocol"):
+        client.set_angles([0.5] * 6)
+    with pytest.raises(RuntimeError, match="does not declare torques"):
+        client.set_torques([0] * 6)
+    with pytest.raises(TypeError, match="bool"):
+        client.set_percent_angles([True, 50, 50, 50, 50, 50])
 
-    node.create_subscription = fail_second_subscription
 
-    with pytest.raises(RuntimeError, match="injected subscription creation failure"):
+def test_raw_command_publication_uses_capability_channel_shape(client_rig):
+    client, _angle, raw_publishers = client_rig
+    capabilities = get_declared_capabilities("l6", side="left")
+    command = capabilities.command(CommandSemantic.SPEEDS)
+    assert command is not None
+    values = [command.range_for(index).minimum for index in range(6)]
+
+    publication = client.set_speeds(values)
+
+    assert publication.semantic == "speeds"
+    assert publication.representation == "raw"
+    assert list(raw_publishers["speeds"].messages[0].raw) == values
+
+
+def test_wait_for_terminal_status_uses_sdk_stage_not_mechanical_arrival(client_rig):
+    client, _angle, _raw = client_rig
+    publication = client.set_percent_angles([100] * 6)
+    result: list[HandCommandStatus | None] = []
+    waiter = threading.Thread(
+        target=lambda: result.append(
+            client.wait_for_terminal_status(publication.user_sequence, 0.5)
+        )
+    )
+    waiter.start()
+    client._update_status(
+        HandCommandStatus(
+            user_sequence=publication.user_sequence,
+            command_id=9,
+            family="angle_target",
+            stage=HandCommandStatus.STAGE_DISPATCHED,
+            ack_support=HandCommandStatus.ACK_UNSUPPORTED,
+            sent_frames=1,
+        )
+    )
+    waiter.join(timeout=1)
+
+    assert not waiter.is_alive()
+    assert result[0] is not None
+    assert result[0].stage == HandCommandStatus.STAGE_DISPATCHED
+
+
+def test_readiness_requires_capability_and_driver_subscription(client_rig):
+    client, angle, _raw = client_rig
+    assert client.is_ready("angles")
+
+    angle.subscriptions = 0
+    assert not client.is_ready("angles")
+    assert not client.is_ready("torques")
+    with pytest.raises(RuntimeError, match="not active"):
+        client.set_percent_angles([100] * 6)
+
+
+def test_declared_capability_cannot_be_used_before_identity_verification(client_rig):
+    client, _angle, _raw = client_rig
+    client._update_capabilities(
+        capabilities_to_message(get_declared_capabilities("l6", side="left"))
+    )
+
+    assert not client.is_ready("angles")
+    with pytest.raises(RuntimeError, match="identity-verified"):
+        client.set_percent_angles([100] * 6)
+
+
+def test_client_destroy_is_idempotent_and_rejects_further_use(client_rig):
+    client, _angle, _raw = client_rig
+    client.destroy()
+    client.destroy()
+
+    with pytest.raises(RuntimeError, match="destroyed"):
+        client.set_percent_angles([100] * 6)
+
+
+def test_partial_publisher_construction_rolls_back_every_created_entity():
+    node = FailingConstructionNode()
+
+    with pytest.raises(RuntimeError, match="construction failed"):
         HandCommandClient(node)
 
-    assert len(node.destroyed_publishers) == 4
-    assert len(node.destroyed_subscriptions) == 1
-
-
-def test_client_rejects_commands_until_driver_metadata_is_ready():
-    command_client = HandCommandClient(FakeNode())
-
-    assert not command_client.is_ready()
-    with pytest.raises(RuntimeError, match="not ready"):
-        command_client.send_angles([100] * 6)
-
-
-def test_client_rejects_inconsistent_driver_metadata():
-    node = FakeNode()
-    command_client = HandCommandClient(node)
-    node.receive("/linkerbot_hand/joint_names", "joint_1,joint_2")
-    node.receive("/linkerbot_hand/model", "l6")
-
-    assert not command_client.is_ready()
-    with pytest.raises(RuntimeError, match="not ready"):
-        command_client.send_angles([100] * 6)
-
-
-def test_client_waits_for_metadata_from_executor_thread():
-    node = FakeNode()
-    command_client = HandCommandClient(node)
-
-    def publish_metadata():
-        time.sleep(0.01)
-        node.receive(
-            "/linkerbot_hand/joint_names",
-            "thumb_flex,thumb_abd,index,middle,ring,pinky",
-        )
-        node.receive("/linkerbot_hand/model", "l6")
-
-    worker = threading.Thread(target=publish_metadata)
-    worker.start()
-    try:
-        assert command_client.wait_until_ready(0.5)
-    finally:
-        worker.join(timeout=1.0)
-    assert not worker.is_alive()
-
-
-@pytest.mark.parametrize("timeout_sec", (0.0, -1.0, float("nan"), float("inf"), True))
-def test_client_rejects_invalid_timeouts(ready_client, timeout_sec):
-    _, command_client = ready_client
-
-    with pytest.raises(ValueError, match="finite and positive"):
-        command_client.wait_until_ready(timeout_sec)
-    with pytest.raises(ValueError, match="finite and positive"):
-        command_client.send_angles([100] * 6, timeout_sec=timeout_sec)
-
-
-def test_client_reuses_publisher_without_waiting_for_ack_by_default(ready_client):
-    node, command_client = ready_client
-
-    receipt = command_client.send_angles([100, 50, 100, 100, 100, 20])
-    second_receipt = command_client.send_angles([100] * 6)
-
-    assert receipt.sequence == 1
-    assert second_receipt.sequence == 2
-    assert receipt.dds_acknowledged is None
-    assert receipt.dds_ack_latency_ms is None
-    assert len(node.publishers) == 4
-    assert len(node.publishers[0].messages) == 2
-    assert list(node.publishers[0].messages[0].data) == [
-        100.0,
-        50.0,
-        100.0,
-        100.0,
-        100.0,
-        20.0,
-    ]
-
-
-def test_client_can_wait_for_dds_ack(ready_client, monkeypatch):
-    node, command_client = ready_client
-    timestamps = iter((1_000_000, 6_250_000))
-    monkeypatch.setattr(client.time, "monotonic_ns", lambda: next(timestamps))
-
-    receipt = command_client.send_angles(
-        [100, 50, 100, 100, 100, 100],
-        wait_for_dds_ack=True,
-        timeout_sec=0.5,
-    )
-
-    assert receipt.dds_acknowledged is True
-    assert receipt.dds_ack_latency_ms == 5.25
-    assert node.publishers[0].timeout.nanoseconds == 500_000_000
-
-
-def test_client_uses_model_specific_validation(ready_client):
-    _, command_client = ready_client
-
-    with pytest.raises(ValueError, match="requires 6 values"):
-        command_client.send_angles([100] * 5)
-    with pytest.raises(ValueError, match=r"\[0, 100\]"):
-        command_client.send_angles([101] * 6)
-
-
-def test_client_sends_exact_protocol_raw_angles(ready_client):
-    node, command_client = ready_client
-
-    receipt = command_client.send_raw_angles([255, 128, 204, 178, 153, 0])
-
-    assert receipt.command == "raw_angles"
-    assert receipt.values == (255.0, 128.0, 204.0, 178.0, 153.0, 0.0)
-    assert list(node.publishers[1].messages[0].data) == list(receipt.values)
-    with pytest.raises(ValueError, match=r"\[0, 255\]"):
-        command_client.send_raw_angles([256] * 6)
-
-
-def test_client_tracks_driver_accepted_values(ready_client):
-    node, command_client = ready_client
-
-    assert command_client.last_accepted("angles") is None
-    node.receive(
-        "/linkerbot_hand/command/accepted/angles",
-        [100.0, 50.0, 100.0, 100.0, 100.0, 20.0],
-    )
-
-    assert command_client.last_accepted("angles") == (
-        100.0,
-        50.0,
-        100.0,
-        100.0,
-        100.0,
-        20.0,
-    )
-
-
-def test_client_destroy_is_idempotent(ready_client):
-    node, command_client = ready_client
-
-    command_client.destroy()
-    command_client.destroy()
-
-    assert len(node.destroyed_publishers) == 4
-    assert len(node.destroyed_subscriptions) == 6
-    with pytest.raises(RuntimeError, match="destroyed"):
-        command_client.send_angles([100] * 6)
-    with pytest.raises(RuntimeError, match="destroyed"):
-        command_client.is_ready()
-    with pytest.raises(RuntimeError, match="destroyed"):
-        command_client.last_accepted("angles")
+    assert set(node.destroyed) == set(node.created)

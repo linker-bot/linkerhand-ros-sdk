@@ -1,4 +1,4 @@
-"""Print joint names and angle state from a running hand driver."""
+"""Print typed raw and percent angles from a running hand driver."""
 
 from __future__ import annotations
 
@@ -10,74 +10,62 @@ import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.utilities import remove_ros_args
-from std_msgs.msg import Float64MultiArray, String
+
+from linkerbot_hand_msgs.msg import HandJointState
+from linkerbot_hand_ros.qos import STATE_QOS
 
 
 def _parse_args(args: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="监听灵巧手角度状态")
     parser.add_argument(
-        "--names-topic",
-        default="/linkerbot_hand/joint_names",
-        help="关节名称话题",
+        "--driver-name",
+        default="/linkerbot_hand",
     )
-    parser.add_argument(
-        "--angles-topic",
-        default="/linkerbot_hand/state/angles",
-        help="角度状态话题",
-    )
-    parser.add_argument(
-        "--print-interval",
-        type=float,
-        default=0.5,
-        help="角度输出最小间隔秒数",
-    )
+    parser.add_argument("--print-interval", type=float, default=0.5)
     return parser.parse_args(args)
 
 
 class StateMonitor(Node):
-    def __init__(
-        self, names_topic: str, angles_topic: str, print_interval: float
-    ) -> None:
+    def __init__(self, driver_name: str, print_interval: float) -> None:
         super().__init__("linkerbot_hand_state_monitor")
-        self._joint_names: list[str] = []
         self._print_interval = print_interval
         self._last_print = 0.0
-        self.create_subscription(String, names_topic, self._on_names, 10)
-        self.create_subscription(Float64MultiArray, angles_topic, self._on_angles, 10)
+        root = driver_name.rstrip("/")
+        self.create_subscription(
+            HandJointState,
+            f"{root}/state/angles",
+            self._on_angles,
+            STATE_QOS,
+        )
 
-    def _on_names(self, message: String) -> None:
-        self._joint_names = [name for name in message.data.split(",") if name]
-        self.get_logger().info("关节顺序: " + ", ".join(self._joint_names))
-
-    def _on_angles(self, message: Float64MultiArray) -> None:
+    def _on_angles(self, message: HandJointState) -> None:
         now = time.monotonic()
         if now - self._last_print < self._print_interval:
             return
         self._last_print = now
-        if not self._joint_names:
-            self.get_logger().warning("尚未收到 joint_names，当前仅输出角度数组")
-            self.get_logger().info(str(list(message.data)))
+        if not message.meta.valid:
+            self.get_logger().warning("角度样本当前无效")
             return
-        if len(message.data) != len(self._joint_names):
-            self.get_logger().error(
-                f"角度数量 {len(message.data)} 与关节数量 "
-                f"{len(self._joint_names)} 不一致"
+        values = []
+        for index, name in enumerate(message.joint_names):
+            percent = (
+                f"{message.percent[index]:.2f}%"
+                if message.percent_valid[index]
+                else "unsupported"
             )
-            return
-        state = ", ".join(
-            f"{name}={value:.2f}"
-            for name, value in zip(self._joint_names, message.data, strict=True)
-        )
-        self.get_logger().info(state)
+            values.append(f"{name}=raw:{message.raw[index]:.2f},percent:{percent}")
+        self.get_logger().info(", ".join(values))
 
 
 def main(args: list[str] | None = None) -> None:
     raw_args = sys.argv if args is None else [sys.argv[0], *args]
     parsed = _parse_args(remove_ros_args(raw_args)[1:])
-    if parsed.print_interval <= 0.0:
+    if parsed.print_interval <= 0:
         raise SystemExit("--print-interval 必须大于 0")
+    if not parsed.driver_name.rstrip("/"):
+        raise SystemExit("--driver-name 不能为空")
     rclpy.init(args=raw_args)
-    node = StateMonitor(parsed.names_topic, parsed.angles_topic, parsed.print_interval)
+    node = StateMonitor(parsed.driver_name, parsed.print_interval)
     try:
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):

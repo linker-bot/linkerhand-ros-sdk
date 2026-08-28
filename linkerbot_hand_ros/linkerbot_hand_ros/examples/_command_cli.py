@@ -1,4 +1,4 @@
-"""Shared helpers for command-line clients."""
+"""Shared helpers for typed command-line clients."""
 
 from __future__ import annotations
 
@@ -7,56 +7,66 @@ import time
 import rclpy
 from rclpy.node import Node
 
+from linkerbot_hand_msgs.msg import HandCommandStatus
 from linkerbot_hand_ros.client import HandCommandClient
-
 
 DEFAULT_DRIVER_NAME = "/linkerbot_hand"
 
 
-def resolve_driver_name(
-    driver_name: str,
-    *,
-    angle_topic: str | None = None,
-    joint_names_topic: str | None = None,
-) -> str:
-    """Resolve legacy topic overrides to one canonical driver name."""
-    candidates: set[str] = set()
-    for topic, suffix in (
-        (angle_topic, "/command/angles"),
-        (joint_names_topic, "/joint_names"),
-    ):
-        if topic is None:
-            continue
-        normalized = topic.rstrip("/")
-        if not normalized.endswith(suffix):
-            raise ValueError(f"话题必须以 {suffix} 结尾: {topic}")
-        candidates.add(normalized[: -len(suffix)])
+def resolve_driver_name(driver_name: str) -> str:
+    """Normalize one driver root without supporting alternate topic contracts."""
 
-    normalized_driver = driver_name.rstrip("/")
-    if len(candidates) > 1:
-        raise ValueError("命令话题和关节名称话题必须属于同一个驱动节点")
-    if candidates:
-        topic_driver = candidates.pop()
-        if (
-            normalized_driver != DEFAULT_DRIVER_NAME
-            and normalized_driver != topic_driver
-        ):
-            raise ValueError("--driver-name 与话题参数指向不同驱动节点")
-        normalized_driver = topic_driver
-    if not normalized_driver:
+    normalized = driver_name.rstrip("/")
+    if not normalized:
         raise ValueError("驱动节点名不能为空")
-    return normalized_driver
+    return normalized
 
 
 def spin_until_ready(
     node: Node,
     command_client: HandCommandClient,
-    timeout_sec: float,
+    timeout_s: float,
+    semantic: str = "angles",
 ) -> bool:
-    """Process metadata callbacks until the driver contract is ready."""
-    deadline = time.monotonic() + timeout_sec
+    """Process metadata callbacks until one typed command is ready."""
+
+    deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        if command_client.is_ready():
+        if command_client.is_ready(semantic):
             return True
         rclpy.spin_once(node, timeout_sec=0.05)
-    return command_client.is_ready()
+    return command_client.is_ready(semantic)
+
+
+def spin_until_terminal(
+    node: Node,
+    command_client: HandCommandClient,
+    user_sequence: int,
+    timeout_s: float,
+) -> HandCommandStatus | None:
+    """Spin until SDK protocol completion, not mechanical target arrival."""
+
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        rclpy.spin_once(node, timeout_sec=0.05)
+        status = command_client.get_status(user_sequence)
+        if status is None:
+            continue
+        if status.stage in {
+            HandCommandStatus.STAGE_ACKNOWLEDGED,
+            HandCommandStatus.STAGE_FAILED,
+            HandCommandStatus.STAGE_SUPERSEDED,
+        } or (
+            status.stage == HandCommandStatus.STAGE_DISPATCHED
+            and status.ack_support == HandCommandStatus.ACK_UNSUPPORTED
+        ):
+            return status
+    return None
+
+
+__all__ = [
+    "DEFAULT_DRIVER_NAME",
+    "resolve_driver_name",
+    "spin_until_ready",
+    "spin_until_terminal",
+]
