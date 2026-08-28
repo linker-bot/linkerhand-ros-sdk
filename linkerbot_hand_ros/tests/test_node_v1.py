@@ -8,6 +8,7 @@ from dataclasses import replace
 
 import pytest
 import rclpy
+from builtin_interfaces.msg import Time
 from fakes_v1 import DeviceBuilder
 from linkerbot_hand import (
     AngleSample,
@@ -233,7 +234,9 @@ def test_command_callback_routes_raw_angles_without_waiting(node_rig):
     assert command is not None
     raw_values = [float(command.range_for(index).minimum) for index in range(6)]
     message = HandJointCommand(
+        client_id=29,
         user_sequence=17,
+        publisher_stamp=Time(sec=12, nanosec=34),
         representation=HandJointCommand.REPRESENTATION_RAW,
         values=raw_values,
     )
@@ -260,6 +263,11 @@ def test_command_callback_routes_raw_angles_without_waiting(node_rig):
     assert runtime.read_count == 0
     assert len(publisher.messages) == 1
     assert publisher.messages[0].stage == publisher.messages[0].STAGE_DISPATCHED
+    assert publisher.messages[0].client_id == 29
+    assert publisher.messages[0].publisher_stamp == Time(sec=12, nanosec=34)
+    received = publisher.messages[0].driver_received_stamp
+    accepted = publisher.messages[0].transitions[0].stamp
+    assert (received.sec, received.nanosec) <= (accepted.sec, accepted.nanosec)
     assert commands.tracked_count == 0
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from builtin_interfaces.msg import Time
 from linkerbot_hand import (
     AckSupport,
     CommandHandle,
@@ -30,7 +31,10 @@ _UINT64_MAX = (1 << 64) - 1
 def command_status_to_message(
     handle: CommandHandle,
     *,
+    client_id: int,
     user_sequence: int,
+    publisher_stamp: Time,
+    driver_received_at: float,
     monotonic_now: float,
     ros_now_ns: int,
 ) -> HandCommandStatus:
@@ -38,15 +42,25 @@ def command_status_to_message(
 
     if not isinstance(handle, CommandHandle):
         raise ValidationError("handle must be CommandHandle")
-    if type(user_sequence) is not int or not 0 <= user_sequence <= _UINT64_MAX:
-        raise ValidationError("user_sequence must fit uint64")
+    for value, name in ((client_id, "client_id"), (user_sequence, "user_sequence")):
+        if type(value) is not int or not 0 <= value <= _UINT64_MAX:
+            raise ValidationError(f"{name} must fit uint64")
+    if not isinstance(publisher_stamp, Time):
+        raise ValidationError("publisher_stamp must be builtin_interfaces/Time")
     if handle.command_id > _UINT64_MAX:
         raise ValidationError("command_id must fit uint64")
     history = handle.history
     latest = history[-1]
     error = handle.error if latest.stage is CommandStage.FAILED else None
     return HandCommandStatus(
+        client_id=client_id,
         user_sequence=user_sequence,
+        publisher_stamp=publisher_stamp,
+        driver_received_stamp=monotonic_timestamp_to_message(
+            driver_received_at,
+            monotonic_now=monotonic_now,
+            ros_now_ns=ros_now_ns,
+        ),
         command_id=handle.command_id,
         family=handle.family.value,
         stage=_STAGE_VALUES[latest.stage],

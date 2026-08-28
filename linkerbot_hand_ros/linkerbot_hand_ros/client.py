@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import math
+import secrets
 import threading
 import time
 from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from builtin_interfaces.msg import Time
 from rclpy.node import Node
 from rclpy.publisher import Publisher
 from rclpy.subscription import Subscription
@@ -36,13 +38,16 @@ _TERMINAL_STAGES = {
     HandCommandStatus.STAGE_FAILED,
     HandCommandStatus.STAGE_SUPERSEDED,
 }
+_UINT64_MAX = (1 << 64) - 1
 
 
 @dataclass(frozen=True, slots=True)
 class CommandPublication:
     """Result of publishing a target; SDK acceptance arrives on status topic."""
 
+    client_id: int
     user_sequence: int
+    publisher_stamp: Time
     semantic: str
     representation: str
     values: tuple[float, ...]
@@ -57,6 +62,7 @@ class HandCommandClient:
         driver_name: str = "/linkerbot_hand",
         *,
         status_capacity: int = 512,
+        client_id: int | None = None,
     ) -> None:
         root = driver_name.rstrip("/")
         if not root:
@@ -66,6 +72,7 @@ class HandCommandClient:
         self._node = node
         self._driver_name = root
         self._status_capacity = status_capacity
+        self._client_id = _resolve_client_id(client_id)
         self._condition = threading.Condition(threading.RLock())
         self._capabilities: HandCapabilities | None = None
         self._statuses: OrderedDict[int, HandCommandStatus] = OrderedDict()
@@ -110,6 +117,12 @@ class HandCommandClient:
     @property
     def driver_name(self) -> str:
         return self._driver_name
+
+    @property
+    def client_id(self) -> int:
+        """Return this client instance's non-zero command correlation ID."""
+
+        return self._client_id
 
     @property
     def model(self) -> str | None:
@@ -158,28 +171,48 @@ class HandCommandClient:
 
         normalized = self._validate_percent_angles(values)
         sequence = self._next_sequence()
+        publisher_stamp = self._publisher_stamp()
         self._require_angle_publisher().publish(
             HandJointCommand(
+                client_id=self._client_id,
                 user_sequence=sequence,
+                publisher_stamp=publisher_stamp,
                 representation=HandJointCommand.REPRESENTATION_PERCENT,
                 values=normalized,
             )
         )
-        return CommandPublication(sequence, "angles", "percent", normalized)
+        return CommandPublication(
+            self._client_id,
+            sequence,
+            publisher_stamp,
+            "angles",
+            "percent",
+            normalized,
+        )
 
     def set_angles(self, values: Sequence[float]) -> CommandPublication:
         """Publish exact protocol angle values in capability joint order."""
 
         normalized = self._validate_raw("angles", values)
         sequence = self._next_sequence()
+        publisher_stamp = self._publisher_stamp()
         self._require_angle_publisher().publish(
             HandJointCommand(
+                client_id=self._client_id,
                 user_sequence=sequence,
+                publisher_stamp=publisher_stamp,
                 representation=HandJointCommand.REPRESENTATION_RAW,
                 values=normalized,
             )
         )
-        return CommandPublication(sequence, "angles", "raw", normalized)
+        return CommandPublication(
+            self._client_id,
+            sequence,
+            publisher_stamp,
+            "angles",
+            "raw",
+            normalized,
+        )
 
     def set_speeds(self, values: Sequence[float]) -> CommandPublication:
         return self._set_raw("speeds", values)
@@ -247,10 +280,23 @@ class HandCommandClient:
     ) -> CommandPublication:
         normalized = self._validate_raw(semantic, values)
         sequence = self._next_sequence()
+        publisher_stamp = self._publisher_stamp()
         self._raw_publishers[semantic].publish(
-            HandRawCommand(user_sequence=sequence, raw=normalized)
+            HandRawCommand(
+                client_id=self._client_id,
+                user_sequence=sequence,
+                publisher_stamp=publisher_stamp,
+                raw=normalized,
+            )
         )
-        return CommandPublication(sequence, semantic, "raw", normalized)
+        return CommandPublication(
+            self._client_id,
+            sequence,
+            publisher_stamp,
+            semantic,
+            "raw",
+            normalized,
+        )
 
     def _validate_percent_angles(
         self,
@@ -295,7 +341,7 @@ class HandCommandClient:
 
     def _update_status(self, message: HandCommandStatus) -> None:
         with self._condition:
-            if message.user_sequence == 0:
+            if message.client_id != self._client_id or message.user_sequence == 0:
                 return
             self._statuses[message.user_sequence] = message
             self._statuses.move_to_end(message.user_sequence)
@@ -337,6 +383,9 @@ class HandCommandClient:
         if self._angle_publisher is None:
             raise RuntimeError("angle publisher is unavailable")
         return self._angle_publisher
+
+    def _publisher_stamp(self) -> Time:
+        return self._node.get_clock().now().to_msg()
 
     def _publisher_for(self, semantic: str) -> Publisher | None:
         if semantic == "angles":
@@ -382,6 +431,14 @@ def _positive_timeout(value: object) -> float:
     ):
         raise ValueError("timeout_s must be finite and positive")
     return float(value)
+
+
+def _resolve_client_id(value: object) -> int:
+    if value is None:
+        return secrets.randbits(64) or 1
+    if type(value) is not int or not 0 < value <= _UINT64_MAX:
+        raise ValueError("client_id must be a non-zero uint64")
+    return value
 
 
 __all__ = ["CommandPublication", "HandCommandClient"]

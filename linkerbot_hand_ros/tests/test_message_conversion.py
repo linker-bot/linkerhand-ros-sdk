@@ -2,6 +2,7 @@ from dataclasses import replace
 from math import prod
 
 import pytest
+from builtin_interfaces.msg import Time
 from linkerbot_hand import (
     SUPPORTED_MODELS,
     AckSupport,
@@ -353,12 +354,19 @@ def test_command_status_distinguishes_dispatch_from_protocol_ack():
 
     message = command_status_to_message(
         handle,
+        client_id=17,
         user_sequence=9,
+        publisher_stamp=Time(sec=18, nanosec=250),
+        driver_received_at=100.1,
         monotonic_now=101.0,
         ros_now_ns=ROS_NOW_NS,
     )
 
     assert message.stage == HandCommandStatus.STAGE_DISPATCHED
+    assert message.client_id == 17
+    assert message.publisher_stamp == Time(sec=18, nanosec=250)
+    assert message.driver_received_stamp.sec == 19
+    assert message.driver_received_stamp.nanosec == 100_000_000
     assert message.stage != HandCommandStatus.STAGE_ACKNOWLEDGED
     assert message.ack_support == HandCommandStatus.ACK_UNSUPPORTED
     assert [item.stage for item in message.transitions] == [
@@ -383,7 +391,10 @@ def test_command_failure_uses_stable_error_code_without_string_parsing():
 
     message = command_status_to_message(
         handle,
+        client_id=0,
         user_sequence=0,
+        publisher_stamp=Time(),
+        driver_received_at=100.05,
         monotonic_now=100.2,
         ros_now_ns=ROS_NOW_NS,
     )

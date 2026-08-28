@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 
 import pytest
+from builtin_interfaces.msg import Time
 from linkerbot_hand import CommandSemantic, ValidationError
 from linkerbot_hand_ros.command_router import (
     DiscreteOperation,
@@ -71,14 +72,18 @@ def test_joint_router_uses_one_explicit_angle_representation(
 ):
     device = RecordingDevice()
     message = HandJointCommand(
+        client_id=23,
         user_sequence=41,
+        publisher_stamp=Time(sec=12, nanosec=34),
         representation=representation,
         values=[1.0, 2.0],
     )
 
     routed = route_joint_command(device, message)
 
+    assert routed.client_id == 23
     assert routed.user_sequence == 41
+    assert routed.publisher_stamp == Time(sec=12, nanosec=34)
     assert routed.handle is device.handle
     expected_values = (1.0, 2.0) if representation == 1 else (1, 2)
     assert device.calls == [(expected_method, expected_values)]
@@ -118,11 +123,18 @@ def test_raw_router_recovers_integer_protocol_values_from_ros_float64(
     expected_method,
 ):
     device = RecordingDevice()
-    message = HandRawCommand(user_sequence=7, raw=[0.0, 255.0])
+    message = HandRawCommand(
+        client_id=24,
+        user_sequence=7,
+        publisher_stamp=Time(sec=13, nanosec=35),
+        raw=[0.0, 255.0],
+    )
 
     routed = route_raw_command(device, semantic, message)
 
+    assert routed.client_id == 24
     assert routed.user_sequence == 7
+    assert routed.publisher_stamp == Time(sec=13, nanosec=35)
     assert routed.handle is device.handle
     assert device.calls == [(expected_method, (0, 255))]
 
@@ -149,6 +161,8 @@ def test_discrete_router_submits_bounded_sdk_operation_without_waiting(operation
     routed = route_discrete_operation(device, operation, user_sequence=5)
 
     assert routed.user_sequence == 5
+    assert routed.client_id == 0
+    assert routed.publisher_stamp == Time()
     assert routed.handle is device.handle
     assert device.calls == [(operation.value, ())]
 
@@ -159,4 +173,13 @@ def test_discrete_router_rejects_user_sequence_outside_uint64():
             RecordingDevice(),
             DiscreteOperation.CLEAR_FAULTS,
             user_sequence=1 << 64,
+        )
+
+
+def test_discrete_router_rejects_client_id_outside_uint64():
+    with pytest.raises(ValidationError, match="client_id must fit uint64"):
+        route_discrete_operation(
+            RecordingDevice(),
+            DiscreteOperation.CLEAR_FAULTS,
+            client_id=1 << 64,
         )

@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from builtin_interfaces.msg import Time
 from linkerbot_hand import (
     CommandHandle,
     CommandSemantic,
@@ -46,7 +47,10 @@ _RAW_COMMANDS = (
 
 @dataclass(slots=True)
 class _TrackedCommand:
+    client_id: int
     user_sequence: int
+    publisher_stamp: Time
+    driver_received_at: float
     handle: CommandHandle
     published_transition_count: int = 0
 
@@ -135,14 +139,28 @@ class CommandInterface:
         with self._publication_lock:
             pass
 
-    def track(self, routed: RoutedCommand) -> None:
+    def track(
+        self,
+        routed: RoutedCommand,
+        driver_received_at: float | None = None,
+    ) -> None:
         """Register an accepted handle without publishing from the command callback."""
 
         with self._lock:
             if not self._enabled:
                 return
             handle = routed.handle
-            tracked = _TrackedCommand(routed.user_sequence, handle)
+            tracked = _TrackedCommand(
+                client_id=routed.client_id,
+                user_sequence=routed.user_sequence,
+                publisher_stamp=routed.publisher_stamp,
+                driver_received_at=(
+                    time.monotonic()
+                    if driver_received_at is None
+                    else driver_received_at
+                ),
+                handle=handle,
+            )
             dropped_command_id = self._make_room()
             self._tracked[handle.command_id] = tracked
         if dropped_command_id is not None:
@@ -214,12 +232,13 @@ class CommandInterface:
         self._route(lambda: route_raw_command(self._device(), semantic, message))
 
     def _route(self, submit: Callable[[], RoutedCommand]) -> None:
+        driver_received_at = time.monotonic()
         if not self._is_active():
             self._on_error(RuntimeError("lifecycle node is not active"))
             return
         try:
             routed = submit()
-            self.track(routed)
+            self.track(routed, driver_received_at)
             self._on_accepted()
         except Exception as error:
             self._on_error(error)
@@ -231,7 +250,10 @@ class CommandInterface:
         now = self._node.get_clock().now().nanoseconds
         message = command_status_to_message(
             tracked.handle,
+            client_id=tracked.client_id,
             user_sequence=tracked.user_sequence,
+            publisher_stamp=tracked.publisher_stamp,
+            driver_received_at=tracked.driver_received_at,
             monotonic_now=time.monotonic(),
             ros_now_ns=now,
         )

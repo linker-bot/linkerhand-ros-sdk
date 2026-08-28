@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
+from builtin_interfaces.msg import Time
 from linkerbot_hand import (
     CommandHandle,
     CommandSemantic,
@@ -31,7 +32,9 @@ class DiscreteOperation(str, Enum):
 class RoutedCommand:
     """User correlation data paired with the accepted SDK handle."""
 
+    client_id: int
     user_sequence: int
+    publisher_stamp: Time = field(repr=False)
     handle: CommandHandle
 
 
@@ -64,7 +67,12 @@ def route_joint_command(
         )
     else:
         raise ValidationError("joint command representation is unsupported")
-    return RoutedCommand(user_sequence=message.user_sequence, handle=handle)
+    return RoutedCommand(
+        client_id=message.client_id,
+        user_sequence=message.user_sequence,
+        publisher_stamp=message.publisher_stamp,
+        handle=handle,
+    )
 
 
 def route_raw_command(
@@ -86,23 +94,35 @@ def route_raw_command(
     handle = getattr(device, setter_name)(
         _protocol_values(device, semantic, message.raw)
     )
-    return RoutedCommand(user_sequence=message.user_sequence, handle=handle)
+    return RoutedCommand(
+        client_id=message.client_id,
+        user_sequence=message.user_sequence,
+        publisher_stamp=message.publisher_stamp,
+        handle=handle,
+    )
 
 
 def route_discrete_operation(
     device: HandDevice,
     operation: DiscreteOperation,
     *,
+    client_id: int = 0,
     user_sequence: int = 0,
 ) -> RoutedCommand:
     """Submit one discrete SDK operation without waiting for dispatch or ACK."""
 
     if not isinstance(operation, DiscreteOperation):
         raise ValidationError("operation must be DiscreteOperation")
-    if type(user_sequence) is not int or not 0 <= user_sequence <= _UINT64_MAX:
-        raise ValidationError("user_sequence must fit uint64")
+    for value, name in ((client_id, "client_id"), (user_sequence, "user_sequence")):
+        if type(value) is not int or not 0 <= value <= _UINT64_MAX:
+            raise ValidationError(f"{name} must fit uint64")
     handle = getattr(device, operation.value)()
-    return RoutedCommand(user_sequence=user_sequence, handle=handle)
+    return RoutedCommand(
+        client_id=client_id,
+        user_sequence=user_sequence,
+        publisher_stamp=Time(),
+        handle=handle,
+    )
 
 
 def _protocol_values(

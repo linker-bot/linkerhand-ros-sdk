@@ -56,7 +56,7 @@ class ManagementInterface:
         *,
         device: Callable[[], HandDevice],
         is_active: Callable[[], bool],
-        track: Callable[[RoutedCommand], None],
+        track: Callable[[RoutedCommand, float | None], None],
         shutdown_timeout_s: float,
         worker_capacity: int,
     ) -> None:
@@ -231,6 +231,7 @@ class ManagementInterface:
         request: SetRawValues.Request,
         response: SetRawValues.Response,
     ) -> SetRawValues.Response:
+        driver_received_at = time.monotonic()
         if not self._require_active(response, accepted_field=True):
             return response
         try:
@@ -242,7 +243,7 @@ class ManagementInterface:
                     raw=request.raw,
                 ),
             )
-            self._track(routed)
+            self._track(routed, driver_received_at)
             response.accepted = True
             response.command_id = routed.handle.command_id
             response.message = "command accepted; delivery is asynchronous"
@@ -256,11 +257,12 @@ class ManagementInterface:
         _request: SubmitCommand.Request,
         response: SubmitCommand.Response,
     ) -> SubmitCommand.Response:
+        driver_received_at = time.monotonic()
         if not self._require_active(response, accepted_field=True):
             return response
         try:
             routed = route_discrete_operation(self._device(), operation)
-            self._track(routed)
+            self._track(routed, driver_received_at)
             response.accepted = True
             response.command_id = routed.handle.command_id
             response.message = "command accepted; delivery is asynchronous"

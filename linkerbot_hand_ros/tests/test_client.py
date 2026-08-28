@@ -50,7 +50,7 @@ class FailingConstructionNode:
 def client_rig():
     rclpy.init()
     node = Node("typed_hand_client_test")
-    client = HandCommandClient(node)
+    client = HandCommandClient(node, client_id=101)
     angle = RecordingPublisher()
     original_angle = client._angle_publisher
     client._angle_publisher = angle
@@ -84,10 +84,15 @@ def test_percent_and_raw_angles_use_one_typed_topic(client_rig):
 
     assert percent.user_sequence == 1
     assert raw.user_sequence == 2
+    assert percent.client_id == 101
+    assert raw.client_id == 101
     assert percent.representation == "percent"
     assert raw.representation == "raw"
     assert angle.messages[0].representation == angle.messages[0].REPRESENTATION_PERCENT
     assert angle.messages[1].representation == angle.messages[1].REPRESENTATION_RAW
+    assert angle.messages[0].client_id == 101
+    assert angle.messages[0].publisher_stamp == percent.publisher_stamp
+    assert angle.messages[0].publisher_stamp.sec > 0
 
 
 def test_client_validates_from_published_capability_not_model_table(client_rig):
@@ -114,6 +119,10 @@ def test_raw_command_publication_uses_capability_channel_shape(client_rig):
 
     assert publication.semantic == "speeds"
     assert publication.representation == "raw"
+    assert raw_publishers["speeds"].messages[0].client_id == 101
+    assert raw_publishers["speeds"].messages[0].publisher_stamp == (
+        publication.publisher_stamp
+    )
     assert list(raw_publishers["speeds"].messages[0].raw) == values
 
 
@@ -129,6 +138,7 @@ def test_wait_for_terminal_status_uses_sdk_stage_not_mechanical_arrival(client_r
     waiter.start()
     client._update_status(
         HandCommandStatus(
+            client_id=publication.client_id,
             user_sequence=publication.user_sequence,
             command_id=9,
             family="angle_target",
@@ -142,6 +152,41 @@ def test_wait_for_terminal_status_uses_sdk_stage_not_mechanical_arrival(client_r
     assert not waiter.is_alive()
     assert result[0] is not None
     assert result[0].stage == HandCommandStatus.STAGE_DISPATCHED
+
+
+def test_status_cache_ignores_another_client_with_the_same_sequence(client_rig):
+    client, _angle, _raw = client_rig
+    other = HandCommandClient(client._node, client_id=202)
+    publication = client.set_percent_angles([100] * 6)
+    foreign = HandCommandStatus(
+        client_id=202,
+        user_sequence=publication.user_sequence,
+        command_id=8,
+        family="angle_target",
+        stage=HandCommandStatus.STAGE_FAILED,
+        ack_support=HandCommandStatus.ACK_UNSUPPORTED,
+    )
+    own = HandCommandStatus(
+        client_id=publication.client_id,
+        user_sequence=publication.user_sequence,
+        command_id=9,
+        family="angle_target",
+        stage=HandCommandStatus.STAGE_DISPATCHED,
+        ack_support=HandCommandStatus.ACK_UNSUPPORTED,
+    )
+
+    try:
+        client._update_status(foreign)
+        other._update_status(foreign)
+        assert client.get_status(publication.user_sequence) is None
+        assert other.get_status(publication.user_sequence) is foreign
+
+        client._update_status(own)
+        other._update_status(own)
+        assert client.get_status(publication.user_sequence) is own
+        assert other.get_status(publication.user_sequence) is foreign
+    finally:
+        other.destroy()
 
 
 def test_readiness_requires_capability_and_driver_subscription(client_rig):
@@ -182,3 +227,15 @@ def test_partial_publisher_construction_rolls_back_every_created_entity():
         HandCommandClient(node)
 
     assert set(node.destroyed) == set(node.created)
+
+
+@pytest.mark.parametrize("client_id", [0, True, -1, 1 << 64])
+def test_client_id_must_be_a_nonzero_uint64(client_id):
+    rclpy.init()
+    node = Node("invalid_typed_hand_client_test")
+    try:
+        with pytest.raises(ValueError, match="non-zero uint64"):
+            HandCommandClient(node, client_id=client_id)
+    finally:
+        node.destroy_node()
+        rclpy.try_shutdown()
