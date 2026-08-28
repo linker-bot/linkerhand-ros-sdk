@@ -89,6 +89,23 @@ ros2 launch linkerbot_hand_ros hand.launch.py \
   transport_json:='{"backend":"socketcan","channel":"can0"}'
 ```
 
+L6/O6 等多手部署使用同一进程：
+
+```bash
+ros2 launch linkerbot_hand_ros multi_hand.launch.py
+```
+
+默认读取随包安装的 `config/multi_hand.yaml`。使用自己的绝对路径：
+
+```bash
+ros2 launch linkerbot_hand_ros multi_hand.launch.py \
+  config:=/absolute/path/to/hands.yaml
+```
+
+参数文件中的 `device_namespaces` 决定内部 Lifecycle 节点。每个 namespace 必须有对应的
+`/<namespace>/linkerbot_hand` 参数段。相同物理 `transport_json` 的设备在本进程内共享总线
+runtime；不同 channel 分别建立 runtime。不要用两个独立 launch 进程代替该入口。
+
 确认 active、身份已验证且角度属于当前连接代次：
 
 ```bash

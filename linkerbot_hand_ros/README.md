@@ -82,6 +82,19 @@ ros2 launch linkerbot_hand_ros hand.launch.py \
   transport_json:='{"backend":"socketcan","channel":"can0"}'
 ```
 
+Run multiple hands in one process with a ROS parameter file:
+
+```bash
+ros2 launch linkerbot_hand_ros multi_hand.launch.py
+```
+
+The installed `config/multi_hand.yaml` example creates
+`/l6_left/linkerbot_hand` and `/o6_right/linkerbot_hand`. Pass
+`config:=/absolute/path/to/hands.yaml` for a deployment-specific file. Hands
+with the same `transport_json` physical key share one transport runtime, RX
+reactor, and TX arbiter. Starting `hand.launch.py` twice creates two processes
+and therefore cannot provide process-local bus arbitration.
+
 Inspect the verified metadata and state:
 
 ```bash

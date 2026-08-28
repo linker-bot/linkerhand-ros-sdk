@@ -101,19 +101,57 @@ Linux SocketCAN，classic CAN 和 CAN FD 均由 capability 决定：
 
 ## 多设备
 
-每只手使用独立 namespace：
+同一总线上的多只手必须使用 `multi_hand.launch.py`，在一个 Python 进程中运行多个
+Lifecycle 节点。参数文件结构如下：
 
-```bash
-ros2 launch linkerbot_hand_ros hand.launch.py \
-  namespace:=left model:=l6 side:=left \
-  transport_json:='{"backend":"socketcan","channel":"can0"}'
-ros2 launch linkerbot_hand_ros hand.launch.py \
-  namespace:=right model:=o6 side:=right \
-  transport_json:='{"backend":"socketcan","channel":"can0"}'
+```yaml
+/linkerbot_hand_container:
+  ros__parameters:
+    device_namespaces: [l6_left, o6_right]
+    autostart: true
+    executor_threads: 4
+
+/l6_left/linkerbot_hand:
+  ros__parameters:
+    model: l6
+    side: left
+    transport_json: '{"backend":"socketcan","channel":"can0"}'
+    angles_hz: 100.0
+
+/o6_right/linkerbot_hand:
+  ros__parameters:
+    model: o6
+    side: right
+    transport_json: '{"backend":"socketcan","channel":"can0"}'
+    angles_hz: 100.0
 ```
 
-同一物理总线上的设备应位于同一进程/component container，才能共享 transport runtime、
-RX reactor 和 TX arbiter。两个独立进程只能各自拥有 socket，无法获得进程内公平调度保证。
+启动：
+
+```bash
+ros2 launch linkerbot_hand_ros multi_hand.launch.py \
+  config:=/absolute/path/to/hands.yaml
+```
+
+容器参数：
+
+| 参数 | 默认值 | 含义 |
+| --- | --- | --- |
+| `device_namespaces` | 空 | 非空且不重复的设备 namespace 列表 |
+| `autostart` | `true` | 先 configure 全部设备，再 activate 全部设备 |
+| `executor_threads` | `0` | executor 线程数；0 表示按设备数量计算，至少 4 |
+
+`autostart=true` 时，任一节点 configure 或 activate 失败都会按逆序 deactivate/cleanup
+已经启动的节点，进程不会保留部分激活状态。`autostart=false` 时可逐个控制：
+
+```bash
+ros2 lifecycle set /l6_left/linkerbot_hand configure
+ros2 lifecycle set /l6_left/linkerbot_hand activate
+```
+
+两只手的 `transport_json` 物理 key 相同时，`linkerbot-transport` 才共享一个 runtime、RX
+reactor 和 TX arbiter。不同 channel 仍位于同一 ROS 进程，但各自拥有独立 transport
+runtime。两个 `hand.launch.py` 进程无法共享内存仲裁器，不能作为同总线生产部署方式。
 
 ## 恢复
 

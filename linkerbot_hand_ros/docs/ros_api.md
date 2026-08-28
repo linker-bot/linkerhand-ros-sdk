@@ -34,6 +34,15 @@ The default transport is:
 {"backend":"socketcan","channel":"can0"}
 ```
 
+## Multi-Device Process
+
+`multi_hand.launch.py` loads multiple `/namespace/linkerbot_hand` Lifecycle
+nodes into one Python process from a ROS parameter file. The process-level
+parameters are `device_namespaces`, `autostart`, and `executor_threads`. With
+autostart enabled, all nodes configure before any node activates; a failure
+rolls the group back in reverse order. Identical physical transport keys share
+one process-local runtime. Separate driver processes cannot share that arbiter.
+
 ## Command Topics
 
 | Topic | Type | Meaning |

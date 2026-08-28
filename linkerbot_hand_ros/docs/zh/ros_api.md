@@ -3,6 +3,10 @@
 默认节点名为 `/linkerbot_hand`。所有向量顺序、范围、单位说明和支持性均读取
 `/linkerbot_hand/capabilities`，ROS 不维护第二份型号表。
 
+多设备入口会在同一进程中创建多个 `/namespace/linkerbot_hand`，每个节点的 Topic、Service
+和 Lifecycle 名称都位于自己的 namespace。相同物理 transport key 只在这个进程内共享
+runtime 和总线仲裁；独立进程不共享。
+
 ## 元数据
 
 | Topic | 类型 | QoS | 内容 |

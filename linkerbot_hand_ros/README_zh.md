@@ -90,6 +90,18 @@ ros2 launch linkerbot_hand_ros hand.launch.py \
   transport_json:='{"backend":"socketcan","channel":"can0"}'
 ```
 
+多手设备必须使用同进程入口：
+
+```bash
+ros2 launch linkerbot_hand_ros multi_hand.launch.py
+```
+
+随包安装的 `config/multi_hand.yaml` 会创建 `/l6_left/linkerbot_hand` 和
+`/o6_right/linkerbot_hand`。正式部署通过
+`config:=/absolute/path/to/hands.yaml` 指定自己的参数文件。只有
+`transport_json` 产生相同物理 key 的设备才共享一个 transport runtime、RX reactor 和 TX
+arbiter；启动两次 `hand.launch.py` 会产生两个进程，不能提供进程内总线仲裁。
+
 launch 默认 `autostart:=true`。检查 verified capability、设备信息和角度：
 
 ```bash

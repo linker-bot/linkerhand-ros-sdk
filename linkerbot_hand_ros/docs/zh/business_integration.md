@@ -140,8 +140,12 @@ SDK 禁止重放断线前目标，也不会自动清 fault、enable 或 calibrat
 ## 多设备部署
 
 每个设备使用独立 namespace，例如 `/left/linkerbot_hand` 和
-`/right/linkerbot_hand`。同一 CAN 总线上的多个设备应放入同一进程/component container，
-共享一个 transport runtime；多个独立进程无法共享进程内 TX 公平调度。
+`/right/linkerbot_hand`。使用 `multi_hand.launch.py` 和一个参数文件把这些 Lifecycle 节点
+放入同一进程；不要分别启动 `hand.launch.py`。相同物理 transport key 的节点会共享一个
+runtime、RX reactor 和 TX arbiter；不同 channel 不共享物理 runtime。
+
+容器自动启动采用全量 configure 后全量 activate，任何失败都会逆序回滚，业务不会看到容器
+留下部分 active 设备。具体参数文件见[Lifecycle 与参数配置](configuration.md#多设备)。
 
 业务层分别持有两个 `HandCommandClient`，按各自 capability 和 generation 管理，不假设两种
 型号具有相同关节数量或相同 telemetry。
