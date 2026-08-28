@@ -19,6 +19,8 @@ ROS publish callback 频率、设备采样频率和命令 transport 发送频率
 - 发布到驱动接收、接收到 SDK 接受、接受到实际下发及发布到实际下发的 P50/P95/P99；
 - `HandCommandStatus.transitions[]` 中的 FAILED 和 SUPERSEDED；
 - SDK diagnostics 中 `completed_reads` 计算的完整读取事务 Hz；
+- SDK diagnostics 中角度 `command_feedback_samples`、`feedback_samples` 与
+  `feedback_policy`，用于区分命令反馈和真正计入反馈频率的样本；
 - ROS 状态消息 `meta.sequence` 增量计算的 SDK 缓存更新 Hz；
 - 实际收到的有效 ROS 状态消息计算的 ROS publish Hz；
 - 起止 `/diagnostics` 中 generation、pending、timeout、route miss 和 bus error 增量。

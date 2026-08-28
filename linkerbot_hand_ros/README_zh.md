@@ -30,6 +30,10 @@ SDK polling / scheduler -> linkerbot-transport -> 设备
 `0=弯曲/闭合，100=伸直/张开`；侧摆、旋转等方向轴的 0/100 含义读取
 `HandCapabilities.joints[].percent_mapping`，不能称为张开/握拳。
 
+旧固件缺少个别可选查询时，SDK 保持连接并只禁用该通道；ROS 会重新发布
+`HandCapabilities.firmware_unsupported_telemetry`。O6/L6 支持的配置持久化通过
+`/linkerbot_hand/save_parameters` 服务提交，并以 command status 的协议 ACK 判断成功。
+
 ## 环境与安装
 
 - Ubuntu 24.04 + ROS 2 Jazzy

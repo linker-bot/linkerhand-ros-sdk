@@ -20,7 +20,12 @@ runtime 和总线仲裁；独立进程不共享。
 - `joints`：关节名称、顺序、运动类型、协议 raw 范围、percent 方向和可选物理角度映射。
 - `commands`：命令语义、通道、raw 范围/编码/单位说明、percent 映射和 ACK 能力。
 - `telemetry`：读取模式、shape、推荐/实测频率、过期时间、事务成本和是否设备实测。
+- `firmware_unsupported_telemetry`：当前连接代已探测为固件不支持的查询语义；协议 metadata
+  仍保留在 `telemetry` 中，但驱动不会再收到该通道的新样本。
 - `stall_protection`、`transport` 和 `operations`。
+
+SDK 在运行时完成旧固件单功能降级后，驱动会重新发布 transient-local capability。业务节点
+应把新消息视为当前连接代的有效能力，不要只缓存 configure 阶段的 declared capability。
 
 ## 角度命令
 
@@ -101,6 +106,9 @@ Topic：`~/state/angles`
 - `physical_rad[] + physical_rad_valid[]`：仅经可信物理标定的轴有效。
 - `meta`：采集时间、sequence、age、valid、stale、连接代次、来源和范围状态。
 
+角度命令返回的当前设备状态使用 `ORIGIN_DEVICE_COMMAND_FEEDBACK`；它是反馈样本来源，
+不表示目标原样回显，也不表示协议 `ACKNOWLEDGED`。
+
 三套数值来自同一次 SDK 样本，不应为另一种表示再次查询设备。不要把 percent 或 raw 填入
 标准 `sensor_msgs/JointState.position`；该字段要求弧度。
 
@@ -151,6 +159,7 @@ thresholds 和 hold currents 三个 raw 样本及独立元数据。协议范围�
 | `~/set_stall_detection_times` | `SetRawValues` | 非阻塞提交 raw 配置 |
 | `~/set_stall_thresholds` | `SetRawValues` | 非阻塞提交 raw 配置 |
 | `~/set_stall_hold_currents` | `SetRawValues` | 非阻塞提交 raw 配置 |
+| `~/save_parameters` | `SubmitCommand` | capability 支持时持久化配置；有协议 ACK 的设备等待明确确认 |
 | `~/clear_faults` | `SubmitCommand` | 独立有界 FIFO 的清错命令 |
 | `~/enable` / `~/disable` / `~/calibrate` | `SubmitCommand` | capability 支持时提交 |
 | `~/recover` | `Recover` | 重新验证身份、清旧目标并读取 baseline 的安全恢复 |
@@ -162,6 +171,12 @@ ros2 service call /linkerbot_hand/clear_faults \
   linkerbot_hand_msgs/srv/SubmitCommand '{}'
 ```
 
+O6 的三项堵转配置顺序由 SDK capability 决定：threshold=`C5`、detection time=`C6`、hold
+current=`C7`。ROS 只收发 raw；当前资料给出的解释分别为 `1000/255 mA/count`、
+`10 ms/count`，以及名称为堵转扭矩但公式单位为 mA 的冲突项。写入成功后如需掉电保留，先等
+对应 command status 到达 `ACKNOWLEDGED`，再调用 `save_parameters` 并等待它的 ACK；该操作
+不会自动重启设备。
+
 主动读取在独立、有界 admin worker 中执行，不阻塞控制 callback。setter/离散服务的
 `accepted=true` 仅表示进入 SDK，后续阶段看 `/command/status`。服务错误通过稳定
 `error_code` 返回，调用方不能解析 message 文本分类。
@@ -170,7 +185,8 @@ ros2 service call /linkerbot_hand/clear_faults \
 
 `/diagnostics` 只映射 `get_health()` 缓存，至少包含：连接状态、连接代次、identity verified、
 最后成功收发/事务时间、连续错误、最近错误码、重连次数、命令 pending/覆盖计数、各状态
-requested/achieved Hz、deadline/timeout/age，以及 transport 帧、字节、route miss 和总线错误。
+requested/achieved Hz、`completed_reads`、角度命令反馈数、有效反馈数、反馈策略、
+deadline/timeout/age，以及 transport 帧、字节、route miss 和总线错误。
 
 读取 diagnostics 不产生 CAN 查询。需要新 fault 样本时设置 `faults_hz` 或使用 SDK 主动读取；
 ROS 不把 health timer 变成故障轮询器。

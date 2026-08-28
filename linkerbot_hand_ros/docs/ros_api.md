@@ -26,7 +26,9 @@ Static parameters are accepted only while unconfigured:
 Runtime rates are `publish_rate_hz`, `diagnostic_rate_hz`, `angles_hz`,
 `speeds_hz`, `force_hz`, `temperature_hz`, `current_hz`, `faults_hz`,
 `torques_hz`, and `voltage_hz`. Zero disables that SDK polling channel;
-`publish_rate_hz=0` only pauses ROS state publication.
+`publish_rate_hz=0` only pauses ROS state publication. Runtime capability
+fallback is still checked from SDK memory and republished at 10 Hz without
+performing device I/O.
 
 The default transport is:
 
@@ -86,9 +88,18 @@ match both ID fields; a final `ACKNOWLEDGED` status does not replace the explici
 verified capability. A state message is published only when its SDK sequence or
 validity signature changes.
 
+When an optional query is rejected by the connected firmware, the SDK retains
+the declared protocol metadata and adds its semantic to
+`HandCapabilities.firmware_unsupported_telemetry`. The driver republishes that
+runtime change with transient-local durability; consumers should treat the
+latest capability message as authoritative for the current connection
+generation.
+
 Every state carries collection time, sequence, age, validity, staleness,
 connection generation, origin, and range status. Protocol raw values are not
 converted to RPM, mA, N.m, or other physical units by ROS.
+`ORIGIN_DEVICE_COMMAND_FEEDBACK` identifies verified current state returned by
+a command; it is neither a target echo nor a command acknowledgement.
 
 ## Services
 
@@ -99,6 +110,7 @@ converted to RPM, mA, N.m, or other physical units by ROS.
 | `~/set_stall_detection_times` | `SetRawValues` | Asynchronous raw configuration acceptance |
 | `~/set_stall_thresholds` | `SetRawValues` | Asynchronous raw configuration acceptance |
 | `~/set_stall_hold_currents` | `SetRawValues` | Asynchronous raw configuration acceptance |
+| `~/save_parameters` | `SubmitCommand` | Capability-gated non-volatile save; observe command status for protocol ACK |
 | `~/clear_faults` | `SubmitCommand` | Asynchronous discrete command acceptance |
 | `~/enable`, `~/disable`, `~/calibrate` | `SubmitCommand` | Capability-gated asynchronous acceptance |
 | `~/recover` | `Recover` | Bounded identity-verified safe recovery |
@@ -106,5 +118,10 @@ converted to RPM, mA, N.m, or other physical units by ROS.
 Active reads run in one separate bounded admin worker. Control callbacks and
 state publishers never wait for these transactions. Services return stable
 `error_code` fields; clients must not parse error text.
+
+Diagnostics expose each channel's requested and achieved rate, completed read
+transactions, command-feedback samples, policy-counted feedback samples,
+feedback policy, deadlines, timeouts, and cached data age. These counters let
+benchmarks distinguish active angle queries from verified command feedback.
 
 See the [Chinese API reference](zh/ros_api.md) for examples and QoS details.

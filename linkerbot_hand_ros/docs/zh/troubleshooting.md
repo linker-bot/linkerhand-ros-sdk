@@ -88,9 +88,17 @@ ros2 param get /linkerbot_hand publish_rate_hz
 ros2 topic echo --once /diagnostics
 ```
 
-重点检查 `channel_<name>_requested_hz/achieved_hz/missed_deadlines/timeouts/age_s` 以及
-transport frame、route miss 和 bus error。提高 `publish_rate_hz` 不会提高设备采样；降低它
-也不会降低 SDK 查询。触觉是完整多帧事务，角度+触觉上限需用 benchmark 实测。
+重点检查 `channel_<name>_requested_hz/achieved_hz/completed_reads/feedback_samples/`
+`command_feedback_samples/feedback_policy/missed_deadlines/timeouts/age_s` 以及 transport
+frame、route miss 和 bus error。提高 `publish_rate_hz` 不会提高设备采样；降低它也不会降低
+SDK 查询。触觉是完整多帧事务，角度+触觉上限需用 benchmark 实测。
+
+## 旧固件缺少个别查询
+
+订阅最新 transient-local capability，检查 `firmware_unsupported_telemetry`。SDK 对标为可选
+的查询首次超时或结构不符后，只禁用该语义并保持连接；ROS 会重新发布 capability，且不再
+发布该通道的新样本。重新连接后 SDK 会重新探测。若所有 opcode 都无响应、SocketCAN 只有
+TX 没有 RX，应先检查供电、线序、终端和 bitrate，不能误判成某一个协议不支持。
 
 ## 百分比或物理角度无效
 

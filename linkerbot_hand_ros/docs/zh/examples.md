@@ -134,6 +134,17 @@ ros2 service call /linkerbot_hand/set_stall_thresholds \
   '{user_sequence: 10, raw: [<按 capability 通道顺序填写>]}'
 ```
 
+如果 capability 的 `operations.save_parameters=true`，需要持久化时再调用：
+
+```bash
+ros2 service call /linkerbot_hand/save_parameters \
+  linkerbot_hand_msgs/srv/SubmitCommand '{}'
+```
+
+两个 service 的成功响应都只表示 SDK 接受；O6/L6 的配置写和保存操作应继续观察
+`/command/status`，以各自 `command_id` 确认最终 `ACKNOWLEDGED`。不要在未确认当前值、安全
+范围和恢复方法时写任意堵转参数，也不要把 O6 的 `C5/C6` 顺序套用到 L6。
+
 ## 完整触觉
 
 ```bash

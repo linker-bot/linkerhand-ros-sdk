@@ -24,8 +24,15 @@ sequence, age, validity, staleness, connection generation, origin, and range
 status. A disabled SDK polling channel therefore produces no synthetic ROS
 sample.
 
+`ORIGIN_DEVICE_COMMAND_FEEDBACK` means current state returned in response to a
+command; it is neither a target echo nor an acknowledgement stage.
+
 `HandCapabilities` is the ROS projection of the SDK capability object. ROS
 clients must use it instead of maintaining a separate model specification.
+Its `firmware_unsupported_telemetry` field reports optional queries disabled
+for the current connection generation while retaining their protocol metadata.
+`OperationCapabilities.save_parameters` explicitly gates the corresponding
+management service.
 
 中文约定：普通 `raw` 字段始终表示设备协议原值，不做物理单位换算；`percent` 仅表示
 SDK capability 定义的 `0..100` 映射。屈伸轴为 `0=弯曲，100=伸直`，侧摆和旋转轴的

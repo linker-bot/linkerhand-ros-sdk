@@ -19,6 +19,9 @@ There are no compatibility array topics or ROS-owned device query timers.
 Protocol raw, percent, and physical-angle values remain separate in typed
 messages. Flexion percent uses `0=flexed/closed` and `100=extended/open`;
 directional axes use the endpoint labels published in `HandCapabilities`.
+Runtime optional-query fallback is republished through
+`firmware_unsupported_telemetry`; supported non-volatile configuration is
+submitted through the capability-gated `save_parameters` service.
 
 ## Requirements
 
