@@ -1,167 +1,155 @@
 from dataclasses import replace
 
-import pytest
-
 from linkerbot_hand_ros.benchmark import (
     BenchmarkMeasurements,
+    CommandEvent,
     DiagnosticObservation,
     StateEvent,
     evaluate_measurements,
 )
-from linkerbot_hand_ros.examples.frequency_benchmark import (
-    _parse_args,
-    _secondary_sensor,
-    _validate_args,
-)
+
+from linkerbot_hand_msgs.msg import HandCommandStatus
 
 
 def _diagnostic(
     observed_at,
     *,
-    angle_sequence,
-    torque_sequence,
     generation="1",
-    accepted=0,
-    superseded=0,
-    rejected=0,
-    feedback_errors=0,
     pending=0,
-    angle_stage="dispatched",
+    timeouts=0,
+    consecutive_errors=0,
 ):
     return DiagnosticObservation(
-        observed_at=observed_at,
-        values={
-            "connected": "True",
+        observed_at,
+        {
             "connection_generation": generation,
-            "consecutive_errors": "0",
             "pending_commands": str(pending),
-            "superseded_commands": str(superseded),
-            "ros_commands_accepted": str(accepted),
-            "ros_commands_rejected": str(rejected),
-            "ros_accepted_feedback_errors": str(feedback_errors),
-            "latest_angles_stage": angle_stage,
-            "angles_sequence": str(angle_sequence),
-            "angles_connection_generation": generation,
-            "torques_sequence": str(torque_sequence),
-            "torques_connection_generation": generation,
+            "consecutive_errors": str(consecutive_errors),
+            "transport_dropped_frames": "0",
+            "transport_route_misses": "0",
+            "transport_bus_errors": "0",
+            "channel_angles_timeouts": str(timeouts),
+            "channel_force_timeouts": "0",
         },
     )
 
 
-def _measurements(*, final_angle_sequence=500, final_torque_sequence=500):
-    sent_at = tuple(index / 50.0 for index in range(500))
-    accepted = tuple(("angles", value) for value in sent_at)
-    states = tuple(
-        StateEvent(sensor, index / 50.0, True)
-        for index in range(500)
-        for sensor in ("angles", "torques")
+def _measurements(*, angle_sequence=500, tactile=False):
+    sent = tuple(index / 50 for index in range(500))
+    commands = tuple(
+        CommandEvent(
+            observed_at=value,
+            user_sequence=index + 1,
+            stage=HandCommandStatus.STAGE_DISPATCHED,
+            ack_support=HandCommandStatus.ACK_UNSUPPORTED,
+        )
+        for index, value in enumerate(sent)
     )
-    start = _diagnostic(
-        0.0,
-        angle_sequence=0,
-        torque_sequence=0,
-    )
-    middle = _diagnostic(
-        5.0,
-        angle_sequence=final_angle_sequence // 2,
-        torque_sequence=final_torque_sequence // 2,
-        accepted=250,
-    )
-    end = _diagnostic(
-        10.0,
-        angle_sequence=final_angle_sequence,
-        torque_sequence=final_torque_sequence,
-        accepted=500,
-    )
+    states = [
+        StateEvent(
+            "angles",
+            index * 10 / angle_sequence,
+            index,
+            1,
+            True,
+            False,
+        )
+        for index in range(angle_sequence + 1)
+    ]
+    if tactile:
+        states.extend(
+            StateEvent("tactile", index * 10 / 300, index, 1, True, False)
+            for index in range(301)
+        )
     return BenchmarkMeasurements(
-        requested_hz=50.0,
-        started_at=0.0,
-        ended_at=10.0,
-        command_names=("angles",),
-        required_sensors=("angles", "torques"),
-        sent_at=sent_at,
-        accepted_commands=accepted,
-        state_events=states,
-        diagnostic_samples=(start, middle, end),
-        start_diagnostic=start,
-        end_diagnostic=end,
+        requested_angle_hz=50,
+        requested_tactile_hz=30 if tactile else 0,
+        started_at=0,
+        ended_at=10,
+        sent_at=sent,
+        state_events=tuple(states),
+        command_events=commands,
+        start_diagnostic=_diagnostic(0),
+        end_diagnostic=_diagnostic(10),
     )
 
 
-def test_benchmark_passes_only_when_commands_and_real_samples_meet_target():
+def test_equal_workload_passes_at_requested_angle_rate():
     result = evaluate_measurements(_measurements())
 
     assert result.passed
-    assert result.send_hz == pytest.approx(50.0)
-    assert result.send_interval_p95_ms == pytest.approx(20.0)
-    assert dict(result.state_hz) == {"angles": 50.0, "torques": 50.0}
-    assert dict(result.sample_hz) == {"angles": 50.0, "torques": 50.0}
+    assert result.command_publish_hz == 50
+    assert result.command_terminal_hz == 50
+    assert result.angle_sample_hz == 50
 
 
-def test_repeated_ros_cache_publications_do_not_hide_slow_device_sampling():
+def test_repeated_ros_publication_cannot_hide_low_device_sequence_rate():
+    result = evaluate_measurements(_measurements(angle_sequence=300))
+
+    assert not result.passed
+    assert result.angle_sample_hz == 30
+
+
+def test_complete_tactile_rate_is_evaluated_independently():
+    result = evaluate_measurements(_measurements(tactile=True))
+
+    assert result.passed
+    assert result.tactile_sample_hz == 30
+
+
+def test_failed_or_superseded_commands_fail_the_candidate():
+    measurements = _measurements()
+    events = list(measurements.command_events)
+    events[0] = replace(events[0], stage=HandCommandStatus.STAGE_FAILED)
+    events[1] = replace(events[1], stage=HandCommandStatus.STAGE_SUPERSEDED)
+
+    result = evaluate_measurements(replace(measurements, command_events=tuple(events)))
+
+    assert not result.passed
+    assert result.failed_commands == 1
+    assert result.superseded_commands == 1
+
+
+def test_generation_change_and_health_timeout_fail_the_candidate():
+    measurements = _measurements()
+    states = list(measurements.state_events)
+    states[-1] = replace(states[-1], generation=2)
+    end = _diagnostic(10, generation="2", timeouts=1)
+
     result = evaluate_measurements(
-        _measurements(final_angle_sequence=300, final_torque_sequence=300)
+        replace(
+            measurements,
+            state_events=tuple(states),
+            end_diagnostic=end,
+        )
     )
 
     assert not result.passed
-    assert dict(result.state_hz) == {"angles": 50.0, "torques": 50.0}
-    assert dict(result.sample_hz) == {"angles": 30.0, "torques": 30.0}
-    assert any("设备采样频率" in reason for reason in result.reasons)
+    assert any("连接代次" in reason for reason in result.reasons)
+    assert any("角度事务超时" in reason for reason in result.reasons)
 
 
-def test_benchmark_rejects_connection_change_and_nonterminal_command():
+def test_invalid_sample_still_exposes_connection_generation_change():
     measurements = _measurements()
-    changed_end = _diagnostic(
-        10.0,
-        angle_sequence=500,
-        torque_sequence=500,
-        generation="2",
-        angle_stage="superseded",
+    states = list(measurements.state_events)
+    states.append(replace(states[-1], generation=2, valid=False))
+
+    result = evaluate_measurements(replace(measurements, state_events=tuple(states)))
+
+    assert not result.passed
+    assert any("连接代次" in reason for reason in result.reasons)
+
+
+def test_nonzero_consecutive_error_gauge_fails_even_when_start_was_higher():
+    measurements = _measurements()
+
+    result = evaluate_measurements(
+        replace(
+            measurements,
+            start_diagnostic=_diagnostic(0, consecutive_errors=2),
+            end_diagnostic=_diagnostic(10, consecutive_errors=1),
+        )
     )
-    measurements = replace(measurements, end_diagnostic=changed_end)
-
-    result = evaluate_measurements(measurements)
 
     assert not result.passed
-    assert "测试期间连接代次发生变化" in result.reasons
-    assert "angles 最新命令终态为 superseded" in result.reasons
-
-
-def test_missing_health_counter_cannot_be_reported_as_success():
-    measurements = _measurements()
-    values = dict(measurements.end_diagnostic.values)
-    values.pop("pending_commands")
-    values.pop("ros_commands_rejected")
-    end = DiagnosticObservation(10.0, values)
-
-    result = evaluate_measurements(replace(measurements, end_diagnostic=end))
-
-    assert not result.passed
-    assert "诊断中缺少待发送命令数" in result.reasons
-    assert "诊断中缺少 ros_commands_rejected" in result.reasons
-
-
-def test_control_mode_requires_explicit_torque_limit():
-    parsed = _parse_args([])
-
-    with pytest.raises(ValueError, match="必须显式提供"):
-        _validate_args(parsed)
-
-
-def test_default_candidates_are_50_through_100_hz():
-    parsed = _parse_args(["--mode", "angles"])
-
-    _validate_args(parsed)
-
-    assert parsed.rates == [50.0, 60.0, 80.0, 100.0]
-    assert parsed.repetitions == 3
-    assert parsed.duration == 30.0
-    assert parsed.feedback == "angles-and-load"
-
-
-@pytest.mark.parametrize(
-    ("model", "expected"),
-    (("L6", "torques"), ("O6", "torques"), ("L30", "current"), ("O20", "current")),
-)
-def test_secondary_feedback_uses_current_only_without_torque_sensor(model, expected):
-    assert _secondary_sensor(model) == expected
+    assert any("连续 SDK 错误当前为 1" in reason for reason in result.reasons)

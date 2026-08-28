@@ -1,161 +1,148 @@
-# 关节命令与状态频率测试
+# ROS 角度与完整触觉频率测试
 
-本工具用于回答两个不同问题：
+`frequency_benchmark` 只测试两种等工作量场景：
 
-1. ROS 业务节点能否以 50–100 Hz 持续提交角度目标，SDK 是否及时 dispatch，队列是否保持
-   有界。
-2. 角度和力矩/电流状态是否真的产生了 50–100 Hz 的新设备样本，而不是 ROS 重复发布同一
-   份 SDK 缓存。
+1. percent 角度连续提交 + 角度查询/反馈。
+2. percent 角度连续提交 + 角度查询/反馈 + 完整多指触觉事务。
 
-只运行 `ros2 topic hz` 不能回答第二个问题。`state/*` 使用 `Float64MultiArray`，不包含采集
-序号；当 `publish_rate_hz` 高于 SDK polling 频率时，同一缓存可能被多次发布。基准程序同时
-读取 `/diagnostics` 中的 `<sensor>_sequence` 和连接代次，以序号增量计算真实采样频率。
+它不会设置速度、电流上限、effort 或扭矩，也不把单个关节、触觉 cell、单指或 CAN 分片
+当成独立样本。默认目标取首次有效 percent 角度，`angle_amplitude=0`，因此不会自动全开、
+握拳或主动改变姿态。
+
+## 为什么不能只用 `ros2 topic hz`
+
+ROS publish callback 频率、设备采样频率和命令 transport 发送频率不是一个指标。本工具分别
+记录：
+
+- 本地 `HandJointCommand` publish Hz 和发送间隔 P95；
+- `HandCommandStatus` 中协议终态 Hz、FAILED 和 SUPERSEDED；
+- `HandJointState.meta.sequence` 计算的设备角度样本 Hz；
+- `HandTactileState.meta.sequence` 计算的完整触觉事务 Hz；
+- 起止 `/diagnostics` 中 generation、pending、timeout、route miss 和 bus error 增量。
+
+驱动只在 SDK sequence 或有效性签名变化时发布，工具仍使用 sequence delta 而不是仅统计
+ROS 消息数量。
 
 ## 测试前提
 
-- Ubuntu 24.04、ROS 2 Jazzy，驱动处于 Lifecycle `active`。
-- CAN/CAN FD 接口、型号、左右手、关节顺序和急停已经单独验证。
-- 测试期间停止其他角度、速度和力矩命令发布者，否则 accepted 和覆盖计数无法归因。
-- `command_rate_hz` 是静态参数，启动时应大于等于最高候选命令频率，并留出调度余量。
-- 必须安装 `linkerbot-hand>=0.2.1,<0.3.0`，该版本包含协议原始值与物理元数据契约，
-  以及 O6 `04-B` 触觉能力识别。
+- 驱动 active，verified capability 和当前 generation 的有效角度已收到。
+- 测试期间没有其他角度发布者或主动设备查询程序。
+- `command_rate_hz` 启动时不低于最高候选角度频率，并保留调度余量。
+- 总线 bitrate、终端电阻、设备 ID、急停和机械空间已单独验证。
+- 使用 Hand SDK 1.x 源码或发行包：
 
 ```bash
-git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-transport.git
-git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand.git
-python3 -m pip install -e ./linkerbot-transport -e ./linkerbot-hand
-python3 -c 'import linkerbot_hand; print(linkerbot_hand.__file__)'
-
-source /opt/ros/jazzy/setup.bash
-source ~/linkerbot_ws/install/setup.bash
+python3 -m pip install \
+  --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
+  --extra-index-url https://pypi.org/simple \
+  'linkerbot-hand>=1.0.0.dev0,<2.0.0'
 ```
 
-以 L6、最高候选 100 Hz 为例，先启动驱动：
+启动示例：
 
 ```bash
 ros2 launch linkerbot_hand_ros hand.launch.py \
-  model:=l6 side:=left command_rate_hz:=150 \
-  transport_options_json:='{"interface_name":"can0","interface_type":"socketcan"}'
+  model:=l6 side:=left command_rate_hz:=250 \
+  transport_json:='{"backend":"socketcan","channel":"can1"}'
 ```
 
-基准程序会在线同步 `angles_hz`、力矩或电流反馈 polling、`publish_rate_hz` 和
-`diagnostic_rate`，不会重建连接。它不会修改静态的 `command_rate_hz`。
+## 角度单独收发
 
-## 推荐测试：力矩限制一次，角度连续发送
-
-`control` 是正常控制路径：先把力矩/电流限制提交一次，并等待诊断确认其已
-`dispatched` 或 `acknowledged`；随后才连续发送角度。角度目标默认取首次收到的当前姿态，
-扰动幅度默认为 0，因此不会自动全开、握拳或主动改变姿态。
-
-必须根据型号和实物风险评估显式填写限制。以下 `$LIMIT` 不是固定推荐值：
-
-```bash
-LIMIT=<已确认安全的该型号限制值>
-ros2 run linkerbot_hand_ros frequency_benchmark \
-  --mode control \
-  --torque-value "$LIMIT" \
-  --rates 50 60 80 100 \
-  --duration 30 \
-  --repetitions 3
-```
-
-也可以逐关节填写，数量和顺序必须与 `/linkerbot_hand/joint_names` 一致：
+正式上限测试按每候选点 3 分钟、重复 3 次：
 
 ```bash
 ros2 run linkerbot_hand_ros frequency_benchmark \
-  --mode control \
-  --torque-values <J1> <J2> <J3> <J4> <J5> <J6>
+  --angle-rates 50 100 150 200 \
+  --duration 180 --repetitions 3
 ```
 
-工具默认同时要求角度和负载反馈达到候选频率。不同型号的“负载反馈”含义如下：
+工具会对每个候选点原子设置：
 
-| 型号 | 设置话题 `command/torques` | 第二反馈 | capability 推荐频率 |
-| --- | --- | --- | --- |
-| L6 | `0–255` count | `state/torques`，count | 角度 60 Hz，负载 30 Hz |
-| O6 | `0–255` count | `state/torques`，count | 角度 60 Hz，负载 30 Hz |
-| L20Lite、L25 | `0–255` count | `state/torques`，count | 角度 60 Hz，负载 30 Hz |
-| O30I | `0–255` 协议值 | `state/torques`，协议值 | 角度 30 Hz，负载 30 Hz |
-| O20 | `0–1000` count | `state/current`，mA | 角度 30 Hz，电流 10 Hz |
-| L30 | `60–800` count | `state/current`，count | 角度 60 Hz，电流 10 Hz |
+- `angles_hz=<候选频率>`
+- `force_hz=0`
+- `publish_rate_hz=<候选频率>`
+- `diagnostic_rate_hz=min(候选频率, 20)`
 
-O20、L30 的电流反馈不能描述成机械关节扭矩。推荐频率不是硬上限，但 50–100 Hz 组合测试
-很可能先受负载反馈 polling 限制；失败结果应保留，不能通过提高 ROS 发布频率掩盖。
+不会修改静态 `command_rate_hz`，也不会重建连接。
 
-只评估角度命令和真实角度反馈时使用：
+## 角度 + 完整触觉
+
+O6/L6 capability 确认支持完整触觉后，固定触觉频率并搜索角度上限：
 
 ```bash
 ros2 run linkerbot_hand_ros frequency_benchmark \
-  --mode angles --feedback angles \
-  --rates 50 60 80 100 --duration 30 --repetitions 3
+  --angle-rates 20 50 100 150 200 \
+  --tactile-hz 30 \
+  --duration 180 --repetitions 3
 ```
 
-## 可选小幅运动验证
+这里 `30 Hz` 指 30 个完整多指 `HandTactileState`，不是 30 个 CAN frame。若 firmware、
+传感器或 capability 的事务成本无法支持，polling plan 可能在参数更新时明确拒绝，或运行时
+以 timeout/missed deadline 失败；不得通过提高 ROS publish rate 掩盖。
 
-只有在机械空间、方向、速度和限制值都确认后，才启用单关节正弦扰动。以下命令以当前姿态
-为中心，仅扰动索引 2，幅度 3 个百分比点：
+## 可选小幅扰动
+
+只有确认方向、速度、限制和机械空间后才能启用。以下以当前姿态为中心，索引 2 扰动 3 个
+percent 点：
 
 ```bash
 ros2 run linkerbot_hand_ros frequency_benchmark \
-  --mode control --torque-value "$LIMIT" \
+  --angle-rates 50 100 \
   --angle-amplitude 3 --joint-index 2 --angle-period 2 \
-  --rates 50 60 80 100 --duration 30 --repetitions 3
+  --duration 180 --repetitions 3
 ```
 
-若混用旧驱动导致 `state/angles` 含 `NaN`，工具不会猜测目标，而会停止并要求显式传入
-`--angle-values`。显式目标可以继续做命令压力测试，但严格的“全部关节角度状态有限”判据
-仍会失败并报告原因。当前 0.3.3 驱动遇到无法映射的整组样本时不会发布百分比角度。
-方向轴的 0/100 是 capability 定义的位置端点，不应解释为握拳/张开。
-
-## 其他压力模式
-
-| 模式 | 行为 | 用途 |
-| --- | --- | --- |
-| `control` | 力矩/电流限制一次，角度连续发送 | 推荐的正常控制测试 |
-| `angles` | 只连续发送角度 | 隔离角度命令上限 |
-| `torques` | 连续发送限制值 | 非正常业务路径，仅用于协议压力测试 |
-| `mixed` | 每个 tick 在角度和限制值之间交替 | 验证共享 latest-wins 槽；候选频率是两类命令合计值 |
-
-连续运动命令共用 SDK 容量为 1 的 latest-wins 槽。因此，不能把“角度 100 Hz + 力矩
-100 Hz”理解成两个互不影响的 100 Hz 队列。`mixed --rates 100` 表示总计 100 Hz，每类约
-50 Hz。正常控制应使用 `control`，而不是高频重复设置相同限制。
-
-## 通过标准
-
-每个候选频率默认持续 30 秒并重复 3 次，单轮同时满足以下条件才通过：
-
-- 实际 ROS publish 频率不低于目标的 95%。
-- `command/accepted/*` 数量不低于 publish 数的 95%。
-- 没有命令校验或 publish 异常；程序同时报告本地错过周期数和发送间隔 P95。
-- `superseded_commands` 增量不超过发送数的 1%。
-- 排空等待后 `pending_commands == 0`。
-- `ros_commands_rejected` 和 `ros_accepted_feedback_errors` 增量为 0。
-- 测试期间 `connection_generation` 不变，结束时设备已连接且无连续通信错误。
-- 最新命令终态为 `dispatched` 或 `acknowledged`；`accepted` 不算已发送。
-- 角度及选定负载状态消息长度正确且全部为有限值。
-- ROS 状态 topic 频率不低于目标的 90%。
-- 同一连接代次内，SDK 采样序号计算出的真实设备频率不低于目标的 90%。
-
-某一候选频率只有连续 3 轮全部通过，才计为稳定。候选集中的最高连续通过值就是本次测试
-上限；首个失败频率和失败原因必须记录。默认在首个失败频率后停止，可用
-`--continue-after-failure` 收集后续点：
-
-连接中断或代次变化属于安全中止条件。程序会立即停止提交后续目标，即使指定了
-`--continue-after-failure` 也不会继续下一轮，恢复后必须重新确认当前状态并重新启动测试。
+也可显式给基准目标，数量必须等于 capability 关节数：
 
 ```bash
 ros2 run linkerbot_hand_ros frequency_benchmark \
-  --mode control --torque-value "$LIMIT" \
-  --rates 50 60 80 100 120 150 200 \
-  --duration 30 --repetitions 3 \
-  --continue-after-failure
+  --angle-values 50 50 50 50 50 50 \
+  --angle-rates 50 100
 ```
 
-单次偶发峰值不是上限。提高频率时还应同步保存 `ip -details -statistics link show can0`、
-驱动日志和 `/diagnostics`，区分 Python 调度、SDK 覆盖、总线负载、设备响应和断线恢复问题。
+## 单轮通过标准
 
-## 退出码
+默认 `minimum_ratio=0.9`。每轮同时满足：
 
-- `0`：所有候选频率均连续通过。
-- `2`：程序正常完成，但至少一个候选频率未通过。
-- `1`：启动、参数、设备状态或测试配置错误。
+- 本地命令 publish Hz 不低于候选角度频率的 90%。
+- 命令协议成功终态 Hz 不低于 90%。
+- 角度 SDK sequence rate 不低于 90%。
+- 启用触觉时，完整触觉 sequence rate 不低于触觉目标的 90%。
+- 没有 FAILED 或发送前 SUPERSEDED 命令。
+- 测试期间 state 和 health 的 connection generation 不变。
+- drain 后 `pending_commands=0`。
+- consecutive error、角度/force timeout、transport drop/route miss/bus error 无增加。
+
+某候选频率只有连续 3 轮全通过才算稳定。候选集中最高稳定值是本次测试上限。默认首个失败
+后停止；需要观察更高点时：
+
+```bash
+ros2 run linkerbot_hand_ros frequency_benchmark \
+  --angle-rates 50 100 150 200 --continue-after-failure
+```
+
+连接断开或 generation 改变会安全中止，恢复后必须重新确认 baseline 并重新运行。
+
+## 不自动改驱动参数
+
+外部系统固定 polling plan 时可使用：
+
+```bash
+ros2 run linkerbot_hand_ros frequency_benchmark \
+  --no-configure-driver --angle-rates 100
+```
+
+此时调用方负责保证 `angles_hz`、`force_hz`、`publish_rate_hz` 和 diagnostics 足以满足目标；
+工具仍按消息 sequence 和 health 判据验收。
+
+## 退出码与记录
+
+- `0`：全部候选点的全部轮次通过。
+- `2`：正常完成，但至少一个候选点失败。
+- `1`：启动、参数、状态或 capability 不满足。
 - `130`：用户中断。
+
+每轮同时保存驱动日志、`/diagnostics`、CPU/RSS、线程/FD 数量和
+`ip -details -statistics link show canX`。跨 SocketCAN raw、Python SDK 和 ROS 的对比必须
+使用相同请求、回复校验、目标更新和测试时长；本 ROS 工具的结果不能与不同工作量的 raw
+脚本直接相除。
