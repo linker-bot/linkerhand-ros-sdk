@@ -14,7 +14,10 @@ The value representation is always explicit:
   semantic and capability metadata.
 - `HandTactileState` represents one complete multi-finger tactile transaction.
 - `HandCommandStatus` distinguishes accepted, dispatched, acknowledged,
-  failed, and superseded commands.
+  failed, and superseded commands. A non-zero `client_id` combined with
+  `user_sequence` identifies one publisher's command without colliding with
+  another publisher, while publisher and driver-receive timestamps expose the
+  ROS admission latency.
 
 Every state sample carries `SampleMetadata`: collection time, per-channel
 sequence, age, validity, staleness, connection generation, origin, and range

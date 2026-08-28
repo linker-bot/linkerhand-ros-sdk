@@ -1,4 +1,7 @@
+uint64 client_id
 uint64 user_sequence
+builtin_interfaces/Time publisher_stamp
+builtin_interfaces/Time driver_received_stamp
 uint64 command_id
 string family
 uint8 stage

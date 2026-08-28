@@ -1,3 +1,5 @@
+from builtin_interfaces.msg import Time
+
 from linkerbot_hand_msgs.msg import (
     HandCommandStatus,
     HandJointCommand,
@@ -11,14 +13,18 @@ from linkerbot_hand_msgs.srv import Recover, SetRawValues, SubmitCommand
 
 def test_joint_command_requires_an_explicit_value_representation():
     command = HandJointCommand(
+        client_id=17,
         user_sequence=7,
+        publisher_stamp=Time(sec=12, nanosec=34),
         representation=HandJointCommand.REPRESENTATION_PERCENT,
         values=[100.0, 50.0],
     )
 
     assert command.representation == HandJointCommand.REPRESENTATION_PERCENT
     assert HandJointCommand.REPRESENTATION_RAW != command.representation
+    assert command.client_id == 17
     assert command.user_sequence == 7
+    assert command.publisher_stamp == Time(sec=12, nanosec=34)
 
 
 def test_joint_state_keeps_raw_percent_and_physical_validity_separate():
@@ -77,6 +83,10 @@ def test_tactile_matrix_preserves_optional_sensor_online_state():
 
 def test_command_status_does_not_conflate_dispatch_with_acknowledgement():
     status = HandCommandStatus(
+        client_id=17,
+        user_sequence=7,
+        publisher_stamp=Time(sec=12, nanosec=34),
+        driver_received_stamp=Time(sec=12, nanosec=35),
         command_id=11,
         family="angle_target",
         stage=HandCommandStatus.STAGE_DISPATCHED,
@@ -87,6 +97,9 @@ def test_command_status_does_not_conflate_dispatch_with_acknowledgement():
     assert status.stage == HandCommandStatus.STAGE_DISPATCHED
     assert status.stage != HandCommandStatus.STAGE_ACKNOWLEDGED
     assert status.ack_support == HandCommandStatus.ACK_UNSUPPORTED
+    assert status.client_id == 17
+    assert status.user_sequence == 7
+    assert status.driver_received_stamp.nanosec == 35
 
 
 def test_admin_services_return_structured_acceptance_and_errors():
