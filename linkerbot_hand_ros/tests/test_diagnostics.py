@@ -2,6 +2,7 @@ from dataclasses import replace
 
 from diagnostic_msgs.msg import DiagnosticStatus
 from linkerbot_hand import (
+    AngleFeedbackPolicy,
     ChannelMetrics,
     ConnectionState,
     DataAge,
@@ -31,6 +32,9 @@ def _operational_health() -> HealthStatus:
                 missed_deadlines=0,
                 timeouts=0,
                 completed_reads=199,
+                command_feedback_samples=73,
+                feedback_samples=190,
+                feedback_policy=AngleFeedbackPolicy.ADAPTIVE,
                 data_age=DataAge(
                     channel="angles",
                     age_s=0.002,
@@ -60,6 +64,9 @@ def test_operational_health_maps_to_ok_without_other_sdk_state() -> None:
     assert values["channel_angles_sequence"] == "17"
     assert values["channel_angles_achieved_hz"] == "99.5"
     assert values["channel_angles_completed_reads"] == "199"
+    assert values["channel_angles_command_feedback_samples"] == "73"
+    assert values["channel_angles_feedback_samples"] == "190"
+    assert values["channel_angles_feedback_policy"] == "adaptive"
     assert values["channel_angles_origin"] == "device_response"
 
 

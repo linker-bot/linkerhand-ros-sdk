@@ -89,6 +89,19 @@ def build_diagnostic_status(
                 _value(f"{prefix}_requested_hz", channel.requested_hz),
                 _value(f"{prefix}_achieved_hz", channel.achieved_hz),
                 _value(f"{prefix}_completed_reads", channel.completed_reads),
+                _value(
+                    f"{prefix}_command_feedback_samples",
+                    channel.command_feedback_samples,
+                ),
+                _value(f"{prefix}_feedback_samples", channel.feedback_samples),
+                _value(
+                    f"{prefix}_feedback_policy",
+                    (
+                        "none"
+                        if channel.feedback_policy is None
+                        else channel.feedback_policy.value
+                    ),
+                ),
                 _value(f"{prefix}_missed_deadlines", channel.missed_deadlines),
                 _value(f"{prefix}_timeouts", channel.timeouts),
                 _value(f"{prefix}_age_s", age.age_s),
