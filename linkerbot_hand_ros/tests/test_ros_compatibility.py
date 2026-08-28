@@ -31,6 +31,7 @@ def test_management_services_use_keyword_only_callback_groups() -> None:
 def test_entry_points_use_idempotent_rclpy_shutdown() -> None:
     entry_points = (
         PACKAGE_ROOT / "linkerbot_hand_ros/node.py",
+        PACKAGE_ROOT / "linkerbot_hand_ros/multi_device.py",
         PACKAGE_ROOT / "linkerbot_hand_ros/examples/angle_command.py",
         PACKAGE_ROOT / "linkerbot_hand_ros/examples/angle_controller.py",
         PACKAGE_ROOT / "linkerbot_hand_ros/examples/frequency_benchmark.py",
@@ -67,6 +68,25 @@ def test_launch_uses_jazzy_lifecycle_node_with_autostart() -> None:
 
     assert len(lifecycle_nodes) == 1
     assert any(keyword.arg == "autostart" for keyword in lifecycle_nodes[0].keywords)
+
+
+def test_multi_hand_launch_preserves_each_internal_node_name() -> None:
+    source = (PACKAGE_ROOT / "launch/multi_hand.launch.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    nodes = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "Node"
+    ]
+
+    assert len(nodes) == 1
+    keywords = {keyword.arg for keyword in nodes[0].keywords}
+    assert "name" not in keywords
+    assert "namespace" not in keywords
+    assert 'executable="hand_container"' in source
+    assert "ParameterFile(config, allow_substs=True)" in source
 
 
 def test_ros_callbacks_contain_no_synchronous_device_reads() -> None:
@@ -107,6 +127,12 @@ def test_package_depends_on_hand_sdk_1_x() -> None:
     assert '"linkerbot-hand>=1.0.0.dev0,<2.0.0"' in setup_source
     assert '"linkerbot>=' not in setup_source
     assert '"linkerbot-transport' not in setup_source
+
+
+def test_package_registers_the_in_process_hand_container() -> None:
+    setup_source = (PACKAGE_ROOT / "setup.py").read_text(encoding="utf-8")
+
+    assert "hand_container = linkerbot_hand_ros.multi_device:main" in setup_source
 
 
 def test_ros_source_uses_only_the_public_hand_import_path() -> None:

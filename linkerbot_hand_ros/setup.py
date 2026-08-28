@@ -42,6 +42,7 @@ setup(
     entry_points={
         "console_scripts": [
             "hand_node = linkerbot_hand_ros.node:main",
+            "hand_container = linkerbot_hand_ros.multi_device:main",
             "angle_command = linkerbot_hand_ros.examples.angle_command:main",
             "angle_controller = linkerbot_hand_ros.examples.angle_controller:main",
             (

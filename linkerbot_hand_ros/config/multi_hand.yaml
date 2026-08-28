@@ -1,0 +1,21 @@
+/linkerbot_hand_container:
+  ros__parameters:
+    device_namespaces: [l6_left, o6_right]
+    autostart: true
+    executor_threads: 4
+
+/l6_left/linkerbot_hand:
+  ros__parameters:
+    model: l6
+    side: left
+    transport_json: '{"backend":"socketcan","channel":"can0"}'
+    angles_hz: 100.0
+    force_hz: 0.0
+
+/o6_right/linkerbot_hand:
+  ros__parameters:
+    model: o6
+    side: right
+    transport_json: '{"backend":"socketcan","channel":"can0"}'
+    angles_hz: 100.0
+    force_hz: 0.0
