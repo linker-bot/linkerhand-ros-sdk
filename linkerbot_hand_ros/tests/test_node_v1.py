@@ -284,6 +284,7 @@ def test_status_publication_failure_does_not_reclassify_accepted_command(node_ri
     try:
         commands._handle_angles(
             HandJointCommand(
+                client_id=1,
                 user_sequence=18,
                 representation=HandJointCommand.REPRESENTATION_PERCENT,
                 values=[100.0] * 6,
@@ -317,6 +318,7 @@ def test_status_publication_does_not_hold_command_tracking_lock(node_rig):
     try:
         commands._handle_angles(
             HandJointCommand(
+                client_id=1,
                 user_sequence=19,
                 representation=HandJointCommand.REPRESENTATION_PERCENT,
                 values=[100.0] * 6,
@@ -341,6 +343,7 @@ def test_command_deactivate_waits_for_inflight_status_publication(node_rig):
     commands._status_publisher = publisher
     commands._handle_angles(
         HandJointCommand(
+            client_id=1,
             user_sequence=20,
             representation=HandJointCommand.REPRESENTATION_PERCENT,
             values=[100.0] * 6,

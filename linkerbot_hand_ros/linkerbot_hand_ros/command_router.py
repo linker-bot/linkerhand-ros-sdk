@@ -59,6 +59,7 @@ def route_joint_command(
 
     if not isinstance(message, HandJointCommand):
         raise ValidationError("message must be HandJointCommand")
+    _validate_client_id(message.client_id)
     if message.representation == HandJointCommand.REPRESENTATION_PERCENT:
         handle = device.set_percent_angles(message.values)
     elif message.representation == HandJointCommand.REPRESENTATION_RAW:
@@ -79,6 +80,8 @@ def route_raw_command(
     device: HandDevice,
     semantic: CommandSemantic,
     message: HandRawCommand,
+    *,
+    require_client_id: bool = True,
 ) -> RoutedCommand:
     """Submit one explicitly selected protocol-raw command family."""
 
@@ -86,6 +89,8 @@ def route_raw_command(
         raise ValidationError("semantic must be CommandSemantic")
     if not isinstance(message, HandRawCommand):
         raise ValidationError("message must be HandRawCommand")
+    if require_client_id:
+        _validate_client_id(message.client_id)
     setter_name = _RAW_SETTERS.get(semantic)
     if setter_name is None:
         raise ValidationError(
@@ -144,6 +149,11 @@ def _protocol_values(
         else:
             normalized.append(value)
     return tuple(normalized)
+
+
+def _validate_client_id(value: object) -> None:
+    if type(value) is not int or not 0 < value <= _UINT64_MAX:
+        raise ValidationError("client_id must be a non-zero uint64")
 
 
 __all__ = [

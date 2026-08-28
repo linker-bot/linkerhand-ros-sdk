@@ -95,7 +95,28 @@ def test_joint_router_rejects_unknown_representation_before_sdk_submission():
     with pytest.raises(ValidationError, match="representation"):
         route_joint_command(
             device,
-            HandJointCommand(user_sequence=1, representation=99, values=[1.0]),
+            HandJointCommand(
+                client_id=1,
+                user_sequence=1,
+                representation=99,
+                values=[1.0],
+            ),
+        )
+
+    assert not device.calls
+
+
+def test_joint_router_rejects_zero_client_id_before_sdk_submission():
+    device = RecordingDevice()
+
+    with pytest.raises(ValidationError, match="client_id must be a non-zero uint64"):
+        route_joint_command(
+            device,
+            HandJointCommand(
+                user_sequence=1,
+                representation=HandJointCommand.REPRESENTATION_PERCENT,
+                values=[1.0],
+            ),
         )
 
     assert not device.calls
@@ -147,11 +168,24 @@ def test_value_validation_is_delegated_to_the_sdk_setter():
         route_raw_command(
             device,
             CommandSemantic.CURRENT_LIMITS,
-            HandRawCommand(user_sequence=1, raw=[9999.0]),
+            HandRawCommand(client_id=1, user_sequence=1, raw=[9999.0]),
         )
 
     assert raised.value is expected
     assert device.calls == [("set_current_limits", (9999.0,))]
+
+
+def test_raw_router_rejects_zero_client_id_before_sdk_submission():
+    device = RecordingDevice()
+
+    with pytest.raises(ValidationError, match="client_id must be a non-zero uint64"):
+        route_raw_command(
+            device,
+            CommandSemantic.SPEEDS,
+            HandRawCommand(user_sequence=1, raw=[1.0]),
+        )
+
+    assert not device.calls
 
 
 @pytest.mark.parametrize("operation", list(DiscreteOperation))

@@ -242,6 +242,7 @@ class ManagementInterface:
                     user_sequence=request.user_sequence,
                     raw=request.raw,
                 ),
+                require_client_id=False,
             )
             self._track(routed, driver_received_at)
             response.accepted = True
