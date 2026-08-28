@@ -10,6 +10,7 @@ from collections.abc import Callable, Sequence
 from itertools import pairwise
 
 import rclpy
+from builtin_interfaces.msg import Time
 from diagnostic_msgs.msg import DiagnosticArray
 from rclpy.node import Node
 from rclpy.parameter import Parameter
@@ -26,6 +27,7 @@ from linkerbot_hand_ros.benchmark import (
     BenchmarkResult,
     CommandEvent,
     DiagnosticObservation,
+    LatencyStats,
     StateEvent,
     evaluate_measurements,
 )
@@ -229,15 +231,30 @@ class FrequencyBenchmarkNode(Node):
         )
 
     def _on_command_status(self, message: HandCommandStatus) -> None:
-        if message.user_sequence == 0:
+        if (
+            message.client_id != self.command_client.client_id
+            or message.user_sequence == 0
+        ):
             return
-        self.command_events.append(
+        observed_at = time.monotonic()
+        publisher_at = _stamp_seconds(message.publisher_stamp)
+        driver_received_at = _stamp_seconds(message.driver_received_stamp)
+        transitions = tuple(
+            (transition.stage, _stamp_seconds(transition.stamp))
+            for transition in message.transitions
+        ) or ((message.stage, None),)
+        self.command_events.extend(
             CommandEvent(
-                observed_at=time.monotonic(),
+                observed_at=observed_at,
+                client_id=message.client_id,
                 user_sequence=message.user_sequence,
-                stage=message.stage,
+                publisher_at=publisher_at,
+                driver_received_at=driver_received_at,
+                transition_at=transition_at,
+                stage=stage,
                 ack_support=message.ack_support,
             )
+            for stage, transition_at in transitions
         )
 
     def _on_diagnostics(self, message: DiagnosticArray) -> None:
@@ -289,6 +306,12 @@ def _spin_until_future(node: Node, future: object, timeout_s: float) -> None:
         rclpy.spin_once(node, timeout_sec=0.05)
     if not future.done():
         raise RuntimeError("等待 ROS 服务响应超时")
+
+
+def _stamp_seconds(stamp: Time) -> float | None:
+    if stamp.sec == 0 and stamp.nanosec == 0:
+        return None
+    return stamp.sec + stamp.nanosec / 1_000_000_000
 
 
 def _spin_until(
@@ -419,11 +442,13 @@ def _run_window(
     command_events = tuple(
         event
         for event in node.command_events[command_start:]
-        if event.user_sequence in sent_sequences
+        if event.client_id == node.command_client.client_id
+        and event.user_sequence in sent_sequences
         and started_at <= event.observed_at <= drain_deadline
     )
     return evaluate_measurements(
         BenchmarkMeasurements(
+            client_id=node.command_client.client_id,
             requested_angle_hz=angle_hz,
             requested_tactile_hz=parsed.tactile_hz,
             started_at=started_at,
@@ -461,14 +486,29 @@ def _log_result(
         f"[{status}] angle={result.requested_angle_hz:g}Hz "
         f"tactile={result.requested_tactile_hz:g}Hz 第{repetition}轮: "
         f"publish={result.command_publish_hz:.2f}Hz, "
-        f"terminal={result.command_terminal_hz:.2f}Hz, "
+        f"received={result.command_received_hz:.2f}Hz, "
+        f"accepted={result.command_accepted_hz:.2f}Hz, "
         f"dispatch={result.command_dispatch_hz:.2f}Hz, "
+        f"terminal={result.command_terminal_hz:.2f}Hz, "
         f"angle_sample={angle_sample}, tactile_sample={tactile_sample}, "
         f"command_p95={p95}, failed={result.failed_commands}, "
         f"superseded={result.superseded_commands}"
     )
+    node.get_logger().info(
+        "  latency_ms[p50/p95/p99]: "
+        f"publish->receive={_format_latency(result.publish_to_receive_latency)}, "
+        f"receive->accept={_format_latency(result.receive_to_accept_latency)}, "
+        f"accept->dispatch={_format_latency(result.accept_to_dispatch_latency)}, "
+        f"publish->dispatch={_format_latency(result.publish_to_dispatch_latency)}"
+    )
     for reason in result.reasons:
         node.get_logger().error(f"  - {reason}")
+
+
+def _format_latency(stats: LatencyStats) -> str:
+    if stats.p50_ms is None or stats.p95_ms is None or stats.p99_ms is None:
+        return "N/A"
+    return f"{stats.p50_ms:.2f}/{stats.p95_ms:.2f}/{stats.p99_ms:.2f}"
 
 
 def _run(parsed: argparse.Namespace, node: FrequencyBenchmarkNode) -> bool:

@@ -29,11 +29,15 @@ Topic：`~/command/angles`
 类型：`linkerbot_hand_msgs/msg/HandJointCommand`
 
 ```text
+uint64 client_id
 uint64 user_sequence
+builtin_interfaces/Time publisher_stamp
 uint8 representation
 float64[] values
 ```
 
+- `client_id`：发布者实例的非零关联标识，与 `user_sequence` 共同构成命令键。
+- `publisher_stamp`：发布者 ROS 时钟下的发送时刻；`HandCommandClient` 自动填写。
 - `REPRESENTATION_PERCENT=1`：严格 `0..100`。屈伸轴为 0 弯曲、100 伸直；方向轴按
   capability endpoint label 解释。
 - `REPRESENTATION_RAW=2`：设备协议原值，不做 percent、方向、LUT 或物理单位转换。
@@ -42,13 +46,16 @@ float64[] values
 ```bash
 ros2 topic pub --once /linkerbot_hand/command/angles \
   linkerbot_hand_msgs/msg/HandJointCommand \
-  '{user_sequence: 101, representation: 1, values: [50, 50, 50, 50, 50, 50]}'
+  '{client_id: 1, user_sequence: 101, representation: 1, values: [50, 50, 50, 50, 50, 50]}'
 ```
+
+命令行未填写 `publisher_stamp` 时该字段为零，因此不能计算发布到驱动接收延迟；正式控制与
+性能测试应使用 `HandCommandClient`。并行发布者必须使用不同的非零 `client_id`。
 
 ## 其他命令
 
-以下 Topic 使用 `linkerbot_hand_msgs/msg/HandRawCommand`，字段为
-`user_sequence` 和 `raw[]`：
+以下 Topic 使用 `linkerbot_hand_msgs/msg/HandRawCommand`，同样包含 `client_id`、
+`user_sequence`、`publisher_stamp` 和 `raw[]`：
 
 | Topic | SDK 语义 |
 | --- | --- |
@@ -77,8 +84,10 @@ Topic：`~/command/status`
 | `SUPERSEDED=5` | transport claim 前被同类新目标覆盖，确认未发送 |
 
 不支持设备 ACK 的型号 `ack_support=ACK_UNSUPPORTED`，成功终态为 `DISPATCHED`。
-任何 stage 都不表示机械到位。用 `user_sequence` 将业务目标与 status 对应；
-`command_id` 是 SDK 内部命令标识。
+任何 stage 都不表示机械到位。用 `(client_id, user_sequence)` 将业务目标与 status 对应；
+`command_id` 是 SDK 内部命令标识。`publisher_stamp` 原样回传发布时刻，
+`driver_received_stamp` 是驱动 callback 入口时刻，`transitions[]` 保留 SDK 每个阶段的时刻；
+统计 DISPATCHED 必须检查完整历史，不能用最终 ACKNOWLEDGED 代替。
 
 ## 角度状态
 

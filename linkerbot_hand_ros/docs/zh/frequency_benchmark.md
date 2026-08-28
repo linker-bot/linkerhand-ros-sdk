@@ -15,13 +15,16 @@ ROS publish callback 频率、设备采样频率和命令 transport 发送频率
 记录：
 
 - 本地 `HandJointCommand` publish Hz 和发送间隔 P95；
-- `HandCommandStatus` 中协议终态 Hz、实际下发 Hz、FAILED 和 SUPERSEDED；
+- 当前 `client_id` 的驱动收到 Hz、SDK `ACCEPTED` Hz、实际 `DISPATCHED` Hz 和协议终态 Hz；
+- 发布到驱动接收、接收到 SDK 接受、接受到实际下发及发布到实际下发的 P50/P95/P99；
+- `HandCommandStatus.transitions[]` 中的 FAILED 和 SUPERSEDED；
 - `HandJointState.meta.sequence` 计算的设备角度样本 Hz；
 - `HandTactileState.meta.sequence` 计算的完整触觉事务 Hz；
 - 起止 `/diagnostics` 中 generation、pending、timeout、route miss 和 bus error 增量。
 
 驱动只在 SDK sequence 或有效性签名变化时发布，工具仍使用 sequence delta 而不是仅统计
-ROS 消息数量。
+ROS 消息数量。命令阶段按 `(client_id, user_sequence, stage)` 去重；最终状态为
+`ACKNOWLEDGED` 时仍以完整历史中是否存在 `DISPATCHED` 为准。
 
 ## 测试前提
 
@@ -105,11 +108,14 @@ ros2 run linkerbot_hand_ros frequency_benchmark \
 默认 `minimum_ratio=0.9`。每轮同时满足：
 
 - 本地命令 publish Hz 不低于候选角度频率的 90%。
+- 驱动收到命令 Hz 不低于 90%。
+- SDK `ACCEPTED` Hz 不低于 90%。
 - 命令协议终态 Hz 不低于 90%。
-- 实际进入 DISPATCHED 或 ACKNOWLEDGED 的命令 Hz 不低于 90%。
+- 完整阶段历史中实际进入 `DISPATCHED` 的命令 Hz 不低于 90%。
 - 角度 SDK sequence rate 不低于 90%。
 - 启用触觉时，完整触觉 sequence rate 不低于触觉目标的 90%。
 - 没有 FAILED 命令；SUPERSEDED 单独记录，并通过实际下发频率门槛约束。
+- 四段延迟时间戳没有缺失或倒序。
 - 测试期间 state 和 health 的 connection generation 不变。
 - drain 后 `pending_commands=0`。
 - consecutive error、角度/force timeout、transport drop/route miss/bus error 无增加。

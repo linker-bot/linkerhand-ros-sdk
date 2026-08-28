@@ -142,7 +142,7 @@ ros2 param set /linkerbot_hand angles_hz 60.0
 ```bash
 ros2 topic pub --once /linkerbot_hand/command/angles \
   linkerbot_hand_msgs/msg/HandJointCommand \
-  '{user_sequence: 1, representation: 1, values: [50, 50, 50, 50, 50, 50]}'
+  '{client_id: 1, user_sequence: 1, representation: 1, values: [50, 50, 50, 50, 50, 50]}'
 ros2 topic echo /linkerbot_hand/command/status
 ```
 

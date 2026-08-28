@@ -119,13 +119,15 @@ ros2 topic echo /linkerbot_hand/command/status
 ```bash
 ros2 topic pub --once /linkerbot_hand/command/angles \
   linkerbot_hand_msgs/msg/HandJointCommand \
-  '{user_sequence: 1, representation: 1, values: [50, 50, 50, 50, 50, 50]}'
+  '{client_id: 1, user_sequence: 1, representation: 1, values: [50, 50, 50, 50, 50, 50]}'
 ```
 
 - `representation=1`：percent，严格 `0..100`。
 - `representation=2`：精确协议 raw，不做方向、LUT 或物理单位转换。
 - SDK 接受后通过 `/command/status` 发布 `ACCEPTED`；实际发送后才是
   `DISPATCHED`。只有设备协议明确确认时才会出现 `ACKNOWLEDGED`。
+- 正式程序使用 `HandCommandClient` 自动生成非零 `client_id`，并以
+  `(client_id, user_sequence)` 关联状态；多个发布者不能只按序号匹配。
 
 高频控制复用常驻客户端：
 

@@ -34,7 +34,7 @@ self.hand = HandCommandClient(self, "/linkerbot_hand")
 
 if self.hand.is_ready("angles"):
     publication = self.hand.set_percent_angles(target_percent)
-    self.pending_user_sequence = publication.user_sequence
+    self.pending_command = (publication.client_id, publication.user_sequence)
 ```
 
 这一步只表示 DDS publish 完成。命令状态从 `/command/status` 异步到达。高频 timer/callback
@@ -70,10 +70,16 @@ publish target
 | 层次 | 观察方式 | 能证明什么 |
 | --- | --- | --- |
 | ROS 发布 | `CommandPublication` | 业务消息已交给本地 DDS publisher |
+| 驱动收到 | `HandCommandStatus.driver_received_stamp` | 驱动 callback 已收到该发布者的消息 |
 | SDK 接受 | `HandCommandStatus.ACCEPTED` | 参数有效并进入 SDK 调度器 |
 | transport 发送 | `DISPATCHED` | 全部请求帧实际 send 成功 |
 | 设备协议确认 | `ACKNOWLEDGED` | 协议明确 ACK，只有支持型号才有 |
 | 机械到位 | 新鲜角度反馈窗口 | 误差和稳定时间满足业务判据 |
+
+`HandCommandClient` 为每个实例生成非零 `client_id`。业务应使用
+`(client_id, user_sequence)` 作为关联键，不能只按序号匹配其他发布者的状态。状态中的
+`publisher_stamp`、`driver_received_stamp` 和完整 `transitions[]` 可分别计算 ROS admission、
+SDK admission 和 transport dispatch 延迟。
 
 ## Percent、raw 和物理角度
 
@@ -135,7 +141,7 @@ measured speed，current limit 不等于 torque。L6 的速度设置快照只能
 - 由业务显式提交新目标。
 
 SDK 禁止重放断线前目标，也不会自动清 fault、enable 或 calibrate。业务层同样不能把旧
-`user_sequence` 的 status 用于新 generation。
+`(client_id, user_sequence)` 的 status 用于新 generation。
 
 ## 多设备部署
 

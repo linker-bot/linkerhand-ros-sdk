@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass
 from itertools import pairwise
 
@@ -22,9 +23,29 @@ class StateEvent:
 @dataclass(frozen=True, slots=True)
 class CommandEvent:
     observed_at: float
+    client_id: int
     user_sequence: int
+    publisher_at: float | None
+    driver_received_at: float | None
+    transition_at: float | None
     stage: int
     ack_support: int
+
+
+@dataclass(frozen=True, slots=True)
+class LatencyStats:
+    sample_count: int
+    p50_ms: float | None
+    p95_ms: float | None
+    p99_ms: float | None
+
+
+@dataclass(slots=True)
+class _CommandRecord:
+    publisher_at: float | None
+    driver_received_at: float | None
+    ack_support: int
+    transitions: dict[int, float | None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +65,7 @@ class DiagnosticObservation:
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkMeasurements:
+    client_id: int
     requested_angle_hz: float
     requested_tactile_hz: float
     started_at: float
@@ -61,11 +83,17 @@ class BenchmarkResult:
     requested_tactile_hz: float
     passed: bool
     command_publish_hz: float
+    command_received_hz: float
+    command_accepted_hz: float
     command_terminal_hz: float
     command_dispatch_hz: float
     angle_sample_hz: float | None
     tactile_sample_hz: float | None
     command_interval_p95_ms: float | None
+    publish_to_receive_latency: LatencyStats
+    receive_to_accept_latency: LatencyStats
+    accept_to_dispatch_latency: LatencyStats
+    publish_to_dispatch_latency: LatencyStats
     failed_commands: int
     superseded_commands: int
     reasons: tuple[str, ...]
@@ -83,34 +111,62 @@ def evaluate_measurements(
         raise ValueError("benchmark duration must be positive")
     if not 0 < minimum_ratio <= 1:
         raise ValueError("minimum_ratio must be within (0, 1]")
+    if type(measurements.client_id) is not int or measurements.client_id <= 0:
+        raise ValueError("benchmark client_id must be a positive int")
     publish_hz = len(measurements.sent_at) / duration
-    terminal = tuple(
-        event for event in measurements.command_events if _is_protocol_terminal(event)
+    own_events = tuple(
+        event
+        for event in measurements.command_events
+        if event.client_id == measurements.client_id
     )
-    terminal_hz = len({event.user_sequence for event in terminal}) / duration
-    dispatched_hz = (
-        len(
-            {
-                event.user_sequence
-                for event in measurements.command_events
-                if _is_dispatched(event)
-            }
+    records = tuple(_command_records(own_events).values())
+    received = tuple(
+        record for record in records if record.driver_received_at is not None
+    )
+    accepted = tuple(
+        record
+        for record in records
+        if HandCommandStatus.STAGE_ACCEPTED in record.transitions
+    )
+    dispatched = tuple(
+        record
+        for record in records
+        if HandCommandStatus.STAGE_DISPATCHED in record.transitions
+    )
+    terminal = tuple(record for record in records if _is_protocol_terminal(record))
+    received_hz = len(received) / duration
+    accepted_hz = len(accepted) / duration
+    dispatched_hz = len(dispatched) / duration
+    terminal_hz = len(terminal) / duration
+    failed = sum(
+        HandCommandStatus.STAGE_FAILED in record.transitions for record in records
+    )
+    superseded = sum(
+        HandCommandStatus.STAGE_SUPERSEDED in record.transitions for record in records
+    )
+    publish_to_receive, invalid_publish_to_receive = _latency_stats(
+        (record.publisher_at, record.driver_received_at) for record in received
+    )
+    receive_to_accept, invalid_receive_to_accept = _latency_stats(
+        (
+            record.driver_received_at,
+            record.transitions[HandCommandStatus.STAGE_ACCEPTED],
         )
-        / duration
+        for record in accepted
     )
-    failed = len(
-        {
-            event.user_sequence
-            for event in terminal
-            if event.stage == HandCommandStatus.STAGE_FAILED
-        }
+    accept_to_dispatch, invalid_accept_to_dispatch = _latency_stats(
+        (
+            record.transitions.get(HandCommandStatus.STAGE_ACCEPTED),
+            record.transitions[HandCommandStatus.STAGE_DISPATCHED],
+        )
+        for record in dispatched
     )
-    superseded = len(
-        {
-            event.user_sequence
-            for event in terminal
-            if event.stage == HandCommandStatus.STAGE_SUPERSEDED
-        }
+    publish_to_dispatch, invalid_publish_to_dispatch = _latency_stats(
+        (
+            record.publisher_at,
+            record.transitions[HandCommandStatus.STAGE_DISPATCHED],
+        )
+        for record in dispatched
     )
     angle_hz, angle_generation_changed = _sample_rate(
         measurements.state_events,
@@ -124,6 +180,14 @@ def evaluate_measurements(
     minimum_angle = measurements.requested_angle_hz * minimum_ratio
     if publish_hz < minimum_angle:
         reasons.append(f"命令发布频率 {publish_hz:.2f} Hz 低于 {minimum_angle:.2f} Hz")
+    if received_hz < minimum_angle:
+        reasons.append(
+            f"驱动收到命令频率 {received_hz:.2f} Hz 低于 {minimum_angle:.2f} Hz"
+        )
+    if accepted_hz < minimum_angle:
+        reasons.append(
+            f"SDK ACCEPTED 频率 {accepted_hz:.2f} Hz 低于 {minimum_angle:.2f} Hz"
+        )
     if terminal_hz < minimum_angle:
         reasons.append(
             f"命令协议终态频率 {terminal_hz:.2f} Hz 低于 {minimum_angle:.2f} Hz"
@@ -144,39 +208,84 @@ def evaluate_measurements(
         reasons.append("测试期间连接代次发生变化")
     if failed:
         reasons.append(f"存在 {failed} 个 FAILED 命令")
+    for label, invalid in (
+        ("发布到驱动接收", invalid_publish_to_receive),
+        ("驱动接收到 SDK 接受", invalid_receive_to_accept),
+        ("SDK 接受到实际下发", invalid_accept_to_dispatch),
+        ("发布到实际下发", invalid_publish_to_dispatch),
+    ):
+        if invalid:
+            reasons.append(f"{label}延迟存在 {invalid} 个缺失或倒序样本")
     _append_health_failures(measurements, reasons)
     return BenchmarkResult(
         requested_angle_hz=measurements.requested_angle_hz,
         requested_tactile_hz=measurements.requested_tactile_hz,
         passed=not reasons,
         command_publish_hz=publish_hz,
+        command_received_hz=received_hz,
+        command_accepted_hz=accepted_hz,
         command_terminal_hz=terminal_hz,
         command_dispatch_hz=dispatched_hz,
         angle_sample_hz=angle_hz,
         tactile_sample_hz=tactile_hz,
         command_interval_p95_ms=_interval_p95_ms(measurements.sent_at),
+        publish_to_receive_latency=publish_to_receive,
+        receive_to_accept_latency=receive_to_accept,
+        accept_to_dispatch_latency=accept_to_dispatch,
+        publish_to_dispatch_latency=publish_to_dispatch,
         failed_commands=failed,
         superseded_commands=superseded,
         reasons=tuple(reasons),
     )
 
 
-def _is_protocol_terminal(event: CommandEvent) -> bool:
-    return event.stage in {
-        HandCommandStatus.STAGE_ACKNOWLEDGED,
-        HandCommandStatus.STAGE_FAILED,
-        HandCommandStatus.STAGE_SUPERSEDED,
-    } or (
-        event.stage == HandCommandStatus.STAGE_DISPATCHED
-        and event.ack_support == HandCommandStatus.ACK_UNSUPPORTED
+def _is_protocol_terminal(record: _CommandRecord) -> bool:
+    stages = record.transitions
+    return bool(
+        stages.keys()
+        & {
+            HandCommandStatus.STAGE_ACKNOWLEDGED,
+            HandCommandStatus.STAGE_FAILED,
+            HandCommandStatus.STAGE_SUPERSEDED,
+        }
+    ) or (
+        HandCommandStatus.STAGE_DISPATCHED in stages
+        and record.ack_support == HandCommandStatus.ACK_UNSUPPORTED
     )
 
 
-def _is_dispatched(event: CommandEvent) -> bool:
-    return event.stage in {
-        HandCommandStatus.STAGE_DISPATCHED,
-        HandCommandStatus.STAGE_ACKNOWLEDGED,
-    }
+def _command_records(
+    events: tuple[CommandEvent, ...],
+) -> dict[tuple[int, int], _CommandRecord]:
+    records: dict[tuple[int, int], _CommandRecord] = {}
+    for event in events:
+        key = (event.client_id, event.user_sequence)
+        record = records.get(key)
+        if record is None:
+            record = _CommandRecord(
+                publisher_at=event.publisher_at,
+                driver_received_at=event.driver_received_at,
+                ack_support=event.ack_support,
+                transitions={},
+            )
+            records[key] = record
+        else:
+            record.publisher_at = _earliest(record.publisher_at, event.publisher_at)
+            record.driver_received_at = _earliest(
+                record.driver_received_at,
+                event.driver_received_at,
+            )
+        existing = record.transitions.get(event.stage)
+        record.transitions[event.stage] = _earliest(existing, event.transition_at)
+    return records
+
+
+def _earliest(first: float | None, second: float | None) -> float | None:
+    if first is None:
+        return second
+    if second is None:
+        return first
+    return min(first, second)
 
 
 def _sample_rate(
@@ -259,11 +368,41 @@ def _interval_p95_ms(timestamps: tuple[float, ...]) -> float | None:
     return intervals[index] * 1000
 
 
+def _latency_stats(
+    timestamps: Iterable[tuple[float | None, float | None]],
+) -> tuple[LatencyStats, int]:
+    values_ms: list[float] = []
+    invalid = 0
+    for started_at, ended_at in timestamps:
+        if started_at is None or ended_at is None or ended_at < started_at:
+            invalid += 1
+            continue
+        values_ms.append((ended_at - started_at) * 1000)
+    values_ms.sort()
+    return (
+        LatencyStats(
+            sample_count=len(values_ms),
+            p50_ms=_percentile(values_ms, 0.50),
+            p95_ms=_percentile(values_ms, 0.95),
+            p99_ms=_percentile(values_ms, 0.99),
+        ),
+        invalid,
+    )
+
+
+def _percentile(values: list[float], ratio: float) -> float | None:
+    if not values:
+        return None
+    index = max(0, math.ceil(len(values) * ratio) - 1)
+    return values[index]
+
+
 __all__ = [
     "BenchmarkMeasurements",
     "BenchmarkResult",
     "CommandEvent",
     "DiagnosticObservation",
+    "LatencyStats",
     "StateEvent",
     "evaluate_measurements",
 ]

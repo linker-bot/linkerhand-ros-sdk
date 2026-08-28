@@ -110,7 +110,7 @@ Send one percent target with the typed message:
 ```bash
 ros2 topic pub --once /linkerbot_hand/command/angles \
   linkerbot_hand_msgs/msg/HandJointCommand \
-  '{user_sequence: 1, representation: 1, values: [50, 50, 50, 50, 50, 50]}'
+  '{client_id: 1, user_sequence: 1, representation: 1, values: [50, 50, 50, 50, 50, 50]}'
 ```
 
 `representation=1` means percent and `representation=2` means exact protocol
@@ -121,8 +121,9 @@ Python client for control loops:
 ros2 run linkerbot_hand_ros angle_controller
 ```
 
-The frequency tool evaluates angle command publication, SDK terminal stages,
-device sample sequences, and optional complete tactile transactions separately:
+The frequency tool evaluates publish, driver receive, SDK acceptance, actual
+dispatch, terminal stages, device sample sequences, and optional complete
+tactile transactions separately:
 
 ```bash
 ros2 run linkerbot_hand_ros frequency_benchmark \

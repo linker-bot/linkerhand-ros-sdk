@@ -123,7 +123,7 @@ ros2 lifecycle set /linkerbot_hand activate
 常见原因：
 
 - node 非 active 或 SDK 正在恢复。
-- `user_sequence`/representation 无效。
+- `client_id`/`user_sequence`/representation 无效。
 - 数组长度不等于 capability channel count。
 - NaN、Inf、percent 越界或整数协议值带小数。
 - command semantic 不受当前 verified capability 支持。

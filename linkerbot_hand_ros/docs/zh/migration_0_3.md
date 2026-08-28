@@ -81,7 +81,7 @@ ros2 launch linkerbot_hand_ros hand.launch.py \
 
 1. 删除业务中的旧 topic 名、旧参数别名和本地型号表。
 2. 从 capability 构造关节布局与命令支持矩阵。
-3. 用 `user_sequence` 和 `HandCommandStatus` 管理送达状态。
+3. 用 `(client_id, user_sequence)` 和 `HandCommandStatus` 管理送达状态。
 4. 用当前 generation 的有效 `HandJointState` 判断到位。
 5. 分别完成 percent/raw 小范围实机验证。
 6. 停止 polling 后抓总线确认零查询。

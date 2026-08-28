@@ -61,6 +61,12 @@ topics are not subscribed while active. `ACCEPTED` means admitted to the SDK;
 `DISPATCHED` means transport send succeeded; `ACKNOWLEDGED` requires an explicit
 device-protocol ACK. None of these means mechanical arrival.
 
+Each command carries a non-zero `client_id`, a client-local `user_sequence`,
+and `publisher_stamp`. `HandCommandStatus` echoes that composite key and adds
+`driver_received_stamp` plus the complete SDK transition history. Clients must
+match both ID fields; a final `ACKNOWLEDGED` status does not replace the explicit
+`DISPATCHED` transition when measuring actual sends.
+
 ## State Topics
 
 | Topic | Type | Meaning |

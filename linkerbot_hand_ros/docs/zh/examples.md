@@ -13,7 +13,7 @@ ros2 topic echo --once /linkerbot_hand/state/angles
 ```bash
 ros2 topic pub --once /linkerbot_hand/command/angles \
   linkerbot_hand_msgs/msg/HandJointCommand \
-  '{user_sequence: 1, representation: 1, values: [50, 50, 50, 50, 50, 50]}'
+  '{client_id: 1, user_sequence: 1, representation: 1, values: [50, 50, 50, 50, 50, 50]}'
 ```
 
 屈伸轴 `0=弯曲，100=伸直`。侧摆和旋转轴查看 capability 的 zero/hundred label。
@@ -23,7 +23,7 @@ ros2 topic pub --once /linkerbot_hand/command/angles \
 ```bash
 ros2 topic pub --once /linkerbot_hand/command/angles \
   linkerbot_hand_msgs/msg/HandJointCommand \
-  '{user_sequence: 2, representation: 2, values: [255, 128, 204, 178, 153, 0]}'
+  '{client_id: 1, user_sequence: 2, representation: 2, values: [255, 128, 204, 178, 153, 0]}'
 ```
 
 raw 不经过 percent、方向、LUT 或物理单位转换。值必须满足逐关节 capability 范围。
@@ -35,7 +35,7 @@ raw 不经过 percent、方向、LUT 或物理单位转换。值必须满足逐�
 ```bash
 ros2 topic pub --once /linkerbot_hand/command/speeds \
   linkerbot_hand_msgs/msg/HandRawCommand \
-  '{user_sequence: 3, raw: [20, 20, 20, 20, 20, 20]}'
+  '{client_id: 1, user_sequence: 3, raw: [20, 20, 20, 20, 20, 20]}'
 ```
 
 电流上限、effort 上限和真实扭矩是不同接口：
@@ -43,7 +43,7 @@ ros2 topic pub --once /linkerbot_hand/command/speeds \
 ```bash
 ros2 topic pub --once /linkerbot_hand/command/current_limits \
   linkerbot_hand_msgs/msg/HandRawCommand \
-  '{user_sequence: 4, raw: [80, 80, 80, 80, 80, 80]}'
+  '{client_id: 1, user_sequence: 4, raw: [80, 80, 80, 80, 80, 80]}'
 ```
 
 不要因为旧协议表曾写“扭矩”而改发 `/command/torques`。以 capability 的 command
@@ -55,7 +55,7 @@ semantic 为准。
 ros2 topic echo /linkerbot_hand/command/status
 ```
 
-用 `user_sequence` 关联目标。无 ACK 型号在 `DISPATCHED` 成功终止；有协议 ACK 的型号等待
+用 `(client_id, user_sequence)` 关联目标。无 ACK 型号在 `DISPATCHED` 成功终止；有协议 ACK 的型号等待
 `ACKNOWLEDGED`。机械到位由 `state/angles` 的新鲜反馈判断。
 
 ## 常驻 Python 客户端
