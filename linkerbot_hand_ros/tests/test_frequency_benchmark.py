@@ -1,5 +1,6 @@
 from dataclasses import replace
 
+import rclpy
 from linkerbot_hand_ros.benchmark import (
     BenchmarkMeasurements,
     CommandEvent,
@@ -7,8 +8,35 @@ from linkerbot_hand_ros.benchmark import (
     StateEvent,
     evaluate_measurements,
 )
+from linkerbot_hand_ros.examples.frequency_benchmark import FrequencyBenchmarkNode
 
 from linkerbot_hand_msgs.msg import HandCommandStatus
+
+
+def test_benchmark_defers_high_rate_observation_until_capability_discovery():
+    rclpy.init()
+    node = FrequencyBenchmarkNode("/linkerbot_hand")
+    try:
+        client_subscriptions = tuple(node.command_client._subscriptions)
+        assert not node._observation_subscriptions
+        assert all(
+            subscription in node.subscriptions for subscription in client_subscriptions
+        )
+
+        node.start_observing()
+        subscriptions = tuple(node._observation_subscriptions)
+        node.start_observing()
+
+        assert len(subscriptions) == 4
+        assert tuple(node._observation_subscriptions) == subscriptions
+        assert all(
+            subscription in node.subscriptions
+            for subscription in (*client_subscriptions, *subscriptions)
+        )
+    finally:
+        node.destroy_benchmark()
+        node.destroy_node()
+        rclpy.try_shutdown()
 
 
 def _diagnostic(

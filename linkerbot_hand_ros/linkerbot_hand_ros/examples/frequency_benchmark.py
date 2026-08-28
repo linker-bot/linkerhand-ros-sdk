@@ -129,32 +129,50 @@ class FrequencyBenchmarkNode(Node):
         self.state_events: list[StateEvent] = []
         self.command_events: list[CommandEvent] = []
         self.diagnostic_observations: list[DiagnosticObservation] = []
-        self._subscriptions = [
-            self.create_subscription(
-                HandJointState,
-                f"{self.driver_name}/state/angles",
-                self._on_angles,
-                STATE_QOS,
-            ),
-            self.create_subscription(
-                HandTactileState,
-                f"{self.driver_name}/state/tactile",
-                self._on_tactile,
-                STATE_QOS,
-            ),
-            self.create_subscription(
-                HandCommandStatus,
-                f"{self.driver_name}/command/status",
-                self._on_command_status,
-                STATUS_QOS,
-            ),
-            self.create_subscription(
-                DiagnosticArray,
-                "/diagnostics",
-                self._on_diagnostics,
-                STATE_QOS,
-            ),
-        ]
+        self._observation_subscriptions = []
+
+    def start_observing(self) -> None:
+        """Subscribe to high-rate data after capability discovery completes."""
+
+        if self._observation_subscriptions:
+            return
+        subscriptions = []
+        try:
+            specifications = (
+                (
+                    HandJointState,
+                    f"{self.driver_name}/state/angles",
+                    self._on_angles,
+                    STATE_QOS,
+                ),
+                (
+                    HandTactileState,
+                    f"{self.driver_name}/state/tactile",
+                    self._on_tactile,
+                    STATE_QOS,
+                ),
+                (
+                    HandCommandStatus,
+                    f"{self.driver_name}/command/status",
+                    self._on_command_status,
+                    STATUS_QOS,
+                ),
+                (
+                    DiagnosticArray,
+                    "/diagnostics",
+                    self._on_diagnostics,
+                    STATE_QOS,
+                ),
+            )
+            for message_type, topic, callback, qos in specifications:
+                subscriptions.append(
+                    self.create_subscription(message_type, topic, callback, qos)
+                )
+        except Exception:
+            for subscription in subscriptions:
+                self.destroy_subscription(subscription)
+            raise
+        self._observation_subscriptions = subscriptions
 
     @property
     def latest_diagnostic(self) -> DiagnosticObservation | None:
@@ -260,9 +278,9 @@ class FrequencyBenchmarkNode(Node):
 
     def destroy_benchmark(self) -> None:
         self.command_client.destroy()
-        for subscription in self._subscriptions:
+        for subscription in self._observation_subscriptions:
             self.destroy_subscription(subscription)
-        self._subscriptions.clear()
+        self._observation_subscriptions.clear()
 
 
 def _spin_until_future(node: Node, future: object, timeout_s: float) -> None:
@@ -455,6 +473,7 @@ def _log_result(
 def _run(parsed: argparse.Namespace, node: FrequencyBenchmarkNode) -> bool:
     if not spin_until_ready(node, node.command_client, parsed.startup_timeout):
         raise RuntimeError(f"等待驱动角度接口就绪超时: {node.driver_name}")
+    node.start_observing()
     if not _spin_until(
         node,
         lambda: (
