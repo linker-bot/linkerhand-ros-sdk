@@ -1,123 +1,95 @@
-# ROS 2 API
+# ROS 2 API Reference
 
-The lifecycle driver uses the SDK capability model as its only source for joint
-order, ranges, sensor support, and percentage mapping. Flexion axes expose
-`100=open` and `0=closed`; directional axes use capability-declared position
-endpoints. Values are normalized percentages, not radians.
-`raw_angles` always means exact unified SDK protocol values and never classic
-`standard_raw` or the classic user LUT coordinate.
+The driver exposes the Hand SDK 1.x contract through typed interfaces. Topic
+arrays always follow channel names published in `~/capabilities`; there is no
+ROS model table.
 
-Configure performs no device I/O. Activate opens the one `HandDevice` and
-starts SDK polling. ROS state timers only call `get_snapshot()` and
-`get_health()`.
+## Lifecycle
+
+| Transition | Device behavior |
+| --- | --- |
+| configure | Construct one `HandDevice`; zero transport open and zero device I/O |
+| activate | Open, verify identity/firmware, start SDK polling, enable commands |
+| deactivate | Remove command subscriptions and stop SDK polling; keep connection |
+| cleanup/shutdown | Bounded `close()` and ROS entity destruction |
 
 ## Parameters
 
-| Name | Default | Description |
+Static parameters are accepted only while unconfigured:
+
+`model`, `side`, `transport_json`, `command_rate_hz`,
+`discrete_queue_capacity`, `mailbox_capacity`, `route_queue_capacity`,
+`identity_timeout_s`, `transaction_timeout_s`, `shutdown_timeout_s`,
+`auto_reconnect`, `reconnect_initial_delay_s`, and
+`reconnect_max_delay_s`.
+
+Runtime rates are `publish_rate_hz`, `diagnostic_rate_hz`, `angles_hz`,
+`speeds_hz`, `force_hz`, `temperature_hz`, `current_hz`, `faults_hz`,
+`torques_hz`, and `voltage_hz`. Zero disables that SDK polling channel;
+`publish_rate_hz=0` only pauses ROS state publication.
+
+The default transport is:
+
+```json
+{"backend":"socketcan","channel":"can0"}
+```
+
+## Command Topics
+
+| Topic | Type | Meaning |
 | --- | --- | --- |
-| `model` | `l6` | `o6/l6/l20lite/l25/o20/o30i/l30` |
-| `side` | `left` | `left/right/unknown` |
-| `transport_options_json` | `{}` | SDK transport constructor options; preferred |
-| `command_rate_hz` | `100.0` | Maximum SDK continuous-command dispatch rate |
-| `auto_reconnect` | `false` | Enable SDK exponential-backoff recovery |
-| `publish_rate_hz` | `60.0` | Cached ROS publication rate; zero pauses state topics |
-| `angles_hz` | `60.0` | SDK angle polling rate; zero disables |
-| `speeds_hz` | `0.0` | SDK speed polling rate; zero disables |
-| `torques_hz` | `0.0` | SDK torque polling rate; zero disables |
-| `force_hz` | `0.0` | SDK full-hand tactile polling rate; zero disables |
-| `temperature_hz` | `1.0` | SDK temperature polling rate |
-| `current_hz` | `10.0` | SDK current polling rate |
-| `faults_hz` | `5.0` | SDK fault polling rate |
-| `voltage_hz` | `0.0` | SDK voltage polling rate; zero disables |
-| `acceleration_hz` | `0.0` | SDK acceleration polling rate; zero disables |
-| `motion_time_hz` | `0.0` | SDK motion-time polling rate; zero disables |
-| `diagnostic_rate` | `1.0` | `/diagnostics` publication rate; zero pauses |
+| `~/command/angles` | `linkerbot_hand_msgs/msg/HandJointCommand` | Percent or protocol-raw angle target |
+| `~/command/speeds` | `linkerbot_hand_msgs/msg/HandRawCommand` | Protocol-raw configured speed |
+| `~/command/accelerations` | `linkerbot_hand_msgs/msg/HandRawCommand` | Protocol-raw configured acceleration |
+| `~/command/current_limits` | `linkerbot_hand_msgs/msg/HandRawCommand` | Protocol-raw current limit |
+| `~/command/effort_limits` | `linkerbot_hand_msgs/msg/HandRawCommand` | Protocol-raw dimensionless effort limit |
+| `~/command/torques` | `linkerbot_hand_msgs/msg/HandRawCommand` | True torque only when capability supports it |
+| `~/command/motion_times` | `linkerbot_hand_msgs/msg/HandRawCommand` | Protocol-raw motion-time setting |
+| `~/command/status` | `linkerbot_hand_msgs/msg/HandCommandStatus` | SDK command stage history |
 
-Requested rates are passed to the SDK unchanged for supported sensors;
-`recommended_hz` is guidance rather than a limit. Unsupported sensors are
-disabled. Legacy `interface_name`, `interface_type`, and `library_path`
-parameters apply only when `transport_options_json` is `{}`.
-The launch-only arguments are `namespace` and `autostart`.
+Continuous command topics use best-effort, depth-one QoS. Unsupported command
+topics are not subscribed while active. `ACCEPTED` means admitted to the SDK;
+`DISPATCHED` means transport send succeeded; `ACKNOWLEDGED` requires an explicit
+device-protocol ACK. None of these means mechanical arrival.
 
-Polling rates, `publish_rate_hz`, and `diagnostic_rate` are runtime-adjustable.
-An active sensor-rate update atomically replaces the SDK polling plan without
-reopening the transport. Zero stops that sensor's queries and state topic.
-Static parameters are rejected after configure. Deactivate and cleanup before
-changing model, side, transport, command rate, or reconnect policy.
+## State Topics
 
-## Topics
-
-| Topic | Type | Direction |
+| Topic | Type | Meaning |
 | --- | --- | --- |
-| `~/command/angles` | `std_msgs/msg/Float64MultiArray` | Subscribe while active |
-| `~/command/raw_angles` | `std_msgs/msg/Float64MultiArray` | Subscribe exact protocol values while active |
-| `~/command/speeds` | `std_msgs/msg/Float64MultiArray` | Subscribe while active |
-| `~/command/torques` | `std_msgs/msg/Float64MultiArray` | Subscribe while active |
-| `~/command/accepted/angles` | `std_msgs/msg/Float64MultiArray` | Publish SDK acceptance |
-| `~/command/accepted/raw_angles` | `std_msgs/msg/Float64MultiArray` | Publish protocol-raw SDK acceptance |
-| `~/command/accepted/speeds` | `std_msgs/msg/Float64MultiArray` | Publish SDK acceptance |
-| `~/command/accepted/torques` | `std_msgs/msg/Float64MultiArray` | Publish SDK acceptance |
-| `~/state/angles` | `std_msgs/msg/Float64MultiArray` | Publish fresh cached percentages |
-| `~/state/raw_angles` | `std_msgs/msg/Float64MultiArray` | Publish exact protocol values from the same cached sample |
-| `~/state/speeds` | `std_msgs/msg/Float64MultiArray` | Publish fresh speed cache when supported |
-| `~/state/torques` | `std_msgs/msg/Float64MultiArray` | Publish fresh torque cache when supported |
-| `~/state/temperature` | `std_msgs/msg/Float64MultiArray` | Publish fresh cache when supported |
-| `~/state/current` | `std_msgs/msg/Float64MultiArray` | Publish fresh cache when supported |
-| `~/state/fault` | `std_msgs/msg/Float64MultiArray` | Publish fresh cache when supported |
-| `~/state/voltage` | `std_msgs/msg/Float64MultiArray` | Publish fresh voltage cache when supported |
-| `~/state/acceleration` | `std_msgs/msg/Float64MultiArray` | Publish fresh acceleration cache when supported |
-| `~/state/motion_time` | `std_msgs/msg/Float64MultiArray` | Publish fresh motion-time cache when supported |
-| `~/state/force` | `std_msgs/msg/Float64MultiArray` | Publish fresh full-hand tactile matrices when supported |
-| `~/joint_names` | `std_msgs/msg/String` | Publish SDK joint order |
-| `~/model` | `std_msgs/msg/String` | Publish normalized model |
-| `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | SDK health and command stages |
+| `~/capabilities` | `HandCapabilities` | Declared, then verified capability metadata |
+| `~/device_info` | `HandDeviceInfo` | Cached verified identity and version fields |
+| `~/state/angles` | `HandJointState` | Raw, percent, and optional radians from one sample |
+| `~/state/<semantic>` | `HandTelemetry` | Protocol-raw typed telemetry/configuration sample |
+| `~/state/force` | `HandTelemetry` | Scalar force when the profile provides it |
+| `~/state/tactile` | `HandTactileState` | One complete multi-finger tactile transaction |
+| `~/state/stall_protection` | `HandStallProtectionState` | Three independent raw stall settings |
+| `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | Zero-I/O SDK health and transport metrics |
 
-An accepted command is only at SDK `ACCEPTED` stage. It has not necessarily
-been dispatched, acknowledged by the device, or physically completed. Recent
-`accepted/dispatched/acknowledged/failed/superseded` stages are exposed in
-diagnostics, including management service commands.
-Continuous commands use latest-wins at both ROS QoS and SDK layers.
+`<semantic>` can be `measured_speeds`, `configured_speeds`,
+`configured_accelerations`, `currents`, `current_limits`, `effort_limits`,
+`torques`, `temperatures`, `faults`, `voltages`, or `motion_times`, depending on
+verified capability. A state message is published only when its SDK sequence or
+validity signature changes.
 
-Protocol angle samples are converted through the SDK capability map before
-percentage publication. Invalid, stale, or unconvertible samples are not
-published.
+Every state carries collection time, sequence, age, validity, staleness,
+connection generation, origin, and range status. Protocol raw values are not
+converted to RPM, mA, N.m, or other physical units by ROS.
 
 ## Services
 
-| Service | Type | Description |
+| Service | Type | Result semantics |
 | --- | --- | --- |
-| `~/read_now` | `std_srvs/srv/Trigger` | Republish fresh angle cache without device I/O |
-| `~/clear_faults` | `std_srvs/srv/Trigger` | Asynchronously submit clear-faults when supported |
-| `~/enable` | `std_srvs/srv/Trigger` | Asynchronously submit device enable when supported |
-| `~/disable` | `std_srvs/srv/Trigger` | Asynchronously submit device disable when supported |
-| `~/calibrate` | `std_srvs/srv/Trigger` | Asynchronously submit calibration when supported |
+| `~/get_device_info` | `GetDeviceInfo` | Admin worker performs one fresh identity transaction |
+| `~/get_stall_protection` | `GetStallProtection` | Freshly reads all three supported stall settings |
+| `~/set_stall_detection_times` | `SetRawValues` | Asynchronous raw configuration acceptance |
+| `~/set_stall_thresholds` | `SetRawValues` | Asynchronous raw configuration acceptance |
+| `~/set_stall_hold_currents` | `SetRawValues` | Asynchronous raw configuration acceptance |
+| `~/clear_faults` | `SubmitCommand` | Asynchronous discrete command acceptance |
+| `~/enable`, `~/disable`, `~/calibrate` | `SubmitCommand` | Capability-gated asynchronous acceptance |
+| `~/recover` | `Recover` | Bounded identity-verified safe recovery |
 
-Trigger success means SDK acceptance only. Inspect diagnostics for dispatch or
-protocol acknowledgement.
+Active reads run in one separate bounded admin worker. Control callbacks and
+state publishers never wait for these transactions. Services return stable
+`error_code` fields; clients must not parse error text.
 
-`~/state/force` uses a row-major three-dimensional layout labelled `finger`,
-`row`, and `column`. Finger order is `thumb`, `index`, `middle`, `ring`,
-`pinky`. O6 `04-B` publishes `5x10x4` values; L6 publishes `5x12x6` values.
-The compatibility message contains numeric cells and shape only. Sample time,
-sequence, validity, staleness, and connection generation remain available in
-SDK snapshots and ROS diagnostics.
-
-## Command Ranges
-
-| Model | Percentage angles | Protocol speeds | Protocol torque/current limit |
-| --- | --- | --- | --- |
-| L6, O6, L20Lite, L25 | 0–100 | 0–255 integer count | 0–255 integer count |
-| O20 | 0–100 | 0–100 integer count | 0–1000 integer count |
-| O30I | 0–100 | 0–255 integer | 0–255 integer |
-| L30 | 0–100 | 1–250 integer count | 60–800 integer count |
-
-Except for percentage angles, ROS numeric command and state topics expose
-`SensorSample.values` in the SDK capability `unit`. In SDK 0.2.x this is the
-decoded protocol value, commonly `count`; physical interpretation is metadata
-in `physical_unit/scale/offset` and is not applied implicitly. O20 current is
-already decoded in mA. L6 speed is write-only: its accepted protocol target is
-available on the accepted command topic, while no measured speed state is
-published.
-
-For full lifecycle, diagnostics, joint orders, and business semantics, see the
-[Chinese API reference](zh/ros_api.md).
+See the [Chinese API reference](zh/ros_api.md) for examples and QoS details.

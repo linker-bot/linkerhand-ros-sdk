@@ -1,164 +1,145 @@
-# 使用示例
+# 命令行与 Python 示例
 
-以下示例默认节点为 `/linkerbot_hand`，并假定 Lifecycle 状态为 active：
+示例默认驱动为 `/linkerbot_hand` 且 Lifecycle 为 active。先读取 capability，不要硬编码
+型号关节表：
 
 ```bash
-ros2 lifecycle get /linkerbot_hand
-ros2 topic echo --once /linkerbot_hand/joint_names
-ros2 topic hz /linkerbot_hand/state/angles
+ros2 topic echo --once /linkerbot_hand/capabilities
+ros2 topic echo --once /linkerbot_hand/state/angles
 ```
 
-## L6 张开与握拳
+## Percent 角度
 
-L6 的全 `100` 整手目标为完全张开、全 `0` 整手目标为完全握拳。L6 顺序为：
-
-```text
-thumb_flex, thumb_abd, index, middle, ring, pinky
+```bash
+ros2 topic pub --once /linkerbot_hand/command/angles \
+  linkerbot_hand_msgs/msg/HandJointCommand \
+  '{user_sequence: 1, representation: 1, values: [50, 50, 50, 50, 50, 50]}'
 ```
 
-实机首次动作先设置低速度，并从中间值做小范围验证：
+屈伸轴 `0=弯曲，100=伸直`。侧摆和旋转轴查看 capability 的 zero/hundred label。
+
+## 协议 raw 角度
+
+```bash
+ros2 topic pub --once /linkerbot_hand/command/angles \
+  linkerbot_hand_msgs/msg/HandJointCommand \
+  '{user_sequence: 2, representation: 2, values: [255, 128, 204, 178, 153, 0]}'
+```
+
+raw 不经过 percent、方向、LUT 或物理单位转换。值必须满足逐关节 capability 范围。
+
+## 速度与限制值
+
+仅在 capability 声明支持时发布对应 Topic：
 
 ```bash
 ros2 topic pub --once /linkerbot_hand/command/speeds \
-  std_msgs/msg/Float64MultiArray "{data: [20, 20, 20, 20, 20, 20]}"
-
-ros2 topic pub --once /linkerbot_hand/command/angles \
-  std_msgs/msg/Float64MultiArray "{data: [60, 60, 60, 60, 60, 60]}"
+  linkerbot_hand_msgs/msg/HandRawCommand \
+  '{user_sequence: 3, raw: [20, 20, 20, 20, 20, 20]}'
 ```
 
-确认安全后，完全张开和完全握拳分别为：
-
-```text
-[100, 100, 100, 100, 100, 100]
-[0, 0, 0, 0, 0, 0]
-```
-
-该整手姿态约定不表示每个轴都是屈伸轴。`thumb_abd` 等方向轴的单轴 0/100 是 SDK
-capability 声明的两个位置端点；其他型号也必须按各自 capability 解释方向轴。
-
-`ros2 topic pub --once` 会为每条命令创建临时进程并等待 DDS 发现，不能用它的总耗时
-衡量 ROS 回调、SDK dispatch 或 CAN 延迟，也不适合连续控制。
-
-## 常驻交互控制器
+电流上限、effort 上限和真实扭矩是不同接口：
 
 ```bash
-ros2 run linkerbot_hand_ros angle_controller
+ros2 topic pub --once /linkerbot_hand/command/current_limits \
+  linkerbot_hand_msgs/msg/HandRawCommand \
+  '{user_sequence: 4, raw: [80, 80, 80, 80, 80, 80]}'
 ```
 
-控制器启动一次后复用同一个 Publisher：
+不要因为旧协议表曾写“扭矩”而改发 `/command/torques`。以 capability 的 command
+semantic 为准。
 
-```text
-angles> 60 60 60 60 60 60
-angles> 80 80 80 80 80 80
-angles> 100 100 100 100 100 100
-```
-
-输入 `quit`、`exit` 或 `Ctrl-D` 退出。它是人工 bring-up 工具，每条输入会显示 DDS
-确认时间；业务高频循环应直接使用 `HandCommandClient` 的默认非阻塞发送。
-
-指定 namespace 内的驱动：
+## 命令状态
 
 ```bash
-ros2 run linkerbot_hand_ros angle_controller \
-  --driver-name /left_hand/linkerbot_hand
+ros2 topic echo /linkerbot_hand/command/status
 ```
 
-## 单次 Python 命令
+用 `user_sequence` 关联目标。无 ACK 型号在 `DISPATCHED` 成功终止；有协议 ACK 的型号等待
+`ACKNOWLEDGED`。机械到位由 `state/angles` 的新鲜反馈判断。
 
-```bash
-ros2 run linkerbot_hand_ros angle_command \
-  --values 100 100 100 100 100 100
-```
-
-该命令会等待驱动订阅者和 DDS 可靠传输确认，但不会等待 SDK `dispatched`、设备 ACK 或
-机械到位。由于仍需启动新进程，它也不是低延迟连续控制接口。
-
-## 业务循环
-
-调用方创建一次客户端并持续复用：
+## 常驻 Python 客户端
 
 ```python
+import rclpy
+from rclpy.node import Node
+
 from linkerbot_hand_ros.client import HandCommandClient
 
 
-class HandControlMixin:
-    def initialize_hand(self):
+class Controller(Node):
+    def __init__(self) -> None:
+        super().__init__("hand_controller")
         self.hand = HandCommandClient(self, "/linkerbot_hand")
+        self.timer = self.create_timer(0.01, self.tick)
 
-    def update_hand_target(self, values):
+    def tick(self) -> None:
         if not self.hand.is_ready("angles"):
-            return None
-        return self.hand.send_angles(values)
+            return
+        publication = self.hand.set_percent_angles([50.0] * len(self.hand.joint_names))
+        self.get_logger().debug(f"published user_sequence={publication.user_sequence}")
+
+    def destroy_node(self) -> None:
+        self.hand.destroy()
+        super().destroy_node()
+
+
+def main() -> None:
+    rclpy.init()
+    node = Controller()
+    try:
+        rclpy.spin(node)
+    finally:
+        node.destroy_node()
+        rclpy.try_shutdown()
 ```
 
-`send_angles()` 默认不等待 DDS ACK，驱动收到后只执行 SDK
-`submit_percentage_angles()` 并立即返回 callback；transport 由 SDK 唯一 worker 调度。
+`set_percent_angles()` 表示发布成功，不表示 SDK 已接受。SDK stage 从 status topic 到达。
+不要在定时 callback 中调用 `wait_for_terminal_status()`；需要等待时使用另一线程或异步状态机，
+并保证 executor 仍在处理 status。
 
-## 50–100 Hz 收发测试
-
-仓库提供常驻基准程序，它同时统计 ROS publish/accepted、SDK 命令覆盖和设备采样序号，
-不会把重复发布缓存误认为新的设备状态：
+仓库内置：
 
 ```bash
-LIMIT=<已确认安全的该型号限制值>
-ros2 run linkerbot_hand_ros frequency_benchmark \
-  --mode control --torque-value "$LIMIT" \
-  --rates 50 60 80 100 --duration 30 --repetitions 3
-```
-
-默认不会主动改变当前姿态。力矩/电流限制的单位、型号反馈差异、通过标准和频率上限探索
-方法见[关节命令与状态频率测试](frequency_benchmark.md)。
-
-## 协议原始角度
-
-协议调试或标定需要精确原值时使用独立 topic，不要把值发到百分比角度 topic：
-
-```bash
-ros2 topic pub --once /linkerbot_hand/command/raw_angles \
-  std_msgs/msg/Float64MultiArray "{data: [255, 128, 204, 178, 153, 0]}"
-ros2 topic echo --once /linkerbot_hand/state/raw_angles
-```
-
-上述数组仅是 L6 的形状示例，实机值应按 SDK capability 的逐关节范围选择。这里的 raw 是
-`protocol_raw`，绕过 classic 用户 LUT；旧 `set_raw_angles()` 的 `standard_raw` 不通过 ROS
-暴露。常驻 Python 业务节点可调用：
-
-```python
-receipt = self.hand.send_raw_angles([255, 128, 204, 178, 153, 0])
-```
-
-## 状态监听
-
-```bash
+ros2 run linkerbot_hand_ros angle_command --values 50 50 50 50 50 50
+ros2 run linkerbot_hand_ros angle_controller
 ros2 run linkerbot_hand_ros state_monitor
 ```
 
-监听 namespace 内的驱动：
+## 主动设备信息和恢复
 
 ```bash
-ros2 run linkerbot_hand_ros state_monitor \
-  --names-topic /left_hand/linkerbot_hand/joint_names \
-  --angles-topic /left_hand/linkerbot_hand/state/angles
+ros2 service call /linkerbot_hand/get_device_info \
+  linkerbot_hand_msgs/srv/GetDeviceInfo '{timeout_s: 0.2}'
+ros2 service call /linkerbot_hand/recover \
+  linkerbot_hand_msgs/srv/Recover '{timeout_s: 1.0}'
 ```
 
-程序按 `joint_names` 输出百分比。无效、过期或无法完成 SDK 映射的整组样本不会发布；
-业务代码还必须使用 diagnostics 检查 generation、valid 和 stale。
+恢复不会重放旧目标。成功后等待新 `connection_generation` 的有效角度，再显式发送目标。
 
-## L30 范围示例
+## 堵转配置
 
-L30 有 17 个关节，速度为 1–250 整数协议值，所谓“扭矩设置”实际是 60–800 的协议
-count；capability 另行声明 `6.5 mA/count` 的物理换算元数据。以下只是数组形状示例，
-不要在未确认实物安全时直接执行端点命令：
+先读取，不猜单位或安全范围：
 
 ```bash
-ros2 topic pub --once /linkerbot_hand/command/speeds \
-  std_msgs/msg/Float64MultiArray \
-  "{data: [30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30]}"
-
-ros2 topic pub --once /linkerbot_hand/command/torques \
-  std_msgs/msg/Float64MultiArray \
-  "{data: [650, 650, 650, 650, 650, 650, 650, 650, 650, 650, 650, 650, 650, 650, 650, 650, 650]}"
+ros2 service call /linkerbot_hand/get_stall_protection \
+  linkerbot_hand_msgs/srv/GetStallProtection '{timeout_s: 0.5}'
 ```
 
-L30 的屈伸轴仍遵循 100 张开、0 握拳；侧摆、横滚、旋转和手腕等方向轴按 SDK
-capability 的位置端点解释。ROS 不按协议最小/最大值自行推断或反向。
+未确认安全范围前，实机只允许读取当前值并原样写回验证通信：
+
+```bash
+ros2 service call /linkerbot_hand/set_stall_thresholds \
+  linkerbot_hand_msgs/srv/SetRawValues \
+  '{user_sequence: 10, raw: [<按 capability 通道顺序填写>]}'
+```
+
+## 完整触觉
+
+```bash
+ros2 topic echo /linkerbot_hand/state/tactile
+ros2 topic hz /linkerbot_hand/state/tactile
+```
+
+每条 `HandTactileState` 是一次完整多指事务。频率按整个消息计数，不把矩阵 cell、CAN 分片
+或单个手指当作独立样本。

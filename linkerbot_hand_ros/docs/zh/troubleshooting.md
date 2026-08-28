@@ -1,6 +1,6 @@
 # 故障排查
 
-## 找不到 ROS 包
+## 找不到 ROS package
 
 ```text
 Package 'linkerbot_hand_ros' not found
@@ -14,112 +14,106 @@ source ~/linkerbot_ws/install/setup.bash
 ros2 pkg executables linkerbot_hand_ros
 ```
 
-本项目只支持当前文档对应的 ROS 2 Jazzy 环境，不要加载 Humble setup。
+不要混用 Humble 和 Jazzy setup。
 
-## Python 找不到手部 SDK
-
-```text
-ModuleNotFoundError: No module named 'linkerbot_hand'
-```
-
-将拆分后的手部发行包装到运行 ROS 的同一个 Python 环境：
+## 找不到或加载了错误的 Hand SDK
 
 ```bash
-python3 -c 'import sys; print(sys.executable)'
+python3 -c 'import sys, linkerbot_hand; print(sys.executable); print(linkerbot_hand.__file__)'
+```
+
+安装 1.x：
+
+```bash
 python3 -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
-  'linkerbot-hand>=0.2.1,<0.3.0'
-python3 -c 'import linkerbot_hand; print(linkerbot_hand.__file__)'
+  'linkerbot-hand>=1.0.0.dev0,<2.0.0'
 ```
 
-本地 SDK 源码安装：
+开发源码：
 
 ```bash
-git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-transport.git
-git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand.git
-python3 -m pip install -e ./linkerbot-transport -e ./linkerbot-hand
+python3 -m pip install -e /path/to/linkerbot-transport -e /path/to/linkerbot-hand
 ```
 
-## 节点存在但没有命令或状态话题
-
-先检查 Lifecycle：
-
-```bash
-ros2 lifecycle get /linkerbot_hand
-ros2 lifecycle list /linkerbot_hand
-```
-
-`ros2 run linkerbot_hand_ros hand_node` 只启动 unconfigured 节点，需要手动执行：
-
-```bash
-ros2 lifecycle set /linkerbot_hand configure
-ros2 lifecycle set /linkerbot_hand activate
-```
-
-使用 `hand.launch.py` 时默认自动激活。inactive 状态会撤销运动命令订阅者并停止 SDK
-轮询，因此 `HandCommandClient.is_ready()` 返回 false。
+旧 0.x 包不提供本驱动需要的 `HandDevice` 1.x 类型契约。
 
 ## configure 失败
 
-configure 不访问硬件。失败通常是参数问题：
+configure 不连接设备，失败通常是纯配置问题：
 
-- `transport_options_json` 不是 JSON 对象。
-- JSON 中包含由节点管理的 `model/side/session_config/clock`。
-- 型号、side 或频率值无效。
-- ROS 环境中的 `linkerbot-hand` 版本不在 `>=0.2.1,<0.3.0`。
+- `model` 或 `side` 无效；L30 的 side 必须是空字符串。
+- `transport_json` 不是 JSON object、缺 `backend`、缺必填键或含未知键。
+- 配置 bitrate 与 capability 冲突。
+- queue capacity、timeout、rate 或 reconnect 参数类型/范围错误。
+- 请求了 capability 不支持的非零 polling 通道。
 
 ```bash
 ros2 param dump /linkerbot_hand
 ```
 
-## activate 失败或连接为 error
+## activate 失败
+
+activate 才产生 transport open、身份读取和 baseline 事务：
 
 ```bash
-ip link show can0
 ip -details -statistics link show can0
 ros2 topic echo --once /diagnostics
 ```
 
-依次检查型号、左右手、JSON transport 键、SocketCAN/CAN FD 模式、波特率、终端电阻、
-设备 ID 和厂商动态库。activate 失败时驱动会关闭候选 backend，不会保留第二个连接。
+依次检查接口 up 状态、classic CAN/CAN FD 模式、nominal/data bitrate、终端电阻、设备供电、
+型号、side、设备地址和 firmware。`unsupported_firmware` 表示设备回复存在，但没有安全匹配的
+protocol profile；不能提高 timeout 后继续猜测运行。
 
-## 持续通信错误或状态过期
+activate 失败会停止 polling 并关闭候选连接，可在修复硬件/参数后再次 activate。
+
+## active 但没有命令或状态
+
+```bash
+ros2 lifecycle get /linkerbot_hand
+ros2 topic list | rg linkerbot_hand
+ros2 topic echo --once /linkerbot_hand/capabilities
+```
+
+inactive 会撤销命令订阅并停止 polling。状态 Topic 只有 SDK 新 sequence 或有效性变化时才
+发布；对应 polling rate 为 0 时不产生消息。
+
+## 状态频率低或过期
 
 ```bash
 ros2 param get /linkerbot_hand angles_hz
-ros2 param get /linkerbot_hand speeds_hz
-ros2 param get /linkerbot_hand torques_hz
-ros2 param get /linkerbot_hand current_hz
-ros2 param get /linkerbot_hand faults_hz
-ros2 param get /linkerbot_hand voltage_hz
-ros2 param get /linkerbot_hand acceleration_hz
-ros2 param get /linkerbot_hand motion_time_hz
+ros2 param get /linkerbot_hand force_hz
+ros2 param get /linkerbot_hand publish_rate_hz
 ros2 topic echo --once /diagnostics
 ```
 
-传感器轮询频率设为 `0` 会禁用对应查询和状态话题。总线负载高时应在线降低相应
-SDK 轮询频率，而不是降低 `publish_rate_hz` 来假设总线查询会同步下降。若非零频率
-仍无状态，检查当前 SDK capability 是否支持该型号的传感器。诊断中的 `*_age_s`、
-`consecutive_errors` 和 `recent_error_code` 用于区分未采样、过期和 transport 错误。
+重点检查 `channel_<name>_requested_hz/achieved_hz/missed_deadlines/timeouts/age_s` 以及
+transport frame、route miss 和 bus error。提高 `publish_rate_hz` 不会提高设备采样；降低它
+也不会降低 SDK 查询。触觉是完整多帧事务，角度+触觉上限需用 benchmark 实测。
 
-## 百分比角度状态没有发布
+## 百分比或物理角度无效
 
-当前驱动只有在整组协议角度能通过 SDK capability 完成映射时才发布
-`state/angles`。先检查 diagnostics 中的 `angles_valid`、`angles_stale` 和
-`ros_state_errors`，再核对 SDK 与 ROS 包版本。旧驱动发布的 `NaN` 不可用于到位判断，
-也不能解释为 0 或握拳。
+`HandJointState.raw` 始终保留设备回复。某轴 `percent_valid=false` 表示 capability 没有可信
+percent endpoint；`physical_rad_valid=false` 表示没有可信物理标定。不能把占位 0 当成实际
+值，也不能把 raw/percent 伪装成弧度。
 
-## 静态参数修改被拒绝
+检查：
 
-节点 configured、inactive 或 active 时，修改 `model/side/transport_options_json`、旧 transport
-参数、`command_rate_hz` 或 `auto_reconnect` 会返回 `successful=false`。这是为了避免参数
-显示值与现有 `HandDevice` 不一致。按以下顺序切换：
+```bash
+ros2 topic echo --once /linkerbot_hand/capabilities
+ros2 topic echo --once /linkerbot_hand/state/angles
+```
+
+## 静态参数被拒绝
+
+configured/inactive/active 状态不能修改 model、side、transport、DeviceConfig 或 reconnect：
 
 ```bash
 ros2 lifecycle set /linkerbot_hand deactivate
 ros2 lifecycle set /linkerbot_hand cleanup
-ros2 param set /linkerbot_hand model o30i
+ros2 param set /linkerbot_hand model o6
+ros2 param set /linkerbot_hand side right
 ros2 lifecycle set /linkerbot_hand configure
 ros2 lifecycle set /linkerbot_hand activate
 ```
@@ -128,57 +122,55 @@ ros2 lifecycle set /linkerbot_hand activate
 
 常见原因：
 
-- Lifecycle 不是 active。
-- 数组长度不等于 SDK joint count。
-- 包含 `NaN/inf` 或超出 capability 范围。
-- O20/O30I 的整数型速度或扭矩带小数；L30 电流上限必须使用 60–800 的整数协议 count。
-- SDK 正在重连或连接不可用。
+- node 非 active 或 SDK 正在恢复。
+- `user_sequence`/representation 无效。
+- 数组长度不等于 capability channel count。
+- NaN、Inf、percent 越界或整数协议值带小数。
+- command semantic 不受当前 verified capability 支持。
+- 离散 FIFO 已满。
+
+订阅：
 
 ```bash
-ros2 topic echo --once /linkerbot_hand/joint_names
-ros2 topic echo --once /diagnostics
+ros2 topic echo /linkerbot_hand/command/status
 ```
 
-## accepted 已发布但实物未动
+按 `error_code` 分类，不解析 `error_message`。
 
-`command/accepted/*` 只表示 SDK 接收目标。检查诊断中的：
+## 已 ACCEPTED 但设备未动
 
-```text
-connected
-latest_angles_stage
-latest_angles_error_code
-pending_commands
-superseded_commands
-```
+`ACCEPTED` 只表示进入 SDK。检查是否到达 `DISPATCHED`，有 ACK 的型号是否到达
+`ACKNOWLEDGED`，以及是否 FAILED/SUPERSEDED。SocketCAN send 成功也不代表设备已机械到位；
+到位必须读取当前 generation 的有效、未过期角度。
 
-`accepted` 尚未证明发生 transport I/O；`dispatched` 才表示发送成功；
-`acknowledged` 只是协议 ACK。机械到位还要检查新鲜角度反馈和业务超时。
+## 高频命令被大量 SUPERSEDED
 
-## 单条命令看起来需要约 0.5 秒
+连续目标是 latest-wins，这是有意行为。若目标提交高于 SDK/transport 实际发送能力，旧目标
+会在发送前被覆盖。检查 `command_rate_hz`、transport pending、CPU/executor backlog 和总线
+事务成本。不能通过增大历史 FIFO 保存连续轨迹；轨迹采样应由上层按可实现频率生成。
 
-`ros2 topic pub --once` 和每次 `ros2 run angle_command` 都会启动新进程并等待 DDS 发现。
-使用常驻客户端：
+## 管理服务 timeout
+
+设备信息、堵转读取和 recover 在独立 admin worker 中执行，`timeout_s` 必须为正且小于
+`shutdown_timeout_s` 留出的边界。worker FIFO 满返回 `queue_full`；不要用多个客户端并发刷
+低频管理事务。
+
+## 断线恢复后旧目标没有执行
+
+这是安全契约。恢复会清除断线前和断线期间目标、重新验证身份并读取 baseline，不会自动
+重放。等待新 generation 的有效角度和 fault 后，由业务显式提交新目标。
+
+若返回 `identity_mismatch`，说明重连后的设备指纹不同，必须人工确认，不能继续控制。
+
+## Lifecycle 关闭超时或线程泄漏
+
+检查 `shutdown_timeout_s`、admin service 是否仍被调用、transport backend 是否能有界退出。
+不要依赖 Python 析构释放设备，也不要在同一物理接口启动第二个驱动进程。复现时记录：
 
 ```bash
-ros2 run linkerbot_hand_ros angle_controller
+ps -L -p <PID>
+ls /proc/<PID>/fd | wc -l
+ros2 lifecycle get /linkerbot_hand
 ```
 
-正式业务中创建一次 `HandCommandClient` 并复用，默认不要在高频循环等待 DDS ACK。
-
-## 没有温度、电流或故障数据
-
-相应型号必须在 SDK capability 中支持传感器，且对应 `temperature_hz/current_hz/faults_hz`
-必须大于 0。驱动只发布有效且未过期的缓存；不支持的传感器会自动禁用。
-
-## 清错返回失败
-
-```bash
-ros2 service call /linkerbot_hand/clear_faults std_srvs/srv/Trigger '{}'
-```
-
-当前 capability 中 L6、L25 和 O20 支持清错。服务成功只表示异步命令进入 SDK，不代表
-故障已经消失；仍需观察 fault 状态和命令阶段。不要反复清除仍在发生的过温、过流或
-机械卡滞故障。
-
-L30 的 `/enable`、`/disable`、`/calibrate` 同样按 capability 工作；服务成功仅表示 SDK
-接受异步操作。其他型号返回不支持不是 ROS 故障。
+100 次 configure/activate/deactivate/cleanup 后线程、FD 和连接数应回到基线。

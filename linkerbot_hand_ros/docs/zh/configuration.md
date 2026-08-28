@@ -1,163 +1,122 @@
-# Lifecycle 与节点配置
+# Lifecycle 与参数配置
 
-## 生命周期
+## Lifecycle 行为
 
-| ROS 状态转换 | SDK 行为 | 设备 I/O |
-| --- | --- | --- |
-| `on_configure` | 创建 `HandDevice`、读取静态能力 | 无连接、无查询 |
-| `on_activate` | `open()`、`start_polling(PollingPlan)` | 打开唯一连接并开始轮询 |
-| `on_deactivate` | 禁止命令、`stop_polling()` | 停止新查询，连接保留 |
-| `on_cleanup` / `on_shutdown` | `close()` | 有界关闭连接和 worker |
-
-inactive 状态没有运动命令订阅者，`HandCommandClient.is_ready()` 会返回 `false`。
-deactivate 不会自动张开、握拳、清错或重放目标。
-
-## 节点参数
-
-| 参数 | 默认值 | 说明 |
-| --- | --- | --- |
-| `model` | `l6` | `o6/l6/l20lite/l25/o20/o30i/l30` |
-| `side` | `left` | `left/right/unknown`；具体型号要求来自 SDK |
-| `transport_options_json` | `{}` | 原样传给 SDK 工厂的 JSON 对象，非空时优先 |
-| `command_rate_hz` | `100.0` | SDK 连续命令最大 transport 发送频率 |
-| `auto_reconnect` | `false` | 是否使用 SDK 指数退避自动恢复 |
-| `publish_rate_hz` | `60.0` | ROS 读取缓存并发布状态的频率；`0` 暂停全部状态话题 |
-| `angles_hz` | `60.0` | SDK 角度查询频率，`0` 表示禁用 |
-| `speeds_hz` | `0.0` | SDK 速度查询频率，`0` 表示禁用 |
-| `torques_hz` | `0.0` | SDK 力矩查询频率，`0` 表示禁用 |
-| `force_hz` | `0.0` | SDK 整手触觉查询频率；`0` 表示禁用 |
-| `temperature_hz` | `1.0` | SDK 温度查询频率，`0` 表示禁用 |
-| `current_hz` | `10.0` | SDK 电流查询频率，`0` 表示禁用 |
-| `faults_hz` | `5.0` | SDK 故障查询频率，`0` 表示禁用 |
-| `voltage_hz` | `0.0` | SDK 电压查询频率，`0` 表示禁用 |
-| `acceleration_hz` | `0.0` | SDK 加速度查询频率，`0` 表示禁用 |
-| `motion_time_hz` | `0.0` | SDK 运动时间查询频率，`0` 表示禁用 |
-| `diagnostic_rate` | `1.0` | `/diagnostics` 发布频率；`0` 表示暂停 |
-
-型号支持的传感器频率会按用户请求值原样交给 SDK；capability 的 `recommended_hz`
-仅是推荐值，不是硬上限。型号不支持的传感器自动设为 `0`。`publish_rate_hz` 与设备
-查询频率相互独立，即使把发布频率设得更高也不会增加总线查询次数。
-
-上述轮询频率、`publish_rate_hz` 和 `diagnostic_rate` 可在 launch 后动态修改。active
-状态下传感器频率会原子替换 SDK `PollingPlan`，不会重建 CAN 连接；设为 `0` 会停止
-对应设备查询和状态发布。configured/inactive 状态下修改会在下次 activate 生效。
-
-```bash
-# L6 在线启用 30 Hz 力矩反馈，再关闭
-ros2 param set /linkerbot_hand torques_hz 30.0
-ros2 topic echo /linkerbot_hand/state/torques
-ros2 param set /linkerbot_hand torques_hz 0.0
-
-# 暂停并恢复全部缓存状态发布；不会改变 SDK 设备查询频率
-ros2 param set /linkerbot_hand publish_rate_hz 0.0
-ros2 param set /linkerbot_hand publish_rate_hz 60.0
-
-# 暂停并恢复诊断
-ros2 param set /linkerbot_hand diagnostic_rate 0.0
-ros2 param set /linkerbot_hand diagnostic_rate 1.0
-```
-
-当前 SDK capability 的速度、力矩回读能力如下。型号不支持的频率会被限制为 `0`，
-不会发起无效设备查询；型号能力以安装的 SDK 版本为准。
-
-| 型号 | `/state/speeds` | `/state/torques` |
-| --- | --- | --- |
-| L6 | 不支持 | 支持 |
-| O6 | 支持 | 支持 |
-| L20Lite | 支持 | 支持 |
-| L25 | 支持 | 支持 |
-| O20 | 支持 | 不支持 |
-| O30I | 支持 | 支持 |
-| L30 | 支持 | 不支持 |
-
-状态数值单位由 SDK `SensorCapability.unit` 决定。SDK 0.2.x 默认暴露协议解析值，常见为
-`count`；`physical_unit/scale/offset` 只提供物理解释元数据，ROS 不做隐式换算。O20 当前
-电流已经由协议解析为 mA。L6 不支持速度反馈，`speeds_hz` 即使非零也会被 capability
-限制为 0；最近设置的协议目标只通过 accepted 命令话题表达。
-
-其他参数在 configure 时保存快照。`model`、`side`、transport、`command_rate_hz` 和
-`auto_reconnect` 在 configured/inactive/active 状态会被明确拒绝；必须先 deactivate、
-cleanup，修改后再 configure/activate。unconfigured 状态设置参数时会立即使用 SDK
-能力和完整候选配置校验型号、side、JSON 和频率，不会把无效值暂存到参数服务器。
-
-O30I 支持 `voltage/acceleration/motion_time`，O6 支持 `acceleration`；其他型号若 capability
-未声明，对应非零频率会被限制为 `0`，不会发送无效查询。`force_hz` 启动 SDK 整手触觉
-矩阵轮询，并通过 `/linkerbot_hand/state/force` 发布行优先的三维
-`Float64MultiArray`。布局维度依次为 `finger/row/column`，手指顺序为
-`thumb/index/middle/ring/pinky`；O6 `04-B` 为 `5x10x4`，L6 为 `5x12x6`。
-
-launch 另外提供 `namespace` 和 `autostart` 参数，它们不是节点参数。
-
-## Transport JSON
-
-推荐显式使用 JSON，避免 ROS 按型号硬编码构造函数：
-
-| 型号 | SocketCAN 示例 |
+| 状态转换 | 行为 |
 | --- | --- |
-| L6/O6/L20Lite/L25 | `{"interface_name":"can0","interface_type":"socketcan"}` |
-| L30 | `{"interface_type":"socketcan","channel":"can0","node_id":1}` |
-| O20 | `{"interface_type":"socketcan","socketcan_channel":"can0"}` |
-| O30I | `{"interface_type":"socketcan","socketcan_channel":"can0","request_id":1}` |
+| configure | 解析参数，构造 transport 描述、唯一 `HandDevice` 和 ROS 实体；零连接、零设备 I/O |
+| activate | `open()`，验证型号/固件/传感器变体，安装 polling plan，启用命令和状态发布 |
+| deactivate | 先撤销命令入口，再停止 SDK polling；不自动运动、不关闭连接 |
+| cleanup | 有界停止 admin worker、polling 和设备 runtime，销毁 ROS 实体 |
+| shutdown/error | 无论来自哪个状态都尝试有界 stop/close，不依赖析构函数 |
 
-`model`、`side`、`session_config` 和 `clock` 由 ROS 节点管理，不能写入 JSON。厂商动态
-库模式的键名和取值以对应 SDK 型号文档为准。
-
-为兼容旧启动命令，节点仍声明 `interface_name`、`interface_type` 和 `library_path`。
-它们仅在 `transport_options_json` 为空对象时生效，新部署不要混用两套配置。
-
-## YAML
-
-仓库的 [`config/hand.yaml`](../../config/hand.yaml) 是 L6 示例：
-
-```yaml
-linkerbot_hand:
-  ros__parameters:
-    model: l6
-    side: left
-    transport_options_json: '{"interface_name":"can0","interface_type":"socketcan"}'
-    command_rate_hz: 100.0
-    auto_reconnect: false
-    publish_rate_hz: 60.0
-    angles_hz: 60.0
-    speeds_hz: 0.0
-    torques_hz: 0.0
-    force_hz: 0.0
-    temperature_hz: 1.0
-    current_hz: 10.0
-    faults_hz: 5.0
-    voltage_hz: 0.0
-    acceleration_hz: 0.0
-    motion_time_hz: 0.0
-    diagnostic_rate: 1.0
-```
-
-直接运行节点时不会自动切换 Lifecycle 状态：
+launch 默认 `autostart:=true`。外部 lifecycle manager 接管时：
 
 ```bash
-ros2 run linkerbot_hand_ros hand_node \
-  --ros-args --params-file /path/to/hand.yaml
+ros2 launch linkerbot_hand_ros hand.launch.py autostart:=false
 ros2 lifecycle set /linkerbot_hand configure
 ros2 lifecycle set /linkerbot_hand activate
 ```
 
-## 左右手部署
+## 静态参数
 
-每只手必须有独立 namespace、CAN 拓扑和唯一驱动节点：
+静态参数在 configure 后拒绝修改，需先 `deactivate -> cleanup`：
+
+| 参数 | 默认值 | 含义 |
+| --- | --- | --- |
+| `model` | `l6` | `l6/o6/l20lite/l25/o20/l30/o30i` |
+| `side` | `left` | `left/right`；L30 必须为空字符串 |
+| `transport_json` | SocketCAN `can0` | 严格 JSON transport 配置 |
+| `command_rate_hz` | `250` | SDK 连续命令调度上限 |
+| `discrete_queue_capacity` | `16` | 离散和安全配置命令的有界 FIFO 容量 |
+| `mailbox_capacity` | `256` | 设备 runtime mailbox 容量 |
+| `route_queue_capacity` | `256` | transport 路由队列容量 |
+| `identity_timeout_s` | `0.2` | 身份/版本事务超时 |
+| `transaction_timeout_s` | `0.1` | 普通协议事务默认超时 |
+| `shutdown_timeout_s` | `2.0` | worker 和连接关闭总边界 |
+| `auto_reconnect` | `false` | SDK 自动安全恢复 |
+| `reconnect_initial_delay_s` | `0.1` | 首次重连退避 |
+| `reconnect_max_delay_s` | `2.0` | 最大重连退避 |
+
+## 动态频率
+
+| 参数 | 默认值 | 查询/发布对象 |
+| --- | --- | --- |
+| `angles_hz` | `100` | SDK 角度查询 |
+| `speeds_hz` | `0` | SDK 实测速度查询 |
+| `force_hz` | `0` | SDK force 或完整触觉事务 |
+| `temperature_hz` | `0` | SDK 温度查询 |
+| `current_hz` | `0` | SDK 实测电流查询 |
+| `faults_hz` | `0` | SDK 故障查询 |
+| `torques_hz` | `0` | SDK 真实扭矩查询，仅 capability 支持时 |
+| `voltage_hz` | `0` | SDK 电压查询 |
+| `publish_rate_hz` | `100` | ROS 检查缓存的频率 |
+| `diagnostic_rate_hz` | `1` | `/diagnostics` 发布频率 |
+
+非零 polling 只允许 capability 声明 `device_queried=true` 的通道。请求不支持通道时参数
+事务失败，不会静默忽略。频率设为 0 后 SDK 不再生成该通道的查询；
+`publish_rate_hz=0` 只暂停 ROS 状态发布，并不停止设备 polling。
+
+```bash
+ros2 param set /linkerbot_hand angles_hz 100.0
+ros2 param set /linkerbot_hand force_hz 30.0
+ros2 param set /linkerbot_hand publish_rate_hz 100.0
+ros2 param set /linkerbot_hand diagnostic_rate_hz 10.0
+```
+
+运行中多个 rate 参数作为一次原子事务修改：
+
+```bash
+ros2 param set --help
+```
+
+需要严格原子更新时应通过 `rcl_interfaces/srv/SetParametersAtomically` 或代码中的
+`AsyncParameterClient.set_parameters_atomically()`，频率 benchmark 已按此方式实现。
+
+## Transport JSON
+
+Linux SocketCAN，classic CAN 和 CAN FD 均由 capability 决定：
+
+```json
+{"backend":"socketcan","channel":"can0"}
+```
+
+可选字段：`nominal_bitrate`、`data_bitrate`、`auto_reconfigure`、
+`receive_own_messages`。配置 bitrate 与 capability 冲突时 configure 失败。
+
+其他 python-can classic backend：
+
+```json
+{"backend":"python_can","interface_name":"PCAN_USBBUS1","interface_type":"pcan"}
+```
+
+厂商 CAN FD：
+
+```json
+{"backend":"vendor_canfd","device_index":0,"channel_index":0,"library_path":"/path/to/lib.so"}
+```
+
+未知 backend、缺失必填键或多余键均为配置错误。旧
+`transport_options_json/interface_name/interface_type/library_path` 参数已删除。
+
+## 多设备
+
+每只手使用独立 namespace：
 
 ```bash
 ros2 launch linkerbot_hand_ros hand.launch.py \
-  namespace:=/left_hand model:=l6 side:=left \
-  transport_options_json:='{"interface_name":"can0","interface_type":"socketcan"}'
-
+  namespace:=left model:=l6 side:=left \
+  transport_json:='{"backend":"socketcan","channel":"can0"}'
 ros2 launch linkerbot_hand_ros hand.launch.py \
-  namespace:=/right_hand model:=l6 side:=right \
-  transport_options_json:='{"interface_name":"can1","interface_type":"socketcan"}'
+  namespace:=right model:=o6 side:=right \
+  transport_json:='{"backend":"socketcan","channel":"can0"}'
 ```
 
-对应节点分别为 `/left_hand/linkerbot_hand` 和 `/right_hand/linkerbot_hand`。
+同一物理总线上的设备应位于同一进程/component container，才能共享 transport runtime、
+RX reactor 和 TX arbiter。两个独立进程只能各自拥有 socket，无法获得进程内公平调度保证。
 
-## 自动重连
+## 恢复
 
-`auto_reconnect:=true` 时，SDK 在唯一 worker 内执行指数退避恢复。恢复会增加
-`connection_generation`、清空旧运动目标，并等待新一代状态；ROS 不会重放断线前或
-断线期间的命令。业务节点必须观察诊断恢复正常后显式下发新目标。
+自动或显式恢复会重新验证身份和固件、清除旧命令并读取 baseline 状态。不会重放断线前或
+断线期间目标，不会自动张开、握拳、清错、enable 或 calibrate。业务层看到
+`connection_generation` 增加后必须清空旧到位判断，并显式提交新目标。

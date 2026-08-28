@@ -2,53 +2,52 @@
 
 [English](README.md) | [简体中文](README_zh.md)
 
-面向正式业务部署的 Linkerbot 灵巧手 ROS 2 Jazzy 驱动。一个 Lifecycle 节点统一支持
-O6、L6、L20Lite、L25、O20、O30I 和 L30，型号能力、轮询、命令调度和断线恢复均由
-独立的 `linkerbot-hand` Python SDK 管理。
+面向 ROS 2 Jazzy 的 Linkerbot 灵巧手 Lifecycle 驱动，统一支持 O6、L6、L20Lite、
+L25、O20、O30I 和 L30。ROS 只使用 `linkerbot-hand` 1.x 的唯一公开设备类
+`HandDevice`，型号、关节顺序、范围和传感器能力全部来自 SDK capability。
 
 ## 运行边界
 
 ```text
 业务节点 / HandCommandClient
-          | ROS 2 Topic、Service、QoS、Lifecycle
+          | 类型化 Topic、Service、QoS、Lifecycle
           v
-linkerbot_hand（每只手唯一驱动节点）
-          | HandDevice、PollingPlan、CommandHandle
+linkerbot_hand LifecycleNode
+          | 唯一 HandDevice
           v
-SDK 单 I/O worker -> transport -> 灵巧手
+SDK polling / scheduler -> linkerbot-transport -> 设备
 ```
 
-- `on_configure` 只创建设备配置，不连接、不查询、不运动。
-- `on_activate` 打开唯一连接并启动 SDK 轮询。
-- ROS 发布定时器只读取 SDK 缓存，不产生设备 I/O。
-- 连续命令采用 latest-wins，回调不等待 transport 或设备 ACK。
-- `on_deactivate` 停止轮询，`on_cleanup/on_shutdown` 关闭连接。
-- 屈伸轴统一使用 `100=完全张开，0=完全握拳`；侧摆、旋转等方向轴的 0/100
-  表示 capability 定义的两个位置端点，不能解释成张开/握拳。
-- 另行提供协议 `raw_angles` 命令与缓存状态；该坐标绕过 classic 用户 LUT。
+- configure 只构造配置、transport 描述和 ROS 实体，不连接、不查询、不运动。
+- activate 才调用 `open()`，验证身份和固件，并启动 SDK polling。
+- 命令 callback 只调用非阻塞 `set_*()`，不等待 transport 或设备 ACK。
+- 状态定时器只读取 `get_snapshot()`，同一 SDK sequence 只发布一次。
+- diagnostics 只读取 `get_health()`，不触发故障查询。
+- deactivate 撤销命令入口并停止 polling，但保留连接；cleanup/shutdown 有界关闭。
+- ROS 不维护型号表、不创建第二套查询定时器，也不提供旧数组兼容话题。
 
-## 环境要求
+角度的协议 raw、percent 和可选物理弧度分别保存。屈伸轴固定为
+`0=弯曲/闭合，100=伸直/张开`；侧摆、旋转等方向轴的 0/100 含义读取
+`HandCapabilities.joints[].percent_mapping`，不能称为张开/握拳。
+
+## 环境与安装
 
 - Ubuntu 24.04 + ROS 2 Jazzy
 - Python 3.10 或更新版本
-- `linkerbot-hand>=0.2.1,<0.3.0`
-- 已配置的 SocketCAN/CAN FD 接口，或型号支持的厂商动态库
+- `linkerbot-hand>=1.0.0.dev0,<2.0.0`
+- 已配置的 SocketCAN/CAN FD 接口或受支持厂商适配器
 
-`linkerbot-hand v0.2.1` 已包含当前驱动所需的协议原始值契约和 O6 `04-B`
-触觉能力识别，并兼容 ROS 2 Jazzy 的 NumPy 1.x 环境。
-
-必须使用 Jazzy：
+安装已发布的 SDK 包时，同时配置私有源和公共 PyPI：
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 python3 -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
-  'linkerbot-hand>=0.2.1,<0.3.0'
+  'linkerbot-hand>=1.0.0.dev0,<2.0.0'
 ```
 
-本地开发 SDK 时，可从两个独立仓库安装。`linkerbot-hand` 声明兼容的
-`linkerbot-transport` 依赖，ROS 包不直接依赖 transport：
+测试尚未发行的 1.x 源码时，在 ROS 使用的同一个 Python 环境安装独立仓库：
 
 ```bash
 git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-transport.git
@@ -70,77 +69,86 @@ colcon build --symlink-install
 source ~/linkerbot_ws/install/setup.bash
 ```
 
-Ubuntu 24.04 的 `/usr/bin/rosdep` 可能输出 `pkg_resources is deprecated`，这是系统
-rosdep 启动脚本的弃用警告，不影响依赖解析；但任何 `ERROR:` 都代表真实失败，不能忽略。
+系统 rosdep 输出的 `pkg_resources is deprecated` 是警告；任何 unresolved key 或
+`ERROR:` 都是实际失败，不能忽略。
 
-每个新终端都需要：
+## 启动
 
-```bash
-source /opt/ros/jazzy/setup.bash
-source ~/linkerbot_ws/install/setup.bash
-```
-
-## 启动 L6
+L6 左手、SocketCAN `can0`：
 
 ```bash
 ros2 launch linkerbot_hand_ros hand.launch.py \
   model:=l6 side:=left \
-  transport_options_json:='{"interface_name":"can0","interface_type":"socketcan"}'
+  transport_json:='{"backend":"socketcan","channel":"can0"}'
 ```
 
-launch 默认 `autostart:=true`，会依次 configure 和 activate：
+L30 不区分左右手，必须传空 side：
+
+```bash
+ros2 launch linkerbot_hand_ros hand.launch.py \
+  model:=l30 side:='' \
+  transport_json:='{"backend":"socketcan","channel":"can0"}'
+```
+
+launch 默认 `autostart:=true`。检查 verified capability、设备信息和角度：
 
 ```bash
 ros2 lifecycle get /linkerbot_hand
-ros2 topic echo --once /linkerbot_hand/joint_names
+ros2 topic echo --once /linkerbot_hand/capabilities
+ros2 topic echo --once /linkerbot_hand/device_info
 ros2 topic echo --once /linkerbot_hand/state/angles
+ros2 topic echo /linkerbot_hand/command/status
 ```
 
-启动后可在线调整或关闭轮询与状态上报，不会重建 CAN 连接：
+## 发送角度
+
+类型化 percent 命令，数组顺序取 capability 的 `joints[].name`：
 
 ```bash
-ros2 param set /linkerbot_hand torques_hz 30.0
-ros2 param set /linkerbot_hand torques_hz 0.0
-ros2 param set /linkerbot_hand publish_rate_hz 0.0
-ros2 param set /linkerbot_hand publish_rate_hz 60.0
+ros2 topic pub --once /linkerbot_hand/command/angles \
+  linkerbot_hand_msgs/msg/HandJointCommand \
+  '{user_sequence: 1, representation: 1, values: [50, 50, 50, 50, 50, 50]}'
 ```
 
-`model`、`side`、transport、命令频率和重连策略只允许在 unconfigured 状态修改；
-已配置后必须先 deactivate 和 cleanup，避免参数显示值与实际连接不一致。
+- `representation=1`：percent，严格 `0..100`。
+- `representation=2`：精确协议 raw，不做方向、LUT 或物理单位转换。
+- SDK 接受后通过 `/command/status` 发布 `ACCEPTED`；实际发送后才是
+  `DISPATCHED`。只有设备协议明确确认时才会出现 `ACKNOWLEDGED`。
 
-连续控制应使用常驻客户端，避免每条命令重新启动进程并等待 DDS 发现：
+高频控制复用常驻客户端：
 
 ```bash
 ros2 run linkerbot_hand_ros angle_controller
 ```
 
-确认速度、扭矩和机械环境安全后，L6 完全张开目标为：
+## 在线频率配置
 
-```text
-100 100 100 100 100 100
+只有 polling 和 ROS 发布频率可在 active 状态原子修改：
+
+```bash
+ros2 param set /linkerbot_hand angles_hz 100.0
+ros2 param set /linkerbot_hand force_hz 30.0
+ros2 param set /linkerbot_hand publish_rate_hz 100.0
+ros2 param set /linkerbot_hand diagnostic_rate_hz 10.0
 ```
 
-完全握拳目标为：
-
-```text
-0 0 0 0 0 0
-```
+通道频率设为 0 后 SDK 不再产生该类查询。`publish_rate_hz=0` 只停止 ROS 状态发布，
+不会替代 `angles_hz=0`。型号、side、transport 和 runtime 容量等静态参数需先
+`deactivate -> cleanup` 才能修改。
 
 ## 文档
 
-- [快速入门与 CAN 配置](docs/zh/getting_started.md)
-- [Lifecycle、参数与型号配置](docs/zh/configuration.md)
-- [话题、服务、诊断与关节顺序](docs/zh/ros_api.md)
-- [正式业务节点集成](docs/zh/business_integration.md)
-- [命令行与 Python 示例](docs/zh/examples.md)
-- [50–100 Hz 收发与频率上限测试](docs/zh/frequency_benchmark.md)
+- [快速入门](docs/zh/getting_started.md)
+- [Lifecycle 与参数](docs/zh/configuration.md)
+- [ROS API reference](docs/zh/ros_api.md)
+- [业务集成](docs/zh/business_integration.md)
+- [命令与 Python 示例](docs/zh/examples.md)
+- [频率上限测试](docs/zh/frequency_benchmark.md)
+- [破坏性迁移说明](docs/zh/migration_0_3.md)
 - [故障排查](docs/zh/troubleshooting.md)
-- [从 0.2.x 迁移到 0.3.0](docs/zh/migration_0_3.md)
 
 ## 安全说明
 
-屈伸轴的 `100/0` 是统一的张开度目标，方向轴的 `100/0` 是位置端点；这些值不代表
-弧度，也不代表所有轴都有可观测的百分比回读。
-首次连接实物时应先验证型号、左右手、关节顺序、总线和急停，从中间值、低速度和保守
-扭矩开始。DDS ACK、SDK `ACCEPTED`、设备协议 ACK 和机械到位是四种不同状态，业务
-安全逻辑必须根据有效且未过期的状态反馈判断到位。
+DDS 发布成功、SDK `ACCEPTED`、transport `DISPATCHED`、设备协议 ACK 和机械到位不可
+互相替代。机械到位必须使用当前 `connection_generation` 内有效、未过期的状态反馈判断。
+恢复后 SDK 不重放断线前目标，业务层必须重新确认状态并显式下发新目标。

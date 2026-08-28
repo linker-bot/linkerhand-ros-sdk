@@ -1,18 +1,23 @@
 # 快速入门
 
-## 1. 安装依赖
+## 1. 环境
+
+本文只适用于 Ubuntu 24.04、ROS 2 Jazzy 和 Hand SDK 1.x。每个终端先执行：
 
 ```bash
 source /opt/ros/jazzy/setup.bash
+```
+
+安装已发布 SDK：
+
+```bash
 python3 -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
-  'linkerbot-hand>=0.2.1,<0.3.0'
-sudo apt update
-sudo apt install python3-colcon-common-extensions python3-rosdep can-utils
+  'linkerbot-hand>=1.0.0.dev0,<2.0.0'
 ```
 
-使用 SDK 本地源码时：
+测试尚未发行的源码时，在同一个 Python 环境安装：
 
 ```bash
 git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-transport.git
@@ -21,9 +26,16 @@ python3 -m pip install -e ./linkerbot-transport -e ./linkerbot-hand
 python3 -c 'import linkerbot_hand; print(linkerbot_hand.__file__)'
 ```
 
-## 2. 准备 CAN 接口
+系统工具：
 
-O6、L6、L20Lite 和 L25 使用经典 CAN。实际波特率以硬件手册为准：
+```bash
+sudo apt update
+sudo apt install python3-colcon-common-extensions python3-rosdep can-utils
+```
+
+## 2. CAN 接口
+
+经典 CAN 示例：
 
 ```bash
 sudo ip link set can0 down
@@ -32,19 +44,19 @@ sudo ip link set can0 up
 ip -details -statistics link show can0
 ```
 
-O20、O30I 和 L30 使用 CAN FD：
+CAN FD 示例：
 
 ```bash
 sudo ip link set can0 down
-sudo ip link set can0 type can \
-  bitrate 1000000 dbitrate 5000000 fd on
+sudo ip link set can0 type can bitrate 1000000 dbitrate 5000000 fd on
 sudo ip link set can0 up
 ip -details -statistics link show can0
 ```
 
-`candump can0` 会占用并显示总线帧，排查结束后按 `Ctrl-C` 退出。
+实际 nominal/data bitrate 必须与设备 capability 和硬件手册一致。不要在驱动运行时再启动
+另一个会主动查询设备的测试程序；`candump` 只监听，可用于检查总线。
 
-## 3. 构建工作空间
+## 3. 构建 ROS 工作空间
 
 ```bash
 mkdir -p ~/linkerbot_ws/src
@@ -57,63 +69,68 @@ colcon build --symlink-install
 source ~/linkerbot_ws/install/setup.bash
 ```
 
-Ubuntu 24.04 的 `/usr/bin/rosdep` 可能输出 `pkg_resources is deprecated`，这是系统
-rosdep 启动脚本的弃用警告；任何 `ERROR:` 仍代表真实失败，不能忽略。
+rosdep 的弃用警告可以记录后继续，unresolved key 或 `ERROR:` 必须处理。
 
-## 4. 启动 Lifecycle 驱动
+## 4. 启动与检查
 
-L6 示例：
+L6 左手：
 
 ```bash
 ros2 launch linkerbot_hand_ros hand.launch.py \
   model:=l6 side:=left \
-  transport_options_json:='{"interface_name":"can0","interface_type":"socketcan"}'
+  transport_json:='{"backend":"socketcan","channel":"can0"}'
 ```
 
-L30 SocketCAN 示例：
+L30 不区分左右手：
 
 ```bash
 ros2 launch linkerbot_hand_ros hand.launch.py \
-  model:=l30 side:=unknown \
-  transport_options_json:='{"interface_type":"socketcan","channel":"can0","node_id":1}'
+  model:=l30 side:='' \
+  transport_json:='{"backend":"socketcan","channel":"can0"}'
 ```
 
-O20 和 O30I 的 SocketCAN 通道键为 `socketcan_channel`。完整构造参数应以相同版本
-`linkerbot-hand` SDK 的型号文档为准，ROS 不再复制维护这些构造器规则。
-
-launch 默认 `autostart:=true`。由外部生命周期管理器接管时使用：
-
-```bash
-ros2 launch linkerbot_hand_ros hand.launch.py autostart:=false
-ros2 lifecycle set /linkerbot_hand configure
-ros2 lifecycle set /linkerbot_hand activate
-```
-
-## 5. 先验证状态，不发送运动命令
+确认 active、身份已验证且角度属于当前连接代次：
 
 ```bash
 ros2 lifecycle get /linkerbot_hand
-ros2 node info /linkerbot_hand
-ros2 topic echo --once /linkerbot_hand/joint_names
-ros2 topic echo --once /linkerbot_hand/model
+ros2 topic echo --once /linkerbot_hand/capabilities
+ros2 topic echo --once /linkerbot_hand/device_info
 ros2 topic echo --once /linkerbot_hand/state/angles
 ros2 topic echo --once /diagnostics
 ```
 
-`read_now` 只把 SDK 中有效且未过期的角度缓存立即发布一次，不会增加 CAN 查询：
+`capabilities.identity.verified` 应为 `true`。`state/angles.meta` 应满足 `valid=true`、
+`stale=false`，且 `connection_generation` 与 diagnostics 一致。
+
+## 5. 无运动通信验证
+
+先只观察状态，不发送目标：
 
 ```bash
-ros2 service call /linkerbot_hand/read_now std_srvs/srv/Trigger '{}'
+ros2 topic hz /linkerbot_hand/state/angles
+ros2 param set /linkerbot_hand angles_hz 60.0
+ros2 param set /linkerbot_hand angles_hz 0.0
 ```
 
-## 6. 使用常驻客户端测试 L6
-
-先确认急停、机械空间、速度和扭矩安全，再启动：
+`angles_hz=0` 后 SDK 不再产生角度查询。恢复轮询：
 
 ```bash
-ros2 run linkerbot_hand_ros angle_controller
+ros2 param set /linkerbot_hand angles_hz 60.0
 ```
 
-建议先从中间值做小范围测试。L6 的全 `100` 整手目标为完全张开、全 `0` 整手目标为
-完全握拳；其中 `thumb_abd` 是方向轴，单独解释时 0/100 表示 capability 声明的位置
-端点。首次实机验证不应直接从一个机械端点跳到另一个端点。
+## 6. 首条命令
+
+先从当前姿态附近的小范围目标开始。以下只展示消息格式，不代表任意设备都可安全直接运动：
+
+```bash
+ros2 topic pub --once /linkerbot_hand/command/angles \
+  linkerbot_hand_msgs/msg/HandJointCommand \
+  '{user_sequence: 1, representation: 1, values: [50, 50, 50, 50, 50, 50]}'
+ros2 topic echo /linkerbot_hand/command/status
+```
+
+`representation=1` 是 percent；`representation=2` 是协议 raw。关节数量和顺序只能从
+capability 读取。收到 `DISPATCHED` 只证明 transport send 成功，机械到位仍需状态反馈判断。
+
+下一步参阅[参数配置](configuration.md)、[ROS API](ros_api.md)和
+[业务集成](business_integration.md)。

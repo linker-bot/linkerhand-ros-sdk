@@ -2,47 +2,50 @@
 
 [English](README.md) | [简体中文](README_zh.md)
 
-Production-oriented ROS 2 Jazzy driver for Linkerbot O6, L6, L20Lite, L25,
-O20, O30I, and L30 hands. Model capabilities, polling, command scheduling, and
-recovery come from the split `linkerbot-hand` Python SDK.
+ROS 2 Jazzy Lifecycle driver for Linkerbot O6, L6, L20Lite, L25, O20,
+O30I, and L30 hands. The driver targets the single `HandDevice` 1.x API and
+uses the SDK capability object as its only model specification.
 
-The driver is a `LifecycleNode`. Configure creates a no-I/O `HandDevice`;
-activate opens the single device connection and starts SDK-owned polling. ROS
-timers only publish cached snapshots, and command callbacks submit latest-wins
-targets without waiting for transport or device acknowledgements.
+The ownership boundary is strict:
 
-Flexion axes use `100=fully open` and `0=fully closed`. Directional axes such
-as abduction and rotation use the capability-declared zero/hundred endpoints;
-they must not be described as open/closed.
-Separate `raw_angles` command and cached-state topics expose exact protocol
-coordinates without applying the classic user LUT.
+- configure constructs descriptors and ROS entities without device I/O;
+- activate calls `open()` and starts SDK-owned polling;
+- command callbacks call non-blocking `set_*()` methods only;
+- state publication reads `get_snapshot()` and emits each SDK sequence once;
+- diagnostics reads `get_health()` only;
+- deactivate stops polling while cleanup and shutdown close the device.
+
+There are no compatibility array topics or ROS-owned device query timers.
+Protocol raw, percent, and physical-angle values remain separate in typed
+messages. Flexion percent uses `0=flexed/closed` and `100=extended/open`;
+directional axes use the endpoint labels published in `HandCapabilities`.
 
 ## Requirements
 
-- Ubuntu 24.04 with ROS 2 Jazzy
+- Ubuntu 24.04 and ROS 2 Jazzy
 - Python 3.10 or newer
-- `linkerbot-hand>=0.2.1,<0.3.0`
-- A configured SocketCAN/CAN FD interface or supported vendor library
+- `linkerbot-hand>=1.0.0.dev0,<2.0.0`
+- a configured SocketCAN/CAN FD interface or supported vendor adapter
 
-`linkerbot-hand v0.2.1` provides protocol-native telemetry and O6 04-B tactile
-capability detection while remaining compatible with ROS 2 Jazzy's NumPy 1.x
-environment.
+Install a published SDK build with both the private package index and public
+PyPI available for third-party dependencies:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 python3 -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
-  'linkerbot-hand>=0.2.1,<0.3.0'
+  'linkerbot-hand>=1.0.0.dev0,<2.0.0'
 ```
 
-For local SDK development, install the independent repositories. Installing
-`linkerbot-hand` resolves its compatible `linkerbot-transport` dependency:
+For unreleased 1.x development, install the independent source repositories
+into the same Python environment used by ROS:
 
 ```bash
 git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-transport.git
 git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand.git
 python3 -m pip install -e ./linkerbot-transport -e ./linkerbot-hand
+python3 -c 'import linkerbot_hand; print(linkerbot_hand.__file__)'
 ```
 
 ## Build
@@ -58,67 +61,77 @@ colcon build --symlink-install
 source ~/linkerbot_ws/install/setup.bash
 ```
 
-Ubuntu 24.04's `/usr/bin/rosdep` may print a `pkg_resources is deprecated`
-warning. That warning comes from the system rosdep launcher and does not affect
-dependency resolution. Any `ERROR:` line is still a failure and must not be
-ignored.
+Any unresolved rosdep key is an error. A `pkg_resources is deprecated` line
+from Ubuntu's rosdep launcher is only a warning.
 
 ## Run
 
-For an L6 on `can0`:
+Start a left L6 on `can0`:
 
 ```bash
 ros2 launch linkerbot_hand_ros hand.launch.py \
   model:=l6 side:=left \
-  transport_options_json:='{"interface_name":"can0","interface_type":"socketcan"}'
-ros2 lifecycle get /linkerbot_hand
+  transport_json:='{"backend":"socketcan","channel":"can0"}'
 ```
 
-Polling and cached-state publication can be adjusted after launch without
-reopening the device connection:
+L30 has no left/right variant, so pass an empty side:
 
 ```bash
-ros2 param set /linkerbot_hand torques_hz 30.0
-ros2 param set /linkerbot_hand torques_hz 0.0
-ros2 param set /linkerbot_hand publish_rate_hz 0.0
-ros2 param set /linkerbot_hand publish_rate_hz 60.0
+ros2 launch linkerbot_hand_ros hand.launch.py \
+  model:=l30 side:='' \
+  transport_json:='{"backend":"socketcan","channel":"can0"}'
 ```
 
-Static connection parameters are accepted only while unconfigured. Run
-`deactivate` and `cleanup` before changing model, side, transport, command
-rate, or reconnect policy.
+Inspect the verified metadata and state:
 
-The launch file defaults to `autostart:=true`. Set it to `false` when an
-external lifecycle manager owns transitions.
+```bash
+ros2 lifecycle get /linkerbot_hand
+ros2 topic echo --once /linkerbot_hand/capabilities
+ros2 topic echo --once /linkerbot_hand/device_info
+ros2 topic echo --once /linkerbot_hand/state/angles
+ros2 topic echo /linkerbot_hand/command/status
+```
 
-Use the persistent controller for repeated commands:
+Send one percent target with the typed message:
+
+```bash
+ros2 topic pub --once /linkerbot_hand/command/angles \
+  linkerbot_hand_msgs/msg/HandJointCommand \
+  '{user_sequence: 1, representation: 1, values: [50, 50, 50, 50, 50, 50]}'
+```
+
+`representation=1` means percent and `representation=2` means exact protocol
+raw. The values always follow the capability joint order. Use the persistent
+Python client for control loops:
 
 ```bash
 ros2 run linkerbot_hand_ros angle_controller
 ```
 
-The installed `frequency_benchmark` executable measures command delivery and
-real SDK sample-sequence rates separately. See the
-[Chinese frequency benchmark guide](docs/zh/frequency_benchmark.md) before
-running 50–100 Hz tests on hardware.
+The frequency tool evaluates angle command publication, SDK terminal stages,
+device sample sequences, and optional complete tactile transactions separately:
 
-See [the Chinese integration guide](docs/zh/business_integration.md) and the
-[ROS API reference](docs/zh/ros_api.md) for lifecycle, parameters, topics,
-services, diagnostics, and command semantics.
+```bash
+ros2 run linkerbot_hand_ros frequency_benchmark \
+  --angle-rates 50 100 150 200 --duration 180 --repetitions 3
+```
+
+See [ROS API](docs/ros_api.md), the
+[Chinese integration guide](docs/zh/business_integration.md), and the
+[frequency benchmark guide](docs/zh/frequency_benchmark.md).
 
 ## Safety
 
-Percentage values are not radians. A DDS acknowledgement, SDK acceptance,
-protocol acknowledgement, and physical completion are distinct events. Verify
-model, side, joint order, bus configuration, emergency stop, conservative
-speed, and torque limits before commanding real hardware.
+`ACCEPTED`, `DISPATCHED`, protocol `ACKNOWLEDGED`, and mechanical arrival are
+different states. A successful service response for a command means accepted,
+not delivered. Determine arrival from valid, non-stale feedback in the current
+connection generation. Recovery never replays pre-disconnect targets.
 
 ## Development
 
-Hardware-independent tests use the SDK `FakeBackendFactory`:
-
 ```bash
 source /opt/ros/jazzy/setup.bash
-python3 -m pytest
-python3 -m compileall linkerbot_hand_ros launch
+colcon build --symlink-install
+colcon test --event-handlers console_direct+
+colcon test-result --verbose
 ```
