@@ -5,6 +5,7 @@ from linkerbot_hand import (
     ChannelMetrics,
     ConnectionState,
     DataAge,
+    DataOrigin,
     ErrorInfo,
     HealthStatus,
     LifecycleState,
@@ -29,6 +30,7 @@ def _operational_health() -> HealthStatus:
                 achieved_hz=99.5,
                 missed_deadlines=0,
                 timeouts=0,
+                completed_reads=199,
                 data_age=DataAge(
                     channel="angles",
                     age_s=0.002,
@@ -36,6 +38,7 @@ def _operational_health() -> HealthStatus:
                     stale=False,
                     sequence=17,
                     connection_generation=3,
+                    origin=DataOrigin.DEVICE_RESPONSE,
                 ),
             ),
         ),
@@ -56,6 +59,8 @@ def test_operational_health_maps_to_ok_without_other_sdk_state() -> None:
     assert values["connection_generation"] == "3"
     assert values["channel_angles_sequence"] == "17"
     assert values["channel_angles_achieved_hz"] == "99.5"
+    assert values["channel_angles_completed_reads"] == "199"
+    assert values["channel_angles_origin"] == "device_response"
 
 
 def test_repeated_sdk_errors_take_priority_over_stale_angles() -> None:

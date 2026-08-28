@@ -88,6 +88,7 @@ def build_diagnostic_status(
             (
                 _value(f"{prefix}_requested_hz", channel.requested_hz),
                 _value(f"{prefix}_achieved_hz", channel.achieved_hz),
+                _value(f"{prefix}_completed_reads", channel.completed_reads),
                 _value(f"{prefix}_missed_deadlines", channel.missed_deadlines),
                 _value(f"{prefix}_timeouts", channel.timeouts),
                 _value(f"{prefix}_age_s", age.age_s),
@@ -95,6 +96,7 @@ def build_diagnostic_status(
                 _value(f"{prefix}_stale", age.stale),
                 _value(f"{prefix}_sequence", age.sequence),
                 _value(f"{prefix}_generation", age.connection_generation),
+                _value(f"{prefix}_origin", age.origin.value),
             )
         )
     return status
