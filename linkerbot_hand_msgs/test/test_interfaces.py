@@ -1,6 +1,7 @@
 from builtin_interfaces.msg import Time
 
 from linkerbot_hand_msgs.msg import (
+    HandCapabilities,
     HandCommandStatus,
     HandJointCommand,
     HandJointState,
@@ -110,3 +111,15 @@ def test_admin_services_return_structured_acceptance_and_errors():
     assert submit.accepted and submit.command_id == 5
     assert set_values.user_sequence == 9
     assert recover.error_code == "timeout"
+
+
+def test_capability_contract_exposes_firmware_degradation_and_parameter_save():
+    capabilities = HandCapabilities(
+        firmware_unsupported_telemetry=["force"],
+    )
+    capabilities.operations.save_parameters = True
+    capabilities.operations.acknowledged_operations = ["save_parameters"]
+
+    assert capabilities.firmware_unsupported_telemetry == ["force"]
+    assert capabilities.operations.save_parameters
+    assert capabilities.operations.acknowledged_operations == ["save_parameters"]

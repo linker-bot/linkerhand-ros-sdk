@@ -153,6 +153,7 @@ def test_all_public_raw_telemetry_channels_use_the_generic_projection(model):
 
 def test_capabilities_keep_percent_direction_units_and_stall_metadata():
     l6 = capabilities_to_message(_capabilities("L6"))
+    o6 = capabilities_to_message(_capabilities("O6", side="right"))
     o30i = capabilities_to_message(_capabilities("O30i"))
 
     thumb = l6.joints[0]
@@ -162,6 +163,18 @@ def test_capabilities_keep_percent_direction_units_and_stall_metadata():
     assert thumb.raw_angle_range.unit == "count"
     assert l6.transport.nominal_bitrate == 1_000_000
     assert not l6.transport.has_data_bitrate
+    assert o6.operations.save_parameters
+    assert "save_parameters" in o6.operations.acknowledged_operations
+
+    o6_stall = o6.stall_protection
+    assert o6_stall.threshold.semantic == "stall_thresholds"
+    assert o6_stall.detection_time.semantic == "stall_detection_times"
+    assert o6_stall.hold_current.semantic == "stall_hold_currents"
+    assert o6_stall.threshold.raw_scale_note == (
+        "1000/255 mA/count; lock/stall trigger threshold"
+    )
+    assert o6_stall.detection_time.raw_scale_note == "10 ms/count"
+    assert o6_stall.hold_current.unit_confidence == "conflicting"
 
     assert o30i.stall_protection.supported
     assert not o30i.stall_protection.safety_range_verified
@@ -183,6 +196,28 @@ def test_capabilities_keep_percent_direction_units_and_stall_metadata():
         assert field.write_supported is stall.write_supported
 
 
+def test_runtime_firmware_degradation_is_projected_without_removing_metadata():
+    capabilities = _capabilities("O6", side="right")
+    capabilities = replace(
+        capabilities,
+        firmware_unsupported_telemetry=(
+            TelemetrySemantic.CONFIGURED_ACCELERATIONS,
+            TelemetrySemantic.FORCE,
+        ),
+    )
+
+    message = capabilities_to_message(capabilities)
+
+    assert message.firmware_unsupported_telemetry == [
+        "configured_accelerations",
+        "force",
+    ]
+    assert {value.semantic for value in message.telemetry} >= {
+        "configured_accelerations",
+        "force",
+    }
+
+
 def test_sample_metadata_projects_cached_age_into_ros_time():
     message = sample_metadata_to_message(_meta(), ros_now_ns=ROS_NOW_NS)
 
@@ -199,6 +234,12 @@ def test_sample_metadata_projects_cached_age_into_ros_time():
     assert not unavailable.valid
     assert unavailable.collected_at.sec == 0
     assert unavailable.collected_at.nanosec == 0
+
+    feedback = sample_metadata_to_message(
+        _meta(origin=DataOrigin.DEVICE_COMMAND_FEEDBACK),
+        ros_now_ns=ROS_NOW_NS,
+    )
+    assert feedback.origin == SampleMetadata.ORIGIN_DEVICE_COMMAND_FEEDBACK
 
 
 def test_angle_message_never_conflates_raw_percent_and_physical_values():

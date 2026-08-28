@@ -22,7 +22,7 @@ from linkerbot_hand import (
 
 from linkerbot_hand_msgs import msg as ros_messages
 
-CAPABILITY_SCHEMA_REVISION = "1.0"
+CAPABILITY_SCHEMA_REVISION = "1.1"
 
 
 def capabilities_to_message(
@@ -43,6 +43,9 @@ def capabilities_to_message(
         ],
         commands=[_command_to_message(value) for value in capabilities.commands],
         telemetry=[_telemetry_to_message(value) for value in capabilities.telemetry],
+        firmware_unsupported_telemetry=[
+            value.value for value in capabilities.firmware_unsupported_telemetry
+        ],
         stall_protection=_stall_to_message(capabilities.stall_protection),
         transport=_transport_to_message(capabilities.transport),
         operations=_operations_to_message(capabilities.operations),
@@ -283,6 +286,7 @@ def _operations_to_message(
         enable=value.enable,
         disable=value.disable,
         calibrate=value.calibrate,
+        save_parameters=value.save_parameters,
         read_stall_protection=value.read_stall_protection,
         write_stall_protection=value.write_stall_protection,
         acknowledged_operations=list(value.acknowledged_operations),

@@ -3,6 +3,7 @@ IdentityCapability identity
 JointCapability[] joints
 CommandCapability[] commands
 TelemetryCapability[] telemetry
+string[] firmware_unsupported_telemetry
 StallProtectionCapability stall_protection
 TransportCapability transport
 OperationCapabilities operations
