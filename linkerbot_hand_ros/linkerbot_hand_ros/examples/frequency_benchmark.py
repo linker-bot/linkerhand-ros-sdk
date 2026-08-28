@@ -462,6 +462,7 @@ def _log_result(
         f"tactile={result.requested_tactile_hz:g}Hz 第{repetition}轮: "
         f"publish={result.command_publish_hz:.2f}Hz, "
         f"terminal={result.command_terminal_hz:.2f}Hz, "
+        f"dispatch={result.command_dispatch_hz:.2f}Hz, "
         f"angle_sample={angle_sample}, tactile_sample={tactile_sample}, "
         f"command_p95={p95}, failed={result.failed_commands}, "
         f"superseded={result.superseded_commands}"

@@ -108,6 +108,7 @@ def test_equal_workload_passes_at_requested_angle_rate():
     assert result.passed
     assert result.command_publish_hz == 50
     assert result.command_terminal_hz == 50
+    assert result.command_dispatch_hz == 50
     assert result.angle_sample_hz == 50
 
 
@@ -125,7 +126,7 @@ def test_complete_tactile_rate_is_evaluated_independently():
     assert result.tactile_sample_hz == 30
 
 
-def test_failed_or_superseded_commands_fail_the_candidate():
+def test_failed_commands_fail_while_sparse_superseded_targets_are_reported():
     measurements = _measurements()
     events = list(measurements.command_events)
     events[0] = replace(events[0], stage=HandCommandStatus.STAGE_FAILED)
@@ -136,6 +137,36 @@ def test_failed_or_superseded_commands_fail_the_candidate():
     assert not result.passed
     assert result.failed_commands == 1
     assert result.superseded_commands == 1
+    assert result.command_dispatch_hz == 49.8
+
+
+def test_sparse_latest_wins_replacement_passes_when_dispatch_rate_is_sufficient():
+    measurements = _measurements()
+    events = list(measurements.command_events)
+    events[0] = replace(events[0], stage=HandCommandStatus.STAGE_SUPERSEDED)
+
+    result = evaluate_measurements(replace(measurements, command_events=tuple(events)))
+
+    assert result.passed
+    assert result.superseded_commands == 1
+    assert result.command_dispatch_hz == 49.9
+
+
+def test_replacement_fails_when_actual_dispatch_rate_drops_below_threshold():
+    measurements = _measurements()
+    events = tuple(
+        replace(event, stage=HandCommandStatus.STAGE_SUPERSEDED)
+        if index < 51
+        else event
+        for index, event in enumerate(measurements.command_events)
+    )
+
+    result = evaluate_measurements(replace(measurements, command_events=events))
+
+    assert not result.passed
+    assert result.command_terminal_hz == 50
+    assert result.command_dispatch_hz == 44.9
+    assert any("实际下发频率" in reason for reason in result.reasons)
 
 
 def test_generation_change_and_health_timeout_fail_the_candidate():

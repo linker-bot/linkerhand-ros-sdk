@@ -15,7 +15,7 @@ ROS publish callback 频率、设备采样频率和命令 transport 发送频率
 记录：
 
 - 本地 `HandJointCommand` publish Hz 和发送间隔 P95；
-- `HandCommandStatus` 中协议终态 Hz、FAILED 和 SUPERSEDED；
+- `HandCommandStatus` 中协议终态 Hz、实际下发 Hz、FAILED 和 SUPERSEDED；
 - `HandJointState.meta.sequence` 计算的设备角度样本 Hz；
 - `HandTactileState.meta.sequence` 计算的完整触觉事务 Hz；
 - 起止 `/diagnostics` 中 generation、pending、timeout、route miss 和 bus error 增量。
@@ -105,10 +105,11 @@ ros2 run linkerbot_hand_ros frequency_benchmark \
 默认 `minimum_ratio=0.9`。每轮同时满足：
 
 - 本地命令 publish Hz 不低于候选角度频率的 90%。
-- 命令协议成功终态 Hz 不低于 90%。
+- 命令协议终态 Hz 不低于 90%。
+- 实际进入 DISPATCHED 或 ACKNOWLEDGED 的命令 Hz 不低于 90%。
 - 角度 SDK sequence rate 不低于 90%。
 - 启用触觉时，完整触觉 sequence rate 不低于触觉目标的 90%。
-- 没有 FAILED 或发送前 SUPERSEDED 命令。
+- 没有 FAILED 命令；SUPERSEDED 单独记录，并通过实际下发频率门槛约束。
 - 测试期间 state 和 health 的 connection generation 不变。
 - drain 后 `pending_commands=0`。
 - consecutive error、角度/force timeout、transport drop/route miss/bus error 无增加。

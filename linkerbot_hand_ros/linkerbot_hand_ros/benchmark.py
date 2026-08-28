@@ -62,6 +62,7 @@ class BenchmarkResult:
     passed: bool
     command_publish_hz: float
     command_terminal_hz: float
+    command_dispatch_hz: float
     angle_sample_hz: float | None
     tactile_sample_hz: float | None
     command_interval_p95_ms: float | None
@@ -87,6 +88,16 @@ def evaluate_measurements(
         event for event in measurements.command_events if _is_protocol_terminal(event)
     )
     terminal_hz = len({event.user_sequence for event in terminal}) / duration
+    dispatched_hz = (
+        len(
+            {
+                event.user_sequence
+                for event in measurements.command_events
+                if _is_dispatched(event)
+            }
+        )
+        / duration
+    )
     failed = len(
         {
             event.user_sequence
@@ -117,6 +128,10 @@ def evaluate_measurements(
         reasons.append(
             f"命令协议终态频率 {terminal_hz:.2f} Hz 低于 {minimum_angle:.2f} Hz"
         )
+    if dispatched_hz < minimum_angle:
+        reasons.append(
+            f"命令实际下发频率 {dispatched_hz:.2f} Hz 低于 {minimum_angle:.2f} Hz"
+        )
     if angle_hz is None or angle_hz < minimum_angle:
         value = "unknown" if angle_hz is None else f"{angle_hz:.2f} Hz"
         reasons.append(f"角度设备采样频率 {value} 低于 {minimum_angle:.2f} Hz")
@@ -129,8 +144,6 @@ def evaluate_measurements(
         reasons.append("测试期间连接代次发生变化")
     if failed:
         reasons.append(f"存在 {failed} 个 FAILED 命令")
-    if superseded:
-        reasons.append(f"存在 {superseded} 个发送前被覆盖命令")
     _append_health_failures(measurements, reasons)
     return BenchmarkResult(
         requested_angle_hz=measurements.requested_angle_hz,
@@ -138,6 +151,7 @@ def evaluate_measurements(
         passed=not reasons,
         command_publish_hz=publish_hz,
         command_terminal_hz=terminal_hz,
+        command_dispatch_hz=dispatched_hz,
         angle_sample_hz=angle_hz,
         tactile_sample_hz=tactile_hz,
         command_interval_p95_ms=_interval_p95_ms(measurements.sent_at),
@@ -156,6 +170,13 @@ def _is_protocol_terminal(event: CommandEvent) -> bool:
         event.stage == HandCommandStatus.STAGE_DISPATCHED
         and event.ack_support == HandCommandStatus.ACK_UNSUPPORTED
     )
+
+
+def _is_dispatched(event: CommandEvent) -> bool:
+    return event.stage in {
+        HandCommandStatus.STAGE_DISPATCHED,
+        HandCommandStatus.STAGE_ACKNOWLEDGED,
+    }
 
 
 def _sample_rate(
