@@ -50,6 +50,8 @@ def _diagnostic(
     pending=0,
     timeouts=0,
     consecutive_errors=0,
+    angle_completed=0,
+    force_completed=0,
 ):
     return DiagnosticObservation(
         observed_at,
@@ -62,11 +64,33 @@ def _diagnostic(
             "transport_bus_errors": "0",
             "channel_angles_timeouts": str(timeouts),
             "channel_force_timeouts": "0",
+            "channel_angles_completed_reads": str(angle_completed),
+            "channel_force_completed_reads": str(force_completed),
         },
     )
 
 
-def _measurements(*, angle_sequence=500, tactile=False):
+def _state_events(channel, *, cache_updates, publications):
+    return tuple(
+        StateEvent(
+            channel,
+            index * 10 / publications,
+            round(index * cache_updates / publications),
+            1,
+            True,
+            False,
+        )
+        for index in range(publications + 1)
+    )
+
+
+def _measurements(
+    *,
+    angle_sequence=500,
+    angle_publications=None,
+    angle_reads=500,
+    tactile=False,
+):
     sent = tuple(index / 50 for index in range(500))
     commands = tuple(
         CommandEvent(
@@ -85,22 +109,23 @@ def _measurements(*, angle_sequence=500, tactile=False):
             (HandCommandStatus.STAGE_DISPATCHED, 0.003),
         )
     )
-    states = [
-        StateEvent(
+    angle_publications = (
+        angle_sequence if angle_publications is None else angle_publications
+    )
+    states = list(
+        _state_events(
             "angles",
-            index * 10 / angle_sequence,
-            index,
-            1,
-            True,
-            False,
+            cache_updates=angle_sequence,
+            publications=angle_publications,
         )
-        for index in range(angle_sequence + 1)
-    ]
+    )
     if tactile:
-        states.extend(
-            StateEvent("tactile", index * 10 / 300, index, 1, True, False)
-            for index in range(301)
-        )
+        states.extend(_state_events("tactile", cache_updates=300, publications=300))
+    end_diagnostic = _diagnostic(
+        10,
+        angle_completed=angle_reads,
+        force_completed=300 if tactile else 0,
+    )
     return BenchmarkMeasurements(
         client_id=_CLIENT_ID,
         requested_angle_hz=50,
@@ -111,7 +136,8 @@ def _measurements(*, angle_sequence=500, tactile=False):
         state_events=tuple(states),
         command_events=commands,
         start_diagnostic=_diagnostic(0),
-        end_diagnostic=_diagnostic(10),
+        measurement_end_diagnostic=end_diagnostic,
+        end_diagnostic=end_diagnostic,
     )
 
 
@@ -124,7 +150,10 @@ def test_equal_workload_passes_at_requested_angle_rate():
     assert result.command_accepted_hz == 50
     assert result.command_terminal_hz == 50
     assert result.command_dispatch_hz == 50
-    assert result.angle_sample_hz == 50
+    assert result.angle_read_completion_hz == 50
+    assert result.angle_cache_update_hz == 50
+    assert result.angle_ros_publish_hz == 50
+    assert result.tactile_read_completion_hz is None
     assert result.publish_to_receive_latency.sample_count == 500
     assert result.publish_to_receive_latency.p95_ms == pytest.approx(1.0)
     assert result.receive_to_accept_latency.p95_ms == pytest.approx(0.5)
@@ -132,18 +161,79 @@ def test_equal_workload_passes_at_requested_angle_rate():
     assert result.publish_to_dispatch_latency.p95_ms == pytest.approx(3.0)
 
 
-def test_repeated_ros_publication_cannot_hide_low_device_sequence_rate():
+def test_read_completion_rate_is_not_inflated_by_device_reports():
+    result = evaluate_measurements(
+        _measurements(
+            angle_sequence=1_000,
+            angle_publications=500,
+            angle_reads=300,
+        )
+    )
+
+    assert not result.passed
+    assert result.angle_read_completion_hz == 30
+    assert result.angle_cache_update_hz == 100
+    assert result.angle_ros_publish_hz == 50
+    assert any("角度读取完成频率" in reason for reason in result.reasons)
+
+
+def test_low_cache_and_ros_rates_are_reported_separately():
     result = evaluate_measurements(_measurements(angle_sequence=300))
 
     assert not result.passed
-    assert result.angle_sample_hz == 30
+    assert result.angle_read_completion_hz == 50
+    assert result.angle_cache_update_hz == 30
+    assert result.angle_ros_publish_hz == 30
+
+
+def test_ros_publication_loss_cannot_be_hidden_by_cache_sequence_jumps():
+    result = evaluate_measurements(
+        _measurements(angle_sequence=500, angle_publications=300)
+    )
+
+    assert not result.passed
+    assert result.angle_read_completion_hz == 50
+    assert result.angle_cache_update_hz == 50
+    assert result.angle_ros_publish_hz == 30
+    assert any("角度 ROS 发布频率" in reason for reason in result.reasons)
 
 
 def test_complete_tactile_rate_is_evaluated_independently():
     result = evaluate_measurements(_measurements(tactile=True))
 
     assert result.passed
-    assert result.tactile_sample_hz == 30
+    assert result.tactile_read_completion_hz == 30
+    assert result.tactile_cache_update_hz == 30
+    assert result.tactile_ros_publish_hz == 30
+
+
+def test_drain_reads_do_not_inflate_measurement_rate():
+    measurements = _measurements()
+    drained = _diagnostic(11, angle_completed=600)
+
+    result = evaluate_measurements(replace(measurements, end_diagnostic=drained))
+
+    assert result.passed
+    assert result.angle_read_completion_hz == 50
+
+
+def test_polling_counter_reset_cannot_be_reported_as_a_read_rate():
+    measurements = _measurements()
+    start = _diagnostic(0, angle_completed=100)
+    measurement_end = _diagnostic(10, angle_completed=50)
+
+    result = evaluate_measurements(
+        replace(
+            measurements,
+            start_diagnostic=start,
+            measurement_end_diagnostic=measurement_end,
+            end_diagnostic=measurement_end,
+        )
+    )
+
+    assert not result.passed
+    assert result.angle_read_completion_hz is None
+    assert any("角度读取完成频率 unknown" in reason for reason in result.reasons)
 
 
 def test_failed_commands_fail_while_sparse_superseded_targets_are_reported():
@@ -307,12 +397,24 @@ def test_generation_change_and_health_timeout_fail_the_candidate():
     measurements = _measurements()
     states = list(measurements.state_events)
     states[-1] = replace(states[-1], generation=2)
-    end = _diagnostic(10, generation="2", timeouts=1)
+    measurement_end = _diagnostic(
+        10,
+        generation="2",
+        timeouts=1,
+        angle_completed=500,
+    )
+    end = _diagnostic(
+        11,
+        generation="2",
+        timeouts=1,
+        angle_completed=550,
+    )
 
     result = evaluate_measurements(
         replace(
             measurements,
             state_events=tuple(states),
+            measurement_end_diagnostic=measurement_end,
             end_diagnostic=end,
         )
     )

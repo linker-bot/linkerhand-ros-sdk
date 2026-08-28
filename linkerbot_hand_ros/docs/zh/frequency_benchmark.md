@@ -18,13 +18,17 @@ ROS publish callback 频率、设备采样频率和命令 transport 发送频率
 - 当前 `client_id` 的驱动收到 Hz、SDK `ACCEPTED` Hz、实际 `DISPATCHED` Hz 和协议终态 Hz；
 - 发布到驱动接收、接收到 SDK 接受、接受到实际下发及发布到实际下发的 P50/P95/P99；
 - `HandCommandStatus.transitions[]` 中的 FAILED 和 SUPERSEDED；
-- `HandJointState.meta.sequence` 计算的设备角度样本 Hz；
-- `HandTactileState.meta.sequence` 计算的完整触觉事务 Hz；
+- SDK diagnostics 中 `completed_reads` 计算的完整读取事务 Hz；
+- ROS 状态消息 `meta.sequence` 增量计算的 SDK 缓存更新 Hz；
+- 实际收到的有效 ROS 状态消息计算的 ROS publish Hz；
 - 起止 `/diagnostics` 中 generation、pending、timeout、route miss 和 bus error 增量。
 
-驱动只在 SDK sequence 或有效性签名变化时发布，工具仍使用 sequence delta 而不是仅统计
-ROS 消息数量。命令阶段按 `(client_id, user_sequence, stage)` 去重；最终状态为
-`ACKNOWLEDGED` 时仍以完整历史中是否存在 `DISPATCHED` 为准。
+这三个状态频率不能互相替代。查询响应、设置回显和主动上报都可能增加 cache sequence，只有
+`completed_reads` 表示 polling plan 下完成的逻辑读取；一次完整多帧触觉事务只增加一次。
+ROS publish Hz 则单独反映状态发布和 DDS 接收链路。diagnostics 同时提供最新 `origin`，用于
+确认当前缓存来自查询响应、设备上报还是回显。命令阶段按
+`(client_id, user_sequence, stage)` 去重；最终状态为 `ACKNOWLEDGED` 时仍以完整历史中是否
+存在 `DISPATCHED` 为准。
 
 ## 测试前提
 
@@ -112,8 +116,9 @@ ros2 run linkerbot_hand_ros frequency_benchmark \
 - SDK `ACCEPTED` Hz 不低于 90%。
 - 命令协议终态 Hz 不低于 90%。
 - 完整阶段历史中实际进入 `DISPATCHED` 的命令 Hz 不低于 90%。
-- 角度 SDK sequence rate 不低于 90%。
-- 启用触觉时，完整触觉 sequence rate 不低于触觉目标的 90%。
+- 角度读取完成 Hz、缓存更新 Hz 和 ROS publish Hz 分别不低于角度目标的 90%。
+- 启用触觉时，完整触觉读取完成 Hz、缓存更新 Hz 和 ROS publish Hz 分别不低于触觉目标的
+  90%。
 - 没有 FAILED 命令；SUPERSEDED 单独记录，并通过实际下发频率门槛约束。
 - 四段延迟时间戳没有缺失或倒序。
 - 测试期间 state 和 health 的 connection generation 不变。

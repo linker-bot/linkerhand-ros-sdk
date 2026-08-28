@@ -74,6 +74,7 @@ class BenchmarkMeasurements:
     state_events: tuple[StateEvent, ...]
     command_events: tuple[CommandEvent, ...]
     start_diagnostic: DiagnosticObservation | None
+    measurement_end_diagnostic: DiagnosticObservation | None
     end_diagnostic: DiagnosticObservation | None
 
 
@@ -87,8 +88,12 @@ class BenchmarkResult:
     command_accepted_hz: float
     command_terminal_hz: float
     command_dispatch_hz: float
-    angle_sample_hz: float | None
-    tactile_sample_hz: float | None
+    angle_read_completion_hz: float | None
+    angle_cache_update_hz: float | None
+    angle_ros_publish_hz: float | None
+    tactile_read_completion_hz: float | None
+    tactile_cache_update_hz: float | None
+    tactile_ros_publish_hz: float | None
     command_interval_p95_ms: float | None
     publish_to_receive_latency: LatencyStats
     receive_to_accept_latency: LatencyStats
@@ -168,13 +173,27 @@ def evaluate_measurements(
         )
         for record in dispatched
     )
-    angle_hz, angle_generation_changed = _sample_rate(
+    angle_cache_hz, angle_publish_hz, angle_generation_changed = _state_rates(
         measurements.state_events,
         "angles",
     )
-    tactile_hz, tactile_generation_changed = _sample_rate(
+    tactile_cache_hz, tactile_publish_hz, tactile_generation_changed = _state_rates(
         measurements.state_events,
         "tactile",
+    )
+    angle_read_hz = _diagnostic_counter_rate(
+        measurements.start_diagnostic,
+        measurements.measurement_end_diagnostic,
+        "channel_angles_completed_reads",
+    )
+    tactile_read_hz = (
+        _diagnostic_counter_rate(
+            measurements.start_diagnostic,
+            measurements.measurement_end_diagnostic,
+            "channel_force_completed_reads",
+        )
+        if measurements.requested_tactile_hz > 0
+        else None
     )
     reasons: list[str] = []
     minimum_angle = measurements.requested_angle_hz * minimum_ratio
@@ -196,14 +215,44 @@ def evaluate_measurements(
         reasons.append(
             f"命令实际下发频率 {dispatched_hz:.2f} Hz 低于 {minimum_angle:.2f} Hz"
         )
-    if angle_hz is None or angle_hz < minimum_angle:
-        value = "unknown" if angle_hz is None else f"{angle_hz:.2f} Hz"
-        reasons.append(f"角度设备采样频率 {value} 低于 {minimum_angle:.2f} Hz")
+    _append_rate_failure(
+        reasons,
+        "角度读取完成频率",
+        angle_read_hz,
+        minimum_angle,
+    )
+    _append_rate_failure(
+        reasons,
+        "角度缓存更新频率",
+        angle_cache_hz,
+        minimum_angle,
+    )
+    _append_rate_failure(
+        reasons,
+        "角度 ROS 发布频率",
+        angle_publish_hz,
+        minimum_angle,
+    )
     if measurements.requested_tactile_hz > 0:
         minimum_tactile = measurements.requested_tactile_hz * minimum_ratio
-        if tactile_hz is None or tactile_hz < minimum_tactile:
-            value = "unknown" if tactile_hz is None else f"{tactile_hz:.2f} Hz"
-            reasons.append(f"完整触觉采样频率 {value} 低于 {minimum_tactile:.2f} Hz")
+        _append_rate_failure(
+            reasons,
+            "完整触觉读取完成频率",
+            tactile_read_hz,
+            minimum_tactile,
+        )
+        _append_rate_failure(
+            reasons,
+            "完整触觉缓存更新频率",
+            tactile_cache_hz,
+            minimum_tactile,
+        )
+        _append_rate_failure(
+            reasons,
+            "完整触觉 ROS 发布频率",
+            tactile_publish_hz,
+            minimum_tactile,
+        )
     if angle_generation_changed or tactile_generation_changed:
         reasons.append("测试期间连接代次发生变化")
     if failed:
@@ -226,8 +275,12 @@ def evaluate_measurements(
         command_accepted_hz=accepted_hz,
         command_terminal_hz=terminal_hz,
         command_dispatch_hz=dispatched_hz,
-        angle_sample_hz=angle_hz,
-        tactile_sample_hz=tactile_hz,
+        angle_read_completion_hz=angle_read_hz,
+        angle_cache_update_hz=angle_cache_hz,
+        angle_ros_publish_hz=angle_publish_hz,
+        tactile_read_completion_hz=tactile_read_hz,
+        tactile_cache_update_hz=tactile_cache_hz,
+        tactile_ros_publish_hz=tactile_publish_hz,
         command_interval_p95_ms=_interval_p95_ms(measurements.sent_at),
         publish_to_receive_latency=publish_to_receive,
         receive_to_accept_latency=receive_to_accept,
@@ -288,22 +341,48 @@ def _earliest(first: float | None, second: float | None) -> float | None:
     return min(first, second)
 
 
-def _sample_rate(
+def _state_rates(
     events: tuple[StateEvent, ...],
     channel: str,
-) -> tuple[float | None, bool]:
+) -> tuple[float | None, float | None, bool]:
     channel_events = tuple(event for event in events if event.channel == channel)
     generations = {event.generation for event in channel_events}
     if len(generations) > 1:
-        return None, True
+        return None, None, True
     valid = tuple(event for event in channel_events if event.valid and not event.stale)
     if len(valid) < 2:
-        return None, False
+        return None, None, False
     elapsed = valid[-1].observed_at - valid[0].observed_at
     sequence_delta = valid[-1].sequence - valid[0].sequence
     if elapsed <= 0 or sequence_delta < 0:
-        return None, False
-    return sequence_delta / elapsed, False
+        return None, None, False
+    return sequence_delta / elapsed, (len(valid) - 1) / elapsed, False
+
+
+def _diagnostic_counter_rate(
+    start: DiagnosticObservation | None,
+    end: DiagnosticObservation | None,
+    key: str,
+) -> float | None:
+    if start is None or end is None:
+        return None
+    elapsed = end.observed_at - start.observed_at
+    delta = _counter_delta(start, end, key)
+    if elapsed <= 0 or delta is None:
+        return None
+    return delta / elapsed
+
+
+def _append_rate_failure(
+    reasons: list[str],
+    label: str,
+    value: float | None,
+    minimum: float,
+) -> None:
+    if value is not None and value >= minimum:
+        return
+    actual = "unknown" if value is None else f"{value:.2f} Hz"
+    reasons.append(f"{label} {actual} 低于 {minimum:.2f} Hz")
 
 
 def _append_health_failures(
@@ -311,13 +390,16 @@ def _append_health_failures(
     reasons: list[str],
 ) -> None:
     start = measurements.start_diagnostic
+    measurement_end = measurements.measurement_end_diagnostic
     end = measurements.end_diagnostic
-    if start is None or end is None:
+    if start is None or measurement_end is None or end is None:
         reasons.append("缺少测试起止 health diagnostics")
         return
-    if start.values.get("connection_generation") != end.values.get(
-        "connection_generation"
-    ):
+    generations = {
+        observation.values.get("connection_generation")
+        for observation in (start, measurement_end, end)
+    }
+    if len(generations) > 1:
         reasons.append("测试期间 health 连接代次发生变化")
     pending = end.integer("pending_commands")
     if pending is None:

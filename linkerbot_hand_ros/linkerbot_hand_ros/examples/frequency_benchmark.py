@@ -15,6 +15,7 @@ from diagnostic_msgs.msg import DiagnosticArray
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.parameter_client import AsyncParameterClient
+from rclpy.task import Future
 from rclpy.utilities import remove_ros_args
 
 from linkerbot_hand_msgs.msg import (
@@ -300,7 +301,7 @@ class FrequencyBenchmarkNode(Node):
         self._observation_subscriptions.clear()
 
 
-def _spin_until_future(node: Node, future: object, timeout_s: float) -> None:
+def _spin_until_future(node: Node, future: Future, timeout_s: float) -> None:
     deadline = time.monotonic() + timeout_s
     while rclpy.ok() and not future.done() and time.monotonic() < deadline:
         rclpy.spin_once(node, timeout_sec=0.05)
@@ -427,6 +428,10 @@ def _run_window(
             next_command_at += missed * period
 
     ended_at = min(time.monotonic(), deadline)
+    measurement_end_diagnostic = _latest_diagnostic_at_or_before(
+        node.diagnostic_observations,
+        ended_at,
+    )
     drain_deadline = time.monotonic() + parsed.drain_time
     while rclpy.ok() and time.monotonic() < drain_deadline:
         rclpy.spin_once(
@@ -457,6 +462,7 @@ def _run_window(
             state_events=state_events,
             command_events=command_events,
             start_diagnostic=start_diagnostic,
+            measurement_end_diagnostic=measurement_end_diagnostic,
             end_diagnostic=node.latest_diagnostic,
         ),
         minimum_ratio=parsed.minimum_ratio,
@@ -469,14 +475,6 @@ def _log_result(
     repetition: int,
 ) -> None:
     status = "PASS" if result.passed else "FAIL"
-    angle_sample = (
-        "N/A" if result.angle_sample_hz is None else f"{result.angle_sample_hz:.2f}Hz"
-    )
-    tactile_sample = (
-        "N/A"
-        if result.tactile_sample_hz is None
-        else f"{result.tactile_sample_hz:.2f}Hz"
-    )
     p95 = (
         "N/A"
         if result.command_interval_p95_ms is None
@@ -490,7 +488,12 @@ def _log_result(
         f"accepted={result.command_accepted_hz:.2f}Hz, "
         f"dispatch={result.command_dispatch_hz:.2f}Hz, "
         f"terminal={result.command_terminal_hz:.2f}Hz, "
-        f"angle_sample={angle_sample}, tactile_sample={tactile_sample}, "
+        f"angle_read={_format_rate(result.angle_read_completion_hz)}, "
+        f"angle_cache={_format_rate(result.angle_cache_update_hz)}, "
+        f"angle_ros={_format_rate(result.angle_ros_publish_hz)}, "
+        f"tactile_read={_format_rate(result.tactile_read_completion_hz)}, "
+        f"tactile_cache={_format_rate(result.tactile_cache_update_hz)}, "
+        f"tactile_ros={_format_rate(result.tactile_ros_publish_hz)}, "
         f"command_p95={p95}, failed={result.failed_commands}, "
         f"superseded={result.superseded_commands}"
     )
@@ -509,6 +512,24 @@ def _format_latency(stats: LatencyStats) -> str:
     if stats.p50_ms is None or stats.p95_ms is None or stats.p99_ms is None:
         return "N/A"
     return f"{stats.p50_ms:.2f}/{stats.p95_ms:.2f}/{stats.p99_ms:.2f}"
+
+
+def _format_rate(value: float | None) -> str:
+    return "N/A" if value is None else f"{value:.2f}Hz"
+
+
+def _latest_diagnostic_at_or_before(
+    observations: list[DiagnosticObservation],
+    observed_at: float,
+) -> DiagnosticObservation | None:
+    return next(
+        (
+            observation
+            for observation in reversed(observations)
+            if observation.observed_at <= observed_at
+        ),
+        None,
+    )
 
 
 def _run(parsed: argparse.Namespace, node: FrequencyBenchmarkNode) -> bool:
