@@ -10,6 +10,7 @@ from typing import Any
 
 from diagnostic_msgs.msg import DiagnosticArray
 from linkerbot_hand import DeviceCapabilities, HandDevice, LifecycleError
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.lifecycle import LifecycleNode
 
 from .command_interface import CommandInterface
@@ -39,6 +40,9 @@ class DriverInterfaces:
         self._is_active = is_active
         self._error_text = error_text
         self._metrics = DriverMetrics()
+        self._state_callback_group = MutuallyExclusiveCallbackGroup()
+        self._status_callback_group = MutuallyExclusiveCallbackGroup()
+        self._diagnostic_callback_group = MutuallyExclusiveCallbackGroup()
         self.snapshot: SnapshotPublisher | None = None
         self.commands: CommandInterface | None = None
         self.management: ManagementInterface | None = None
@@ -222,13 +226,19 @@ class DriverInterfaces:
         self.state_timer = self._node.create_timer(
             self._timer_period(self._configuration.publish_rate_hz),
             self.publish_cached_state,
+            callback_group=self._state_callback_group,
         )
         self.state_timer.cancel()
-        self.status_timer = self._node.create_timer(0.01, self.publish_command_status)
+        self.status_timer = self._node.create_timer(
+            0.01,
+            self.publish_command_status,
+            callback_group=self._status_callback_group,
+        )
         self.status_timer.cancel()
         self.diagnostic_timer = self._node.create_timer(
             self._timer_period(self._configuration.diagnostic_rate_hz),
             self.publish_diagnostics,
+            callback_group=self._diagnostic_callback_group,
         )
         if self._configuration.diagnostic_rate_hz == 0:
             self.diagnostic_timer.cancel()
