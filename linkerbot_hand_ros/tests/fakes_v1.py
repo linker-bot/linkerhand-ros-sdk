@@ -170,11 +170,17 @@ class FakeRuntime:
         handle = CommandHandle(
             self._next_command_id,
             _FAMILIES[semantic],
-            ack_support=AckSupport.UNSUPPORTED,
+            ack_support=(
+                self.capabilities.command(semantic).ack_support
+                if self.capabilities.command(semantic) is not None
+                else AckSupport.UNSUPPORTED
+            ),
             accepted_at=time.monotonic(),
         )
         self._next_command_id += 1
         handle._mark_dispatched(timestamp=time.monotonic(), sent_frames=1)
+        if handle.ack_support is AckSupport.SUPPORTED:
+            handle._mark_acknowledged(timestamp=time.monotonic())
         return handle
 
     def read(self, semantic: TelemetrySemantic, _timeout: float) -> object:
@@ -194,11 +200,17 @@ class FakeRuntime:
         handle = CommandHandle(
             self._next_command_id,
             CommandFamily.DISCRETE_OPERATION,
-            ack_support=AckSupport.UNSUPPORTED,
+            ack_support=(
+                AckSupport.SUPPORTED
+                if operation in self.capabilities.operations.acknowledged_operations
+                else AckSupport.UNSUPPORTED
+            ),
             accepted_at=time.monotonic(),
         )
         self._next_command_id += 1
         handle._mark_dispatched(timestamp=time.monotonic(), sent_frames=1)
+        if handle.ack_support is AckSupport.SUPPORTED:
+            handle._mark_acknowledged(timestamp=time.monotonic())
         return handle
 
     def recover(self, _timeout: float) -> None:

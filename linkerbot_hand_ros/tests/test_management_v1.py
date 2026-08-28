@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 import rclpy
@@ -79,19 +80,66 @@ def test_discrete_service_returns_at_sdk_acceptance(active_node):
     assert builder.latest_runtime.operations == ["clear_faults"]
 
 
-def test_stall_write_uses_protocol_integer_values_without_waiting():
+def test_o6_save_parameters_service_tracks_acknowledged_operation(monkeypatch):
     rclpy.init()
     builder = DeviceBuilder()
     node = LinkerbotHandNode(device_factory=builder)
     try:
         result = node.set_parameters_atomically(
-            [Parameter("model", value="o30i"), Parameter("side", value="right")]
+            [Parameter("model", value="o6"), Parameter("side", value="right")]
+        )
+        assert result.successful
+        node.trigger_configure()
+        node.trigger_activate()
+
+        response = node._interfaces.management._submit_discrete(
+            DiscreteOperation.SAVE_PARAMETERS,
+            SubmitCommand.Request(),
+            SubmitCommand.Response(),
+        )
+        messages = []
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                node._interfaces.commands,
+                "_status_publisher",
+                SimpleNamespace(publish=messages.append),
+            )
+            node._publish_command_status()
+
+        assert response.accepted
+        assert builder.latest_runtime.operations == ["save_parameters"]
+        assert len(messages) == 1
+        assert messages[0].stage == messages[0].STAGE_ACKNOWLEDGED
+        assert messages[0].ack_support == messages[0].ACK_SUPPORTED
+    finally:
+        node.destroy_node()
+        rclpy.try_shutdown()
+
+
+@pytest.mark.parametrize(
+    "name, semantic",
+    [
+        ("stall_thresholds", CommandSemantic.STALL_THRESHOLDS),
+        ("stall_detection_times", CommandSemantic.STALL_DETECTION_TIMES),
+        ("stall_hold_currents", CommandSemantic.STALL_HOLD_CURRENTS),
+    ],
+)
+def test_o6_stall_write_uses_latest_protocol_semantics_without_waiting(
+    name,
+    semantic,
+):
+    rclpy.init()
+    builder = DeviceBuilder()
+    node = LinkerbotHandNode(device_factory=builder)
+    try:
+        result = node.set_parameters_atomically(
+            [Parameter("model", value="o6"), Parameter("side", value="right")]
         )
         assert result.successful
         node.trigger_configure()
         node.trigger_activate()
         runtime = builder.latest_runtime
-        command = runtime.capabilities.command(CommandSemantic.STALL_THRESHOLDS)
+        command = runtime.capabilities.command(semantic)
         assert command is not None
         values = [
             float(command.range_for(index).minimum)
@@ -100,7 +148,7 @@ def test_stall_write_uses_protocol_integer_values_without_waiting():
 
         started = time.monotonic()
         response = node._interfaces.management._set_raw_values(
-            "stall_thresholds",
+            name,
             SetRawValues.Request(user_sequence=8, raw=values),
             SetRawValues.Response(),
         )
@@ -108,7 +156,7 @@ def test_stall_write_uses_protocol_integer_values_without_waiting():
         assert time.monotonic() - started < 0.05
         assert response.accepted
         assert runtime.submissions[-1] == (
-            CommandSemantic.STALL_THRESHOLDS,
+            semantic,
             tuple(int(value) for value in values),
         )
     finally:

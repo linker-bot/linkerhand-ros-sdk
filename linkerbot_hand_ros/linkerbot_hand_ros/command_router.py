@@ -26,6 +26,7 @@ class DiscreteOperation(str, Enum):
     ENABLE = "enable"
     DISABLE = "disable"
     CALIBRATE = "calibrate"
+    SAVE_PARAMETERS = "save_parameters"
 
 
 @dataclass(frozen=True, slots=True)
