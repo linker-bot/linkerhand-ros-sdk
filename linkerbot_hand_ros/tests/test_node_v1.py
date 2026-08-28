@@ -16,6 +16,7 @@ from linkerbot_hand import (
     DataOrigin,
     LifecycleError,
     SampleMeta,
+    TelemetrySemantic,
     UnsupportedFirmwareError,
 )
 from linkerbot_hand_ros.node import LinkerbotHandNode
@@ -99,6 +100,7 @@ def test_control_and_observation_entities_use_isolated_callback_groups(node_rig)
     management = interfaces.management
     observation_groups = (
         interfaces._state_callback_group,
+        interfaces._capability_callback_group,
         interfaces._status_callback_group,
         interfaces._diagnostic_callback_group,
         management._callback_group,
@@ -108,6 +110,10 @@ def test_control_and_observation_entities_use_isolated_callback_groups(node_rig)
     groups = (commands._callback_group, *observation_groups)
     assert len({id(group) for group in groups}) == len(groups)
     assert interfaces.state_timer.callback_group is interfaces._state_callback_group
+    assert (
+        interfaces.capability_timer.callback_group
+        is interfaces._capability_callback_group
+    )
     assert interfaces.status_timer.callback_group is interfaces._status_callback_group
     assert (
         interfaces.diagnostic_timer.callback_group
@@ -398,6 +404,39 @@ def test_diagnostics_reads_health_without_snapshot_or_capability_access(node_rig
     assert runtime.health_get_count == before[0] + 1
     assert runtime.snapshot_get_count == before[1]
     assert runtime.capabilities_get_count == before[2]
+
+
+def test_runtime_firmware_degradation_republishes_capability_without_state_io(
+    node_rig,
+):
+    node, builder = node_rig
+    node.trigger_configure()
+    node.trigger_activate()
+    runtime = builder.latest_runtime
+    publisher = FakePublisher()
+    snapshot = node._interfaces.snapshot
+    original = snapshot._capabilities_publisher
+    snapshot._capabilities_publisher = publisher
+    runtime.capabilities = replace(
+        runtime.capabilities,
+        firmware_unsupported_telemetry=(TelemetrySemantic.FORCE,),
+    )
+    before = (
+        runtime.snapshot_get_count,
+        runtime.health_get_count,
+        runtime.capabilities_get_count,
+    )
+    try:
+        node._interfaces.publish_runtime_capabilities()
+        node._interfaces.publish_runtime_capabilities()
+    finally:
+        snapshot._capabilities_publisher = original
+
+    assert len(publisher.messages) == 1
+    assert publisher.messages[0].firmware_unsupported_telemetry == ["force"]
+    assert runtime.snapshot_get_count == before[0]
+    assert runtime.health_get_count == before[1]
+    assert runtime.capabilities_get_count == before[2] + 2
 
 
 def test_parameter_update_contains_runtime_rollback_failures(node_rig, monkeypatch):

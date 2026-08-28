@@ -41,6 +41,7 @@ class DriverInterfaces:
         self._error_text = error_text
         self._metrics = DriverMetrics()
         self._state_callback_group = MutuallyExclusiveCallbackGroup()
+        self._capability_callback_group = MutuallyExclusiveCallbackGroup()
         self._status_callback_group = MutuallyExclusiveCallbackGroup()
         self._diagnostic_callback_group = MutuallyExclusiveCallbackGroup()
         self.snapshot: SnapshotPublisher | None = None
@@ -48,6 +49,7 @@ class DriverInterfaces:
         self.management: ManagementInterface | None = None
         self.diagnostic_publisher: Any | None = None
         self.state_timer: Any | None = None
+        self.capability_timer: Any | None = None
         self.status_timer: Any | None = None
         self.diagnostic_timer: Any | None = None
         try:
@@ -68,8 +70,8 @@ class DriverInterfaces:
         self._require_management().activate()
         self._require_commands().activate(capabilities)
         self._require_snapshot().reset()
-        self.apply_rates(self._configuration)
         self._require_snapshot().publish_capabilities(capabilities)
+        self.apply_rates(self._configuration)
         self.publish_cached_state()
 
     def deactivate(self) -> None:
@@ -108,6 +110,11 @@ class DriverInterfaces:
             configuration.diagnostic_rate_hz,
             enabled=True,
         )
+        self._set_timer_rate(
+            self.capability_timer,
+            10.0,
+            enabled=self._is_active(),
+        )
         self._set_timer_rate(self.status_timer, 100.0, enabled=self._is_active())
 
     def publish_capabilities(self, capabilities: DeviceCapabilities) -> None:
@@ -120,9 +127,10 @@ class DriverInterfaces:
             return
         try:
             device = self._device()
+            capabilities = device.get_capabilities()
             publications = self._require_snapshot().publish_snapshot(
                 device.get_snapshot(),
-                device.get_capabilities(),
+                capabilities,
                 ros_now_ns=self._node.get_clock().now().nanoseconds,
             )
             if publications:
@@ -131,6 +139,21 @@ class DriverInterfaces:
             self._metrics.record_state_error(error)
             self._node.get_logger().error(
                 f"cached state publication failed: {self._error_text(error)}",
+                throttle_duration_sec=5.0,
+            )
+
+    def publish_runtime_capabilities(self) -> None:
+        """Republish zero-I/O SDK capability changes such as firmware fallback."""
+
+        if not self._is_active():
+            return
+        try:
+            self._require_snapshot().publish_capabilities_if_changed(
+                self._device().get_capabilities()
+            )
+        except Exception as error:
+            self._node.get_logger().error(
+                f"capability publication failed: {self._error_text(error)}",
                 throttle_duration_sec=5.0,
             )
 
@@ -168,7 +191,7 @@ class DriverInterfaces:
             )
 
     def cancel_active_timers(self) -> None:
-        for timer in (self.state_timer, self.status_timer):
+        for timer in (self.state_timer, self.capability_timer, self.status_timer):
             if timer is not None:
                 timer.cancel()
 
@@ -176,7 +199,12 @@ class DriverInterfaces:
         """Destroy all entities, attempting every owner even after one failure."""
 
         errors: list[BaseException] = []
-        for timer_name in ("state_timer", "status_timer", "diagnostic_timer"):
+        for timer_name in (
+            "state_timer",
+            "capability_timer",
+            "status_timer",
+            "diagnostic_timer",
+        ):
             timer = getattr(self, timer_name)
             if timer is not None:
                 self._node.destroy_timer(timer)
@@ -229,6 +257,12 @@ class DriverInterfaces:
             callback_group=self._state_callback_group,
         )
         self.state_timer.cancel()
+        self.capability_timer = self._node.create_timer(
+            0.1,
+            self.publish_runtime_capabilities,
+            callback_group=self._capability_callback_group,
+        )
+        self.capability_timer.cancel()
         self.status_timer = self._node.create_timer(
             0.01,
             self.publish_command_status,

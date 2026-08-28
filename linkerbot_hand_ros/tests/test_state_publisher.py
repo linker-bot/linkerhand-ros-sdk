@@ -1,7 +1,13 @@
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
-from linkerbot_hand import DataOrigin, SampleMeta
+from linkerbot_hand import (
+    DataOrigin,
+    SampleMeta,
+    TelemetrySemantic,
+    get_declared_capabilities,
+)
 from linkerbot_hand_ros.state_publisher import SnapshotPublisher
 
 from linkerbot_hand_ros import state_publisher
@@ -100,3 +106,35 @@ def test_failed_publication_does_not_suppress_retry(monkeypatch):
     assert publisher._published == {}
     assert publisher.publish_snapshot(snapshot, capabilities, ros_now_ns=1) == 1
     assert publisher.publish_snapshot(snapshot, capabilities, ros_now_ns=1) == 0
+
+
+class RecordingCapabilityPublisher:
+    def __init__(self) -> None:
+        self.messages: list[object] = []
+
+    def publish(self, message: object) -> None:
+        self.messages.append(message)
+
+
+def test_capability_publisher_emits_runtime_firmware_degradation_once():
+    capabilities = get_declared_capabilities("o6", side="right")
+    verified = replace(
+        capabilities,
+        identity=replace(capabilities.identity, verified=True, firmware="1.1.2"),
+    )
+    degraded = replace(
+        verified,
+        firmware_unsupported_telemetry=(TelemetrySemantic.FORCE,),
+    )
+    publisher = SnapshotPublisher.__new__(SnapshotPublisher)
+    publisher._capabilities_publisher = RecordingCapabilityPublisher()
+    publisher._published_capabilities = None
+
+    assert publisher.publish_capabilities_if_changed(verified)
+    assert not publisher.publish_capabilities_if_changed(verified)
+    assert publisher.publish_capabilities_if_changed(degraded)
+    assert not publisher.publish_capabilities_if_changed(degraded)
+    assert len(publisher._capabilities_publisher.messages) == 2
+    assert publisher._capabilities_publisher.messages[
+        -1
+    ].firmware_unsupported_telemetry == ["force"]

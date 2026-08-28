@@ -116,11 +116,24 @@ class SnapshotPublisher:
         self._tactile_publisher = tactile_publisher
         self._stall_publisher = stall_publisher
         self._published: dict[str, object] = {}
+        self._published_capabilities: DeviceCapabilities | None = None
 
     def publish_capabilities(self, capabilities: DeviceCapabilities) -> None:
         """Publish declared or verified capability metadata."""
 
         self._capabilities_publisher.publish(capabilities_to_message(capabilities))
+        self._published_capabilities = capabilities
+
+    def publish_capabilities_if_changed(
+        self,
+        capabilities: DeviceCapabilities,
+    ) -> bool:
+        """Publish runtime capability changes without producing device I/O."""
+
+        if capabilities == self._published_capabilities:
+            return False
+        self.publish_capabilities(capabilities)
+        return True
 
     def publish_snapshot(
         self,
@@ -230,6 +243,7 @@ class SnapshotPublisher:
         self._node.destroy_publisher(self._device_info_publisher)
         self._telemetry_publishers.clear()
         self._published.clear()
+        self._published_capabilities = None
 
     def _is_changed(self, key: str, metadata: SampleMeta) -> bool:
         return self._is_key_changed(key, _metadata_signature(metadata))
