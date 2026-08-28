@@ -7,6 +7,7 @@
   <license>Apache-2.0</license>
 
   <exec_depend>rclpy</exec_depend>
+  <exec_depend>linkerbot_hand_msgs</exec_depend>
   <exec_depend>rcl_interfaces</exec_depend>
   <exec_depend>diagnostic_msgs</exec_depend>
   <exec_depend>lifecycle_msgs</exec_depend>

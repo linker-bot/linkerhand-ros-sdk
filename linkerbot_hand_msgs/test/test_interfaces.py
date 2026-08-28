@@ -4,6 +4,7 @@ from linkerbot_hand_msgs.msg import (
     HandJointState,
     HandTelemetry,
     SampleMetadata,
+    TactileMatrix,
 )
 from linkerbot_hand_msgs.srv import Recover, SetRawValues, SubmitCommand
 
@@ -58,6 +59,20 @@ def test_telemetry_declares_configuration_and_measurement_origin():
     assert configured.semantic == "configured_speeds"
     assert configured.device_measured is False
     assert configured.device_queried is False
+
+
+def test_tactile_matrix_preserves_optional_sensor_online_state():
+    matrix = TactileMatrix(
+        finger_name="thumb",
+        rows=1,
+        columns=2,
+        raw=[1.0, 2.0],
+        has_online=True,
+        online=False,
+    )
+
+    assert matrix.has_online is True
+    assert matrix.online is False
 
 
 def test_command_status_does_not_conflate_dispatch_with_acknowledgement():
