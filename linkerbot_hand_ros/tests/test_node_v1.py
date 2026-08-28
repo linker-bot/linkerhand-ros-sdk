@@ -39,6 +39,31 @@ class FailOncePublisher(FakePublisher):
             raise RuntimeError("status publication failed")
 
 
+class LockProbePublisher(FakePublisher):
+    def __init__(self, lock) -> None:
+        super().__init__()
+        self._lock = lock
+        self.lock_was_available = False
+
+    def publish(self, message: object) -> None:
+        self.lock_was_available = self._lock.acquire(blocking=False)
+        if self.lock_was_available:
+            self._lock.release()
+        super().publish(message)
+
+
+class BlockingPublisher(FakePublisher):
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def publish(self, message: object) -> None:
+        self.started.set()
+        assert self.release.wait(timeout=1.0)
+        super().publish(message)
+
+
 @pytest.fixture
 def node_rig():
     rclpy.init()
@@ -61,6 +86,39 @@ def test_configure_constructs_no_runtime_io_or_worker_thread(node_rig):
     assert builder.runtime_factories[0].calls == 0
     assert not node._interfaces.management.worker_active
     assert {thread.ident for thread in threading.enumerate()} == threads_before
+
+
+def test_control_and_observation_entities_use_isolated_callback_groups(node_rig):
+    node, _builder = node_rig
+
+    assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+
+    interfaces = node._interfaces
+    commands = interfaces.commands
+    management = interfaces.management
+    observation_groups = (
+        interfaces._state_callback_group,
+        interfaces._status_callback_group,
+        interfaces._diagnostic_callback_group,
+        management._callback_group,
+    )
+    assert commands._callback_group is node.default_callback_group
+    assert all(group is not node.default_callback_group for group in observation_groups)
+    groups = (commands._callback_group, *observation_groups)
+    assert len({id(group) for group in groups}) == len(groups)
+    assert interfaces.state_timer.callback_group is interfaces._state_callback_group
+    assert interfaces.status_timer.callback_group is interfaces._status_callback_group
+    assert (
+        interfaces.diagnostic_timer.callback_group
+        is interfaces._diagnostic_callback_group
+    )
+
+    assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+    assert commands._subscriptions
+    assert all(
+        subscription.callback_group is commands._callback_group
+        for subscription in commands._subscriptions
+    )
 
 
 def test_lifecycle_opens_on_activate_and_closes_only_on_cleanup(node_rig):
@@ -179,10 +237,20 @@ def test_command_callback_routes_raw_angles_without_waiting(node_rig):
         representation=HandJointCommand.REPRESENTATION_RAW,
         values=raw_values,
     )
+    commands = node._interfaces.commands
+    original = commands._status_publisher
+    publisher = FakePublisher()
+    commands._status_publisher = publisher
 
-    started = time.monotonic()
-    node._interfaces.commands._handle_angles(message)
-    elapsed = time.monotonic() - started
+    try:
+        started = time.monotonic()
+        commands._handle_angles(message)
+        elapsed = time.monotonic() - started
+
+        assert not publisher.messages
+        node._publish_command_status()
+    finally:
+        commands._status_publisher = original
 
     assert elapsed < 0.05
     assert runtime.submissions[-1] == (
@@ -190,9 +258,9 @@ def test_command_callback_routes_raw_angles_without_waiting(node_rig):
         tuple(int(value) for value in raw_values),
     )
     assert runtime.read_count == 0
-    assert node._interfaces.commands.tracked_count == 1
-    node._publish_command_status()
-    assert node._interfaces.commands.tracked_count == 0
+    assert len(publisher.messages) == 1
+    assert publisher.messages[0].stage == publisher.messages[0].STAGE_DISPATCHED
+    assert commands.tracked_count == 0
 
 
 def test_status_publication_failure_does_not_reclassify_accepted_command(node_rig):
@@ -219,12 +287,82 @@ def test_status_publication_failure_does_not_reclassify_accepted_command(node_ri
         assert after.command_errors == before.command_errors
         assert runtime.submissions[-1][0] is CommandSemantic.ANGLES
         assert commands.tracked_count == 1
+        assert not publisher.messages
 
+        node._publish_command_status()
+        assert commands.tracked_count == 1
         node._publish_command_status()
         assert commands.tracked_count == 0
         assert len(publisher.messages) == 2
     finally:
         commands._status_publisher = original
+
+
+def test_status_publication_does_not_hold_command_tracking_lock(node_rig):
+    node, _builder = node_rig
+    node.trigger_configure()
+    node.trigger_activate()
+    commands = node._interfaces.commands
+    original = commands._status_publisher
+    publisher = LockProbePublisher(commands._lock)
+    commands._status_publisher = publisher
+    try:
+        commands._handle_angles(
+            HandJointCommand(
+                user_sequence=19,
+                representation=HandJointCommand.REPRESENTATION_PERCENT,
+                values=[100.0] * 6,
+            )
+        )
+
+        node._publish_command_status()
+    finally:
+        commands._status_publisher = original
+
+    assert publisher.lock_was_available
+    assert len(publisher.messages) == 1
+
+
+def test_command_deactivate_waits_for_inflight_status_publication(node_rig):
+    node, _builder = node_rig
+    node.trigger_configure()
+    node.trigger_activate()
+    commands = node._interfaces.commands
+    original = commands._status_publisher
+    publisher = BlockingPublisher()
+    commands._status_publisher = publisher
+    commands._handle_angles(
+        HandJointCommand(
+            user_sequence=20,
+            representation=HandJointCommand.REPRESENTATION_PERCENT,
+            values=[100.0] * 6,
+        )
+    )
+    publishing = threading.Thread(target=commands.publish_updates)
+    deactivated = threading.Event()
+    deactivating = threading.Thread(
+        target=lambda: (commands.deactivate(), deactivated.set())
+    )
+    try:
+        publishing.start()
+        assert publisher.started.wait(timeout=1.0)
+        deactivating.start()
+        assert not deactivated.wait(timeout=0.05)
+
+        publisher.release.set()
+        publishing.join(timeout=1.0)
+        deactivating.join(timeout=1.0)
+    finally:
+        publisher.release.set()
+        publishing.join(timeout=1.0)
+        deactivating.join(timeout=1.0)
+        commands._status_publisher = original
+
+    assert not publishing.is_alive()
+    assert not deactivating.is_alive()
+    assert deactivated.is_set()
+    assert commands.tracked_count == 0
+    assert commands.publish_updates() == 0
 
 
 def test_diagnostics_reads_health_without_snapshot_or_capability_access(node_rig):

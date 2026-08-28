@@ -70,6 +70,9 @@ class CommandInterface:
         self._on_accepted = on_accepted
         self._on_error = on_error
         self._tracking_capacity = tracking_capacity
+        # Commands share the lifecycle control group so admission and deactivation
+        # cannot pass each other while observation callbacks run independently.
+        self._callback_group = node.default_callback_group
         self._status_publisher = node.create_publisher(
             HandCommandStatus,
             "~/command/status",
@@ -78,6 +81,8 @@ class CommandInterface:
         self._subscriptions: list[Any] = []
         self._tracked: OrderedDict[int, _TrackedCommand] = OrderedDict()
         self._lock = threading.RLock()
+        self._publication_lock = threading.Lock()
+        self._enabled = False
 
     def activate(self, capabilities: DeviceCapabilities) -> None:
         """Create subscriptions for command families supported by the device."""
@@ -93,6 +98,7 @@ class CommandInterface:
                         "~/command/angles",
                         self._handle_angles,
                         COMMAND_QOS,
+                        callback_group=self._callback_group,
                     )
                 )
             for semantic in _RAW_COMMANDS:
@@ -106,6 +112,7 @@ class CommandInterface:
                             value, message
                         ),
                         COMMAND_QOS,
+                        callback_group=self._callback_group,
                     )
                 )
         except Exception:
@@ -113,45 +120,75 @@ class CommandInterface:
                 self._node.destroy_subscription(subscription)
             raise
         self._subscriptions = subscriptions
+        with self._lock:
+            self._enabled = True
 
     def deactivate(self) -> None:
         """Remove command subscriptions so inactive nodes cannot accept targets."""
 
+        with self._lock:
+            self._enabled = False
+            self._tracked.clear()
         for subscription in self._subscriptions:
             self._node.destroy_subscription(subscription)
         self._subscriptions.clear()
+        with self._publication_lock:
+            pass
 
     def track(self, routed: RoutedCommand) -> None:
-        """Track and immediately publish the SDK stage visible at acceptance."""
+        """Register an accepted handle without publishing from the command callback."""
 
         with self._lock:
+            if not self._enabled:
+                return
             handle = routed.handle
             tracked = _TrackedCommand(routed.user_sequence, handle)
-            self._make_room()
+            dropped_command_id = self._make_room()
             self._tracked[handle.command_id] = tracked
-            try:
-                self._publish(tracked)
-            except Exception as error:
-                self._report_status_error(error)
+        if dropped_command_id is not None:
+            self._report_status_error(
+                RuntimeError(
+                    "command status tracker capacity exceeded; "
+                    f"dropped {dropped_command_id}"
+                )
+            )
 
     def publish_updates(self) -> int:
         """Publish changed handle histories without waiting on any handle."""
 
         with self._lock:
-            publications = 0
-            completed: list[int] = []
-            for command_id, tracked in tuple(self._tracked.items()):
-                transition_count = len(tracked.handle.history)
-                if transition_count != tracked.published_transition_count:
-                    self._publish(tracked, transition_count=transition_count)
-                    publications += 1
-                if tracked.handle.done and (
-                    len(tracked.handle.history) == tracked.published_transition_count
-                ):
-                    completed.append(command_id)
-            for command_id in completed:
-                self._tracked.pop(command_id, None)
-            return publications
+            if not self._enabled:
+                return 0
+            candidates = tuple(self._tracked.items())
+
+        publications = 0
+        for command_id, tracked in candidates:
+            transition_count = len(tracked.handle.history)
+            if transition_count == tracked.published_transition_count:
+                self._remove_if_complete(command_id, tracked)
+                continue
+            try:
+                with self._publication_lock:
+                    with self._lock:
+                        if (
+                            not self._enabled
+                            or self._tracked.get(command_id) is not tracked
+                        ):
+                            continue
+                    published_count = self._publish(tracked)
+            except Exception as error:
+                self._report_status_error(error)
+                continue
+            publications += 1
+            with self._lock:
+                if self._tracked.get(command_id) is not tracked:
+                    continue
+                tracked.published_transition_count = max(
+                    tracked.published_transition_count,
+                    published_count,
+                )
+            self._remove_if_complete(command_id, tracked)
+        return publications
 
     def destroy(self) -> None:
         """Destroy subscriptions and the command status publisher."""
@@ -190,38 +227,41 @@ class CommandInterface:
     def _publish(
         self,
         tracked: _TrackedCommand,
-        *,
-        transition_count: int | None = None,
-    ) -> None:
-        count = (
-            len(tracked.handle.history)
-            if transition_count is None
-            else transition_count
-        )
+    ) -> int:
         now = self._node.get_clock().now().nanoseconds
-        self._status_publisher.publish(
-            command_status_to_message(
-                tracked.handle,
-                user_sequence=tracked.user_sequence,
-                monotonic_now=time.monotonic(),
-                ros_now_ns=now,
-            )
+        message = command_status_to_message(
+            tracked.handle,
+            user_sequence=tracked.user_sequence,
+            monotonic_now=time.monotonic(),
+            ros_now_ns=now,
         )
-        tracked.published_transition_count = count
+        self._status_publisher.publish(message)
+        return len(message.transitions)
 
-    def _make_room(self) -> None:
+    def _make_room(self) -> int | None:
         if len(self._tracked) < self._tracking_capacity:
-            return
+            return None
         for command_id, tracked in tuple(self._tracked.items()):
             if tracked.handle.done:
                 self._tracked.pop(command_id)
-                return
+                return command_id
         command_id, _tracked = self._tracked.popitem(last=False)
-        self._report_status_error(
-            RuntimeError(
-                f"command status tracker capacity exceeded; dropped {command_id}"
-            )
-        )
+        return command_id
+
+    def _remove_if_complete(
+        self,
+        command_id: int,
+        tracked: _TrackedCommand,
+    ) -> None:
+        if not tracked.handle.done:
+            return
+        transition_count = len(tracked.handle.history)
+        with self._lock:
+            if (
+                self._tracked.get(command_id) is tracked
+                and transition_count == tracked.published_transition_count
+            ):
+                self._tracked.pop(command_id)
 
     def _report_status_error(self, error: BaseException) -> None:
         self._node.get_logger().error(
