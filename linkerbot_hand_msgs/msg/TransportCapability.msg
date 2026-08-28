@@ -1,0 +1,6 @@
+string kind
+bool has_nominal_bitrate
+uint32 nominal_bitrate
+bool has_data_bitrate
+uint32 data_bitrate
+string addressing_note

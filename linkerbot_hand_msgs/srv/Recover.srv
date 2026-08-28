@@ -1,0 +1,5 @@
+float64 timeout_s
+---
+bool success
+string error_code
+string message

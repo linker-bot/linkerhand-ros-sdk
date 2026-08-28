@@ -1,0 +1,9 @@
+bool supported
+string[] channel_names
+StallFieldCapability detection_time
+StallFieldCapability threshold
+StallFieldCapability hold_current
+string physical_semantics_confidence
+bool safety_range_verified
+bool read_supported
+bool write_supported

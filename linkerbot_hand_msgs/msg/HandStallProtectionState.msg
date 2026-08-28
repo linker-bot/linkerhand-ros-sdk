@@ -1,0 +1,4 @@
+string[] channel_names
+HandTelemetry detection_times
+HandTelemetry thresholds
+HandTelemetry hold_currents

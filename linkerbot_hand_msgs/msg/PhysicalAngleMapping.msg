@@ -1,0 +1,6 @@
+bool supported
+float64 raw_at_first
+float64 raw_at_second
+float64 rad_at_first
+float64 rad_at_second
+string confidence

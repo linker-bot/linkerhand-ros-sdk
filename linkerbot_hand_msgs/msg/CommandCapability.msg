@@ -1,0 +1,11 @@
+string semantic
+string[] channel_names
+NumericRange[] raw_ranges
+string raw_encoding
+bool has_raw_unit
+string raw_unit
+bool has_raw_scale_note
+string raw_scale_note
+string unit_confidence
+string ack_support
+PercentMapping[] percent_mappings

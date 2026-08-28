@@ -1,0 +1,14 @@
+string model
+string side
+bool has_serial_number
+string serial_number
+VersionField pcb_version
+VersionField firmware_version
+VersionField mechanical_version
+bool has_product_code
+string product_code
+bool has_sensor_variant
+string sensor_variant
+uint8[] raw_identity
+string capability_revision
+SampleMetadata meta

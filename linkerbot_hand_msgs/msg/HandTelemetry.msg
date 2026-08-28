@@ -1,0 +1,9 @@
+string semantic
+string[] channel_names
+float64[] raw
+string raw_unit
+string raw_scale_note
+string unit_confidence
+bool device_measured
+bool device_queried
+SampleMetadata meta

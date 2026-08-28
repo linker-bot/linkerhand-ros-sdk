@@ -1,0 +1,16 @@
+string model
+string side
+bool verified
+bool has_firmware
+string firmware
+bool has_hardware_revision
+string hardware_revision
+bool has_mechanical_revision
+string mechanical_revision
+bool has_sensor_variant
+string sensor_variant
+bool has_serial_number
+string serial_number
+bool has_product_code
+string product_code
+string[] supported_fields

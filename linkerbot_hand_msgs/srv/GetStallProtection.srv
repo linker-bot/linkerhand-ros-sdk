@@ -1,0 +1,6 @@
+float64 timeout_s
+---
+bool success
+HandStallProtectionState state
+string error_code
+string message

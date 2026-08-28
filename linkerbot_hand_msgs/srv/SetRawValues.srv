@@ -1,0 +1,7 @@
+uint64 user_sequence
+float64[] raw
+---
+bool accepted
+uint64 command_id
+string error_code
+string message

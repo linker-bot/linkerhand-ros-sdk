@@ -1,0 +1,8 @@
+string revision
+IdentityCapability identity
+JointCapability[] joints
+CommandCapability[] commands
+TelemetryCapability[] telemetry
+StallProtectionCapability stall_protection
+TransportCapability transport
+OperationCapabilities operations

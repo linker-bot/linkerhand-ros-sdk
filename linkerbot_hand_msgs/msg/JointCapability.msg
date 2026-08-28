@@ -1,0 +1,7 @@
+uint32 index
+string name
+string motion_type
+NumericRange raw_angle_range
+PercentMapping percent_mapping
+PhysicalAngleMapping physical_angle_mapping
+string[] coupled_with
