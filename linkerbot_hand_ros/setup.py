@@ -9,7 +9,7 @@ LONG_DESCRIPTION = Path(__file__).with_name("README.md").read_text(encoding="utf
 
 setup(
     name=PACKAGE_NAME,
-    version="1.0.0",
+    version="0.99.0",
     packages=find_packages(exclude=("tests",)),
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{PACKAGE_NAME}"]),

@@ -220,15 +220,27 @@ def test_sdk_install_instructions_include_private_and_public_indexes() -> None:
 def test_python_and_ros_package_versions_match() -> None:
     setup_source = (PACKAGE_ROOT / "setup.py").read_text(encoding="utf-8")
     package_source = (PACKAGE_ROOT / "package.xml").read_text(encoding="utf-8")
+    messages_package_source = (
+        PACKAGE_ROOT.parent / "linkerbot_hand_msgs/package.xml"
+    ).read_text(encoding="utf-8")
     module_source = (PACKAGE_ROOT / "linkerbot_hand_ros/__init__.py").read_text(
         encoding="utf-8"
     )
     setup_version = re.search(r'version="([^"]+)"', setup_source)
     package_version = re.search(r"<version>([^<]+)</version>", package_source)
+    messages_package_version = re.search(
+        r"<version>([^<]+)</version>", messages_package_source
+    )
     module_version = re.search(r'__version__ = "([^"]+)"', module_source)
 
     assert setup_version is not None
     assert package_version is not None
+    assert messages_package_version is not None
     assert module_version is not None
-    assert setup_version.group(1) == package_version.group(1) == module_version.group(1)
-    assert setup_version.group(1) == "1.0.0"
+    assert (
+        setup_version.group(1)
+        == package_version.group(1)
+        == messages_package_version.group(1)
+        == module_version.group(1)
+    )
+    assert setup_version.group(1) == "0.99.0"
