@@ -30,7 +30,7 @@ def sample_metadata_to_message(
     if not isinstance(metadata, SampleMeta):
         raise ValidationError("metadata must be SampleMeta")
     _validate_ros_time(ros_now_ns)
-    age_s = 0.0 if metadata.age_s is None else metadata.age_s
+    age_s = 0.0 if metadata.age_s is None else float(metadata.age_s)
     collected_at = Time()
     if metadata.valid:
         collected_at = _time_from_nanoseconds(

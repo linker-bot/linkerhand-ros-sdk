@@ -98,7 +98,7 @@ def _range_to_message(
         maximum=float(value.maximum),
         integer_only=value.integer_only,
         has_step=value.step is not None,
-        step=0.0 if value.step is None else value.step,
+        step=0.0 if value.step is None else float(value.step),
         unit=unit,
     )
 
@@ -134,8 +134,8 @@ def _physical_to_message(
         supported=True,
         raw_at_first=float(value.raw_at_first),
         raw_at_second=float(value.raw_at_second),
-        rad_at_first=value.radians_at_first,
-        rad_at_second=value.radians_at_second,
+        rad_at_first=float(value.radians_at_first),
+        rad_at_second=float(value.radians_at_second),
         confidence=value.confidence.value,
     )
 
@@ -187,13 +187,13 @@ def _telemetry_to_message(
         raw_scale_note=value.raw_scale_note or "",
         unit_confidence=value.unit_confidence.value,
         read_mode=value.read_mode.value,
-        recommended_hz=value.recommended_hz,
+        recommended_hz=float(value.recommended_hz),
         has_verified_max_hz=value.verified_max_hz is not None,
         verified_max_hz=(
-            0.0 if value.verified_max_hz is None else value.verified_max_hz
+            0.0 if value.verified_max_hz is None else float(value.verified_max_hz)
         ),
-        stale_after_s=value.stale_after_s,
-        estimated_transaction_s=value.estimated_transaction_s,
+        stale_after_s=float(value.stale_after_s),
+        estimated_transaction_s=float(value.estimated_transaction_s),
         device_measured=value.device_measured,
         device_queried=value.device_queried,
     )

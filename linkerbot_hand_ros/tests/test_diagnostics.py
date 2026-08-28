@@ -1,86 +1,99 @@
 from dataclasses import replace
 
 from diagnostic_msgs.msg import DiagnosticStatus
-from linkerbot_hand import HandDevice, HandSide, PollingPlan, SensorType
-from linkerbot_hand.models import get_model_capabilities
-from linkerbot_hand.testing import FakeBackendFactory, wait_until
-
+from linkerbot_hand import (
+    ChannelMetrics,
+    ConnectionState,
+    DataAge,
+    ErrorInfo,
+    HealthStatus,
+    LifecycleState,
+    TransportError,
+)
 from linkerbot_hand_ros.diagnostics import build_diagnostic_status
-from linkerbot_hand_ros.metrics import DriverMetrics
 
 
-def test_repeated_sdk_errors_take_priority_over_stale_cache_warning():
-    capabilities = get_model_capabilities("L6", side=HandSide.LEFT)
-    backend_factory = FakeBackendFactory(capabilities)
-    backend_factory.state.set_reading(SensorType.ANGLES, (100.0,) * 6)
-    device = HandDevice(capabilities, backend_factory)
-    device.open()
-    try:
-        device.start_polling(PollingPlan(angles_hz=60.0))
-        wait_until(lambda: len(backend_factory.state.poll_log) >= 1)
-        device.stop_polling()
-        snapshot = device.get_snapshot()
-        stale_snapshot = replace(
-            snapshot,
-            samples=tuple(
-                replace(sample, stale=True)
-                if sample.sensor is SensorType.ANGLES
-                else sample
-                for sample in snapshot.samples
+def _operational_health() -> HealthStatus:
+    return replace(
+        HealthStatus.initial(),
+        lifecycle_state=LifecycleState.OPEN,
+        connection_state=ConnectionState.CONNECTED,
+        connected=True,
+        polling_active=True,
+        connection_generation=3,
+        identity_verified=True,
+        channels=(
+            ChannelMetrics(
+                channel="angles",
+                requested_hz=100.0,
+                achieved_hz=99.5,
+                missed_deadlines=0,
+                timeouts=0,
+                data_age=DataAge(
+                    channel="angles",
+                    age_s=0.002,
+                    valid=True,
+                    stale=False,
+                    sequence=17,
+                    connection_generation=3,
+                ),
             ),
-        )
-        health = replace(device.get_health(), consecutive_errors=3)
-
-        status = build_diagnostic_status(
-            node_name="/linkerbot_hand",
-            active=True,
-            capabilities=device.get_capabilities(),
-            health=health,
-            snapshot=stale_snapshot,
-            metrics=DriverMetrics().snapshot(),
-            latest_handles={},
-        )
-
-        assert status.level == DiagnosticStatus.ERROR
-        assert status.message == "repeated SDK I/O errors"
-    finally:
-        device.close()
+        ),
+    )
 
 
-def test_ros_boundary_failure_is_reported_as_warning():
-    capabilities = get_model_capabilities("L6", side=HandSide.LEFT)
-    backend_factory = FakeBackendFactory(capabilities)
-    backend_factory.state.set_reading(SensorType.ANGLES, (100.0,) * 6)
-    device = HandDevice(capabilities, backend_factory)
-    device.open()
-    try:
-        device.start_polling(PollingPlan(angles_hz=60.0))
-        wait_until(lambda: len(backend_factory.state.poll_log) >= 1)
-        device.stop_polling()
-        metrics = DriverMetrics()
-        metrics.record_command_error(ValueError("invalid target"))
-        snapshot = device.get_snapshot()
+def test_operational_health_maps_to_ok_without_other_sdk_state() -> None:
+    status = build_diagnostic_status(
+        node_name="/linkerbot_hand",
+        model="L6",
+        active=True,
+        health=_operational_health(),
+    )
 
-        status = build_diagnostic_status(
-            node_name="/linkerbot_hand",
-            active=True,
-            capabilities=device.get_capabilities(),
-            health=device.get_health(),
-            snapshot=snapshot,
-            metrics=metrics.snapshot(),
-            latest_handles={},
-        )
+    assert status.level == DiagnosticStatus.OK
+    assert status.message == "operational"
+    values = {item.key: item.value for item in status.values}
+    assert values["connection_generation"] == "3"
+    assert values["channel_angles_sequence"] == "17"
+    assert values["channel_angles_achieved_hz"] == "99.5"
 
-        assert status.level == DiagnosticStatus.WARN
-        assert status.message == "latest ROS driver operation failed"
-        values = {item.key: item.value for item in status.values}
-        assert values["ros_recent_error"] == "invalid target"
-        assert values["angles_sequence"] == str(snapshot.angles.sequence)
-        assert values["angles_valid"] == "True"
-        assert values["angles_stale"] == "False"
-        assert values["angles_collected_at"] == f"{snapshot.angles.collected_at:.6f}"
-        assert values["angles_connection_generation"] == str(
-            snapshot.angles.connection_generation
-        )
-    finally:
-        device.close()
+
+def test_repeated_sdk_errors_take_priority_over_stale_angles() -> None:
+    health = _operational_health()
+    angles = health.channels[0]
+    health = replace(
+        health,
+        consecutive_errors=3,
+        recent_error=ErrorInfo.from_exception(TransportError("bus offline")),
+        channels=(
+            replace(
+                angles,
+                data_age=replace(angles.data_age, stale=True),
+            ),
+        ),
+    )
+
+    status = build_diagnostic_status(
+        node_name="/linkerbot_hand",
+        model="L6",
+        active=True,
+        health=health,
+    )
+
+    assert status.level == DiagnosticStatus.ERROR
+    assert status.message == "repeated SDK I/O errors"
+    values = {item.key: item.value for item in status.values}
+    assert values["recent_error_code"] == "transport"
+    assert values["recent_error_type"] == "TransportError"
+
+
+def test_inactive_lifecycle_is_reported_without_requiring_a_connection() -> None:
+    status = build_diagnostic_status(
+        node_name="/linkerbot_hand",
+        model="L6",
+        active=False,
+        health=HealthStatus.initial(),
+    )
+
+    assert status.level == DiagnosticStatus.WARN
+    assert status.message == "lifecycle node is inactive"

@@ -17,15 +17,39 @@ class WaitTrap:
         raise AssertionError("a ROS command callback must never wait on a handle")
 
 
+@dataclass(frozen=True)
+class IntegerRange:
+    integer_only: bool = True
+
+
+@dataclass(frozen=True)
+class IntegerCommand:
+    channels: tuple[str, ...] = ("first", "second")
+
+    @staticmethod
+    def range_for(_index):
+        return IntegerRange()
+
+
+class RecordingCapabilities:
+    @staticmethod
+    def command(_semantic):
+        return IntegerCommand()
+
+
 @dataclass
 class RecordingDevice:
-    calls: list[tuple[str, tuple[float, ...]]] = field(default_factory=list)
+    calls: list[tuple[str, tuple[int | float, ...]]] = field(default_factory=list)
     handle: object = field(default_factory=WaitTrap)
     error: Exception | None = None
 
+    @staticmethod
+    def get_capabilities():
+        return RecordingCapabilities()
+
     def __getattr__(self, name):
         def submit(values=()):
-            normalized = tuple(float(value) for value in values)
+            normalized = tuple(values)
             self.calls.append((name, normalized))
             if self.error is not None:
                 raise self.error
@@ -56,7 +80,8 @@ def test_joint_router_uses_one_explicit_angle_representation(
 
     assert routed.user_sequence == 41
     assert routed.handle is device.handle
-    assert device.calls == [(expected_method, (1.0, 2.0))]
+    expected_values = (1.0, 2.0) if representation == 1 else (1, 2)
+    assert device.calls == [(expected_method, expected_values)]
 
 
 def test_joint_router_rejects_unknown_representation_before_sdk_submission():
@@ -88,7 +113,7 @@ def test_joint_router_rejects_unknown_representation_before_sdk_submission():
         (CommandSemantic.STALL_HOLD_CURRENTS, "set_stall_hold_currents"),
     ],
 )
-def test_raw_router_maps_protocol_semantics_without_value_conversion(
+def test_raw_router_recovers_integer_protocol_values_from_ros_float64(
     semantic,
     expected_method,
 ):
@@ -99,7 +124,7 @@ def test_raw_router_maps_protocol_semantics_without_value_conversion(
 
     assert routed.user_sequence == 7
     assert routed.handle is device.handle
-    assert device.calls == [(expected_method, (0.0, 255.0))]
+    assert device.calls == [(expected_method, (0, 255))]
 
 
 def test_value_validation_is_delegated_to_the_sdk_setter():

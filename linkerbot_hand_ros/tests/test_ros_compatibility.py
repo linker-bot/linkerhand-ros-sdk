@@ -1,10 +1,18 @@
 import ast
+import re
+import runpy
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from linkerbot_hand_ros.driver_config import DRIVER_PARAMETERS
 
-def test_create_service_uses_keyword_only_callback_group():
-    source = Path("linkerbot_hand_ros/node.py").read_text(encoding="utf-8")
+PACKAGE_ROOT = Path(__file__).parents[1]
+
+
+def test_management_services_use_keyword_only_callback_groups() -> None:
+    source = (PACKAGE_ROOT / "linkerbot_hand_ros/management.py").read_text(
+        encoding="utf-8"
+    )
     tree = ast.parse(source)
     calls = [
         node
@@ -20,13 +28,13 @@ def test_create_service_uses_keyword_only_callback_group():
         assert any(keyword.arg == "callback_group" for keyword in call.keywords)
 
 
-def test_entry_points_use_idempotent_rclpy_shutdown():
+def test_entry_points_use_idempotent_rclpy_shutdown() -> None:
     entry_points = (
-        Path("linkerbot_hand_ros/node.py"),
-        Path("linkerbot_hand_ros/examples/angle_command.py"),
-        Path("linkerbot_hand_ros/examples/angle_controller.py"),
-        Path("linkerbot_hand_ros/examples/frequency_benchmark.py"),
-        Path("linkerbot_hand_ros/examples/state_monitor.py"),
+        PACKAGE_ROOT / "linkerbot_hand_ros/node.py",
+        PACKAGE_ROOT / "linkerbot_hand_ros/examples/angle_command.py",
+        PACKAGE_ROOT / "linkerbot_hand_ros/examples/angle_controller.py",
+        PACKAGE_ROOT / "linkerbot_hand_ros/examples/frequency_benchmark.py",
+        PACKAGE_ROOT / "linkerbot_hand_ros/examples/state_monitor.py",
     )
 
     for path in entry_points:
@@ -35,58 +43,19 @@ def test_entry_points_use_idempotent_rclpy_shutdown():
         assert "rclpy.shutdown()" not in source
 
 
-def test_launch_exposes_every_driver_parameter():
-    source = Path("launch/hand.launch.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    declared = {
-        call.args[0].value
-        for call in ast.walk(tree)
-        if isinstance(call, ast.Call)
-        and isinstance(call.func, ast.Name)
-        and call.func.id == "DeclareLaunchArgument"
-        and call.args
-        and isinstance(call.args[0], ast.Constant)
-    }
-    configured = {
-        call.args[0].value
-        for call in ast.walk(tree)
-        if isinstance(call, ast.Call)
-        and isinstance(call.func, ast.Name)
-        and call.func.id == "LaunchConfiguration"
-        and call.args
-        and isinstance(call.args[0], ast.Constant)
-    }
-    expected = {
-        "model",
-        "side",
-        "transport_options_json",
-        "interface_name",
-        "interface_type",
-        "library_path",
-        "command_rate_hz",
-        "auto_reconnect",
-        "publish_rate_hz",
-        "angles_hz",
-        "speeds_hz",
-        "torques_hz",
-        "force_hz",
-        "temperature_hz",
-        "current_hz",
-        "faults_hz",
-        "voltage_hz",
-        "acceleration_hz",
-        "motion_time_hz",
-        "diagnostic_rate",
-        "namespace",
-        "autostart",
-    }
+def test_launch_exposes_every_driver_parameter() -> None:
+    launch_path = PACKAGE_ROOT / "launch/hand.launch.py"
+    module = runpy.run_path(str(launch_path))
+    declared = {name for name, _default, _type in module["_ARGUMENTS"]}
 
-    assert declared == expected
-    assert configured == expected
+    assert declared == DRIVER_PARAMETERS
+    source = launch_path.read_text(encoding="utf-8")
+    assert 'DeclareLaunchArgument("namespace"' in source
+    assert 'DeclareLaunchArgument("autostart"' in source
 
 
-def test_launch_uses_jazzy_lifecycle_node_with_autostart():
-    source = Path("launch/hand.launch.py").read_text(encoding="utf-8")
+def test_launch_uses_jazzy_lifecycle_node_with_autostart() -> None:
+    source = (PACKAGE_ROOT / "launch/hand.launch.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
     lifecycle_nodes = [
         node
@@ -100,49 +69,85 @@ def test_launch_uses_jazzy_lifecycle_node_with_autostart():
     assert any(keyword.arg == "autostart" for keyword in lifecycle_nodes[0].keywords)
 
 
-def test_ros_driver_contains_no_direct_blocking_sdk_reads():
+def test_ros_callbacks_contain_no_synchronous_device_reads() -> None:
+    callback_sources = (
+        "linkerbot_hand_ros/node.py",
+        "linkerbot_hand_ros/command_interface.py",
+        "linkerbot_hand_ros/driver_interfaces.py",
+        "linkerbot_hand_ros/state_publisher.py",
+        "linkerbot_hand_ros/diagnostics.py",
+    )
     source = "\n".join(
-        Path(path).read_text(encoding="utf-8")
-        for path in (
-            "linkerbot_hand_ros/adapter.py",
-            "linkerbot_hand_ros/node.py",
-        )
+        (PACKAGE_ROOT / path).read_text(encoding="utf-8") for path in callback_sources
     )
 
-    assert "get_blocking" not in source
-    assert "_PriorityIoLock" not in source
+    for method in (
+        "get_angles(",
+        "get_speeds(",
+        "get_force(",
+        "get_temperatures(",
+        "get_currents(",
+        "get_faults(",
+        ".wait(",
+    ):
+        assert method not in source
     assert "get_snapshot()" in source
+    assert "get_health()" in source
     assert "start_polling(" in source
 
 
-def test_package_depends_on_split_hand_sdk():
-    setup_source = Path("setup.py").read_text(encoding="utf-8")
+def test_old_adapter_and_configuration_implementations_are_removed() -> None:
+    assert not (PACKAGE_ROOT / "linkerbot_hand_ros/adapter.py").exists()
+    assert not (PACKAGE_ROOT / "linkerbot_hand_ros/configuration.py").exists()
 
-    assert '"linkerbot-hand>=0.2.1,<0.3.0"' in setup_source
-    assert '"linkerbot>=0.5.4"' not in setup_source
+
+def test_package_depends_on_hand_sdk_1_x() -> None:
+    setup_source = (PACKAGE_ROOT / "setup.py").read_text(encoding="utf-8")
+
+    assert '"linkerbot-hand>=1.0.0.dev0,<2.0.0"' in setup_source
+    assert '"linkerbot>=' not in setup_source
     assert '"linkerbot-transport' not in setup_source
 
 
-def test_ros_source_uses_only_the_unified_hand_import_path():
-    source = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in Path("linkerbot_hand_ros").rglob("*.py")
-    )
+def test_ros_source_uses_only_the_public_hand_import_path() -> None:
+    sources = {
+        path: path.read_text(encoding="utf-8")
+        for path in (PACKAGE_ROOT / "linkerbot_hand_ros").rglob("*.py")
+    }
+    source = "\n".join(sources.values())
 
     assert "from linkerbot_hand" in source
     assert "from linkerbot.hand" not in source
-    assert "from linkerbot_transport" not in source
     assert "MODEL_SPECS" not in source
+    assert "Float64MultiArray" not in source
+    assert "SensorType" not in source
+    transport_importers = {
+        path.name
+        for path, contents in sources.items()
+        if "from linkerbot_transport" in contents
+    }
+    assert transport_importers == {"transport_factory.py"}
 
 
-def test_package_declares_runtime_parameter_message_dependency():
-    package_source = Path("package.xml").read_text(encoding="utf-8")
+def test_package_declares_direct_runtime_dependencies() -> None:
+    package_source = (PACKAGE_ROOT / "package.xml").read_text(encoding="utf-8")
 
-    assert "<exec_depend>rcl_interfaces</exec_depend>" in package_source
+    for dependency in (
+        "builtin_interfaces",
+        "diagnostic_msgs",
+        "launch",
+        "launch_ros",
+        "linkerbot_hand_msgs",
+        "rcl_interfaces",
+        "rclpy",
+    ):
+        assert f"<exec_depend>{dependency}</exec_depend>" in package_source
+    assert "<exec_depend>std_msgs</exec_depend>" not in package_source
+    assert "<exec_depend>std_srvs</exec_depend>" not in package_source
 
 
-def test_package_declares_ament_python_only_as_build_type():
-    package = ET.parse("package.xml").getroot()
+def test_package_declares_ament_python_only_as_build_type() -> None:
+    package = ET.parse(PACKAGE_ROOT / "package.xml").getroot()
     buildtool_dependencies = {
         dependency.text for dependency in package.findall("buildtool_depend")
     }
@@ -151,11 +156,11 @@ def test_package_declares_ament_python_only_as_build_type():
     assert package.findtext("./export/build_type") == "ament_python"
 
 
-def test_rosdep_instructions_fail_on_unresolved_dependencies():
+def test_rosdep_instructions_fail_on_unresolved_dependencies() -> None:
     documentation = (
-        Path("README.md"),
-        Path("README_zh.md"),
-        Path("docs/zh/getting_started.md"),
+        PACKAGE_ROOT / "README.md",
+        PACKAGE_ROOT / "README_zh.md",
+        PACKAGE_ROOT / "docs/zh/getting_started.md",
     )
 
     for path in documentation:
@@ -169,13 +174,13 @@ def test_rosdep_instructions_fail_on_unresolved_dependencies():
         assert all(" -r " not in command for command in commands)
 
 
-def test_sdk_install_instructions_include_private_and_public_indexes():
+def test_sdk_install_instructions_include_private_and_public_indexes() -> None:
     documentation = (
-        Path("README.md"),
-        Path("README_zh.md"),
-        Path("docs/zh/getting_started.md"),
-        Path("docs/zh/troubleshooting.md"),
-        Path("docs/zh/migration_0_3.md"),
+        PACKAGE_ROOT / "README.md",
+        PACKAGE_ROOT / "README_zh.md",
+        PACKAGE_ROOT / "docs/zh/getting_started.md",
+        PACKAGE_ROOT / "docs/zh/troubleshooting.md",
+        PACKAGE_ROOT / "docs/zh/migration_0_3.md",
     )
     private_index = "https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple"
     public_index = "https://pypi.org/simple"
@@ -186,11 +191,18 @@ def test_sdk_install_instructions_include_private_and_public_indexes():
         assert public_index in source
 
 
-def test_python_and_ros_package_versions_match():
-    setup_source = Path("setup.py").read_text(encoding="utf-8")
-    package_source = Path("package.xml").read_text(encoding="utf-8")
-    module_source = Path("linkerbot_hand_ros/__init__.py").read_text(encoding="utf-8")
+def test_python_and_ros_package_versions_match() -> None:
+    setup_source = (PACKAGE_ROOT / "setup.py").read_text(encoding="utf-8")
+    package_source = (PACKAGE_ROOT / "package.xml").read_text(encoding="utf-8")
+    module_source = (PACKAGE_ROOT / "linkerbot_hand_ros/__init__.py").read_text(
+        encoding="utf-8"
+    )
+    setup_version = re.search(r'version="([^"]+)"', setup_source)
+    package_version = re.search(r"<version>([^<]+)</version>", package_source)
+    module_version = re.search(r'__version__ = "([^"]+)"', module_source)
 
-    assert 'version="0.3.3"' in setup_source
-    assert "<version>0.3.3</version>" in package_source
-    assert '__version__ = "0.3.3"' in module_source
+    assert setup_version is not None
+    assert package_version is not None
+    assert module_version is not None
+    assert setup_version.group(1) == package_version.group(1) == module_version.group(1)
+    assert setup_version.group(1) == "1.0.0"

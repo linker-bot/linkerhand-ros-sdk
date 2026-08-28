@@ -9,7 +9,7 @@ LONG_DESCRIPTION = Path(__file__).with_name("README.md").read_text(encoding="utf
 
 setup(
     name=PACKAGE_NAME,
-    version="0.3.3",
+    version="1.0.0",
     packages=find_packages(exclude=("tests",)),
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{PACKAGE_NAME}"]),
@@ -28,7 +28,7 @@ setup(
     ],
     install_requires=[
         "setuptools",
-        "linkerbot-hand>=0.2.1,<0.3.0",
+        "linkerbot-hand>=1.0.0.dev0,<2.0.0",
     ],
     extras_require={"test": ["pytest"]},
     python_requires=">=3.10",

@@ -2,18 +2,24 @@ linkerbot_hand:
   ros__parameters:
     model: l6
     side: left
-    transport_options_json: '{"interface_name":"can0","interface_type":"socketcan"}'
-    command_rate_hz: 100.0
+    transport_json: '{"backend":"socketcan","channel":"can0"}'
+    command_rate_hz: 250.0
+    discrete_queue_capacity: 16
+    mailbox_capacity: 256
+    route_queue_capacity: 256
+    identity_timeout_s: 0.2
+    transaction_timeout_s: 0.1
+    shutdown_timeout_s: 2.0
     auto_reconnect: false
-    publish_rate_hz: 60.0
-    angles_hz: 60.0
+    reconnect_initial_delay_s: 0.1
+    reconnect_max_delay_s: 2.0
+    publish_rate_hz: 100.0
+    diagnostic_rate_hz: 1.0
+    angles_hz: 100.0
     speeds_hz: 0.0
-    torques_hz: 0.0
     force_hz: 0.0
-    temperature_hz: 1.0
-    current_hz: 10.0
-    faults_hz: 5.0
+    temperature_hz: 0.0
+    current_hz: 0.0
+    faults_hz: 0.0
+    torques_hz: 0.0
     voltage_hz: 0.0
-    acceleration_hz: 0.0
-    motion_time_hz: 0.0
-    diagnostic_rate: 1.0

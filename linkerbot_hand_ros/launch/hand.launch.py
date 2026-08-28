@@ -4,32 +4,48 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import LifecycleNode
 from launch_ros.parameter_descriptions import ParameterValue
 
+_ARGUMENTS = (
+    ("model", "l6", str),
+    ("side", "left", str),
+    ("transport_json", '{"backend":"socketcan","channel":"can0"}', str),
+    ("command_rate_hz", "250.0", float),
+    ("discrete_queue_capacity", "16", int),
+    ("mailbox_capacity", "256", int),
+    ("route_queue_capacity", "256", int),
+    ("identity_timeout_s", "0.2", float),
+    ("transaction_timeout_s", "0.1", float),
+    ("shutdown_timeout_s", "2.0", float),
+    ("auto_reconnect", "false", bool),
+    ("reconnect_initial_delay_s", "0.1", float),
+    ("reconnect_max_delay_s", "2.0", float),
+    ("publish_rate_hz", "100.0", float),
+    ("diagnostic_rate_hz", "1.0", float),
+    ("angles_hz", "100.0", float),
+    ("speeds_hz", "0.0", float),
+    ("force_hz", "0.0", float),
+    ("temperature_hz", "0.0", float),
+    ("current_hz", "0.0", float),
+    ("faults_hz", "0.0", float),
+    ("torques_hz", "0.0", float),
+    ("voltage_hz", "0.0", float),
+)
 
-def generate_launch_description():
+
+def generate_launch_description() -> LaunchDescription:
     arguments = [
-        DeclareLaunchArgument("model", default_value="l6"),
-        DeclareLaunchArgument("side", default_value="left"),
-        DeclareLaunchArgument("transport_options_json", default_value="{}"),
-        DeclareLaunchArgument("interface_name", default_value="can0"),
-        DeclareLaunchArgument("interface_type", default_value="socketcan"),
-        DeclareLaunchArgument("library_path", default_value=""),
-        DeclareLaunchArgument("command_rate_hz", default_value="100.0"),
-        DeclareLaunchArgument("auto_reconnect", default_value="false"),
-        DeclareLaunchArgument("publish_rate_hz", default_value="60.0"),
-        DeclareLaunchArgument("angles_hz", default_value="60.0"),
-        DeclareLaunchArgument("speeds_hz", default_value="0.0"),
-        DeclareLaunchArgument("torques_hz", default_value="0.0"),
-        DeclareLaunchArgument("force_hz", default_value="0.0"),
-        DeclareLaunchArgument("temperature_hz", default_value="1.0"),
-        DeclareLaunchArgument("current_hz", default_value="10.0"),
-        DeclareLaunchArgument("faults_hz", default_value="5.0"),
-        DeclareLaunchArgument("voltage_hz", default_value="0.0"),
-        DeclareLaunchArgument("acceleration_hz", default_value="0.0"),
-        DeclareLaunchArgument("motion_time_hz", default_value="0.0"),
-        DeclareLaunchArgument("diagnostic_rate", default_value="1.0"),
-        DeclareLaunchArgument("namespace", default_value=""),
-        DeclareLaunchArgument("autostart", default_value="true"),
+        DeclareLaunchArgument(name, default_value=default)
+        for name, default, _value_type in _ARGUMENTS
     ]
+    arguments.extend(
+        (
+            DeclareLaunchArgument("namespace", default_value=""),
+            DeclareLaunchArgument("autostart", default_value="true"),
+        )
+    )
+    parameters = {
+        name: ParameterValue(LaunchConfiguration(name), value_type=value_type)
+        for name, _default, value_type in _ARGUMENTS
+    }
     node = LifecycleNode(
         package="linkerbot_hand_ros",
         executable="hand_node",
@@ -37,59 +53,6 @@ def generate_launch_description():
         namespace=LaunchConfiguration("namespace"),
         output="screen",
         autostart=LaunchConfiguration("autostart"),
-        parameters=[
-            {
-                "model": LaunchConfiguration("model"),
-                "side": LaunchConfiguration("side"),
-                "transport_options_json": ParameterValue(
-                    LaunchConfiguration("transport_options_json"), value_type=str
-                ),
-                "interface_name": LaunchConfiguration("interface_name"),
-                "interface_type": LaunchConfiguration("interface_type"),
-                "library_path": LaunchConfiguration("library_path"),
-                "command_rate_hz": ParameterValue(
-                    LaunchConfiguration("command_rate_hz"), value_type=float
-                ),
-                "auto_reconnect": ParameterValue(
-                    LaunchConfiguration("auto_reconnect"), value_type=bool
-                ),
-                "publish_rate_hz": ParameterValue(
-                    LaunchConfiguration("publish_rate_hz"), value_type=float
-                ),
-                "angles_hz": ParameterValue(
-                    LaunchConfiguration("angles_hz"), value_type=float
-                ),
-                "speeds_hz": ParameterValue(
-                    LaunchConfiguration("speeds_hz"), value_type=float
-                ),
-                "torques_hz": ParameterValue(
-                    LaunchConfiguration("torques_hz"), value_type=float
-                ),
-                "force_hz": ParameterValue(
-                    LaunchConfiguration("force_hz"), value_type=float
-                ),
-                "temperature_hz": ParameterValue(
-                    LaunchConfiguration("temperature_hz"), value_type=float
-                ),
-                "current_hz": ParameterValue(
-                    LaunchConfiguration("current_hz"), value_type=float
-                ),
-                "faults_hz": ParameterValue(
-                    LaunchConfiguration("faults_hz"), value_type=float
-                ),
-                "voltage_hz": ParameterValue(
-                    LaunchConfiguration("voltage_hz"), value_type=float
-                ),
-                "acceleration_hz": ParameterValue(
-                    LaunchConfiguration("acceleration_hz"), value_type=float
-                ),
-                "motion_time_hz": ParameterValue(
-                    LaunchConfiguration("motion_time_hz"), value_type=float
-                ),
-                "diagnostic_rate": ParameterValue(
-                    LaunchConfiguration("diagnostic_rate"), value_type=float
-                ),
-            }
-        ],
+        parameters=[parameters],
     )
     return LaunchDescription([*arguments, node])

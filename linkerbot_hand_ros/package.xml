@@ -1,19 +1,19 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>linkerbot_hand_ros</name>
-  <version>0.3.3</version>
+  <version>1.0.0</version>
   <description>ROS 2 driver for Linkerbot dexterous hands.</description>
   <maintainer email="1849346915@qq.com">zhuzhixiang</maintainer>
   <license>Apache-2.0</license>
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>linkerbot_hand_msgs</exec_depend>
+  <exec_depend>builtin_interfaces</exec_depend>
   <exec_depend>rcl_interfaces</exec_depend>
   <exec_depend>diagnostic_msgs</exec_depend>
   <exec_depend>lifecycle_msgs</exec_depend>
+  <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
-  <exec_depend>std_msgs</exec_depend>
-  <exec_depend>std_srvs</exec_depend>
   <exec_depend>ros2launch</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>

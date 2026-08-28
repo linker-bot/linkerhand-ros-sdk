@@ -1,7 +1,7 @@
 import pytest
+from linkerbot_hand_ros.metrics import DriverMetrics
 
 from linkerbot_hand_ros import metrics
-from linkerbot_hand_ros.metrics import DriverMetrics
 
 
 def test_metrics_track_freshness_counters_and_latest_outcome(monkeypatch):

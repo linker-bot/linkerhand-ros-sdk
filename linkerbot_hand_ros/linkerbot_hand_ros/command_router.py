@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
 
@@ -58,7 +59,9 @@ def route_joint_command(
     if message.representation == HandJointCommand.REPRESENTATION_PERCENT:
         handle = device.set_percent_angles(message.values)
     elif message.representation == HandJointCommand.REPRESENTATION_RAW:
-        handle = device.set_angles(message.values)
+        handle = device.set_angles(
+            _protocol_values(device, CommandSemantic.ANGLES, message.values)
+        )
     else:
         raise ValidationError("joint command representation is unsupported")
     return RoutedCommand(user_sequence=message.user_sequence, handle=handle)
@@ -80,7 +83,9 @@ def route_raw_command(
         raise ValidationError(
             f"{semantic.value} requires a dedicated ROS command representation"
         )
-    handle = getattr(device, setter_name)(message.raw)
+    handle = getattr(device, setter_name)(
+        _protocol_values(device, semantic, message.raw)
+    )
     return RoutedCommand(user_sequence=message.user_sequence, handle=handle)
 
 
@@ -98,6 +103,27 @@ def route_discrete_operation(
         raise ValidationError("user_sequence must fit uint64")
     handle = getattr(device, operation.value)()
     return RoutedCommand(user_sequence=user_sequence, handle=handle)
+
+
+def _protocol_values(
+    device: HandDevice,
+    semantic: CommandSemantic,
+    values: Iterable[float],
+) -> tuple[int | float, ...]:
+    """Recover exact integer protocol values from ROS ``float64`` arrays."""
+
+    command = device.get_capabilities().command(semantic)
+    materialized = tuple(values)
+    if command is None or len(materialized) != len(command.channels):
+        return materialized
+    normalized: list[int | float] = []
+    for index, value in enumerate(materialized):
+        raw_range = command.range_for(index)
+        if raw_range.integer_only and isinstance(value, float) and value.is_integer():
+            normalized.append(int(value))
+        else:
+            normalized.append(value)
+    return tuple(normalized)
 
 
 __all__ = [
