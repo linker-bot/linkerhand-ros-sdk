@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import rclpy
-from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
+from rclpy.executors import ExternalShutdownException, SingleThreadedExecutor
 from rclpy.lifecycle import TransitionCallbackReturn
 from rclpy.node import Node
 from rclpy.parameter import Parameter
@@ -50,7 +50,6 @@ class MultiDeviceConfiguration:
 
     device_namespaces: tuple[str, ...]
     autostart: bool
-    executor_threads: int
 
 
 class MultiDeviceLifecycleError(RuntimeError):
@@ -64,7 +63,6 @@ class MultiHandContainerNode(Node):
         super().__init__(CONTAINER_NODE_NAME, **kwargs)
         self.declare_parameter("device_namespaces", Parameter.Type.STRING_ARRAY)
         self.declare_parameter("autostart", True)
-        self.declare_parameter("executor_threads", 0)
 
     def read_configuration(self) -> MultiDeviceConfiguration:
         """Return normalized container parameters without constructing a hand."""
@@ -75,19 +73,9 @@ class MultiHandContainerNode(Node):
         autostart = self.get_parameter("autostart").value
         if not isinstance(autostart, bool):
             raise TypeError("autostart must be a boolean")
-        executor_threads = self.get_parameter("executor_threads").value
-        if (
-            isinstance(executor_threads, bool)
-            or not isinstance(executor_threads, int)
-            or executor_threads < 0
-        ):
-            raise ValueError("executor_threads must be a non-negative integer")
-        if executor_threads == 0:
-            executor_threads = max(4, 2 * len(namespaces))
         return MultiDeviceConfiguration(
             device_namespaces=namespaces,
             autostart=autostart,
-            executor_threads=executor_threads,
         )
 
 
@@ -157,7 +145,7 @@ class HandLifecycleGroup:
     ) -> str | None:
         try:
             cls._transition(node, operation, callback)
-        except Exception as error:  # noqa: BLE001 - best-effort rollback boundary
+        except BaseException as error:  # noqa: BLE001 - best-effort rollback boundary
             return str(error)
         return None
 
@@ -186,7 +174,7 @@ def destroy_hand_nodes(nodes: Sequence[ManagedHandNode]) -> tuple[str, ...]:
     for node in reversed(nodes):
         try:
             node.destroy_node()
-        except Exception as error:  # noqa: BLE001 - final resource boundary
+        except BaseException as error:  # noqa: BLE001 - final resource boundary
             errors.append(f"{node.get_fully_qualified_name()} destroy failed: {error}")
     return tuple(errors)
 
@@ -221,13 +209,13 @@ def main(args: list[str] | None = None) -> None:
     container: MultiHandContainerNode | None = None
     nodes: tuple[ManagedHandNode, ...] = ()
     lifecycle: HandLifecycleGroup | None = None
-    executor: MultiThreadedExecutor | None = None
+    executor: SingleThreadedExecutor | None = None
     try:
         container = MultiHandContainerNode()
         configuration = container.read_configuration()
         nodes = create_hand_nodes(configuration)
         lifecycle = HandLifecycleGroup(nodes)
-        executor = MultiThreadedExecutor(num_threads=configuration.executor_threads)
+        executor = SingleThreadedExecutor()
         executor.add_node(container)
         for node in nodes:
             executor.add_node(node)
@@ -246,7 +234,7 @@ def main(args: list[str] | None = None) -> None:
             try:
                 for error in lifecycle.stop():
                     _log_cleanup_error(logger, error)
-            except Exception as error:  # noqa: BLE001 - final resource boundary
+            except BaseException as error:  # noqa: BLE001 - final resource boundary
                 _log_cleanup_error(logger, f"lifecycle group stop failed: {error}")
         if executor is not None:
             try:
@@ -254,7 +242,7 @@ def main(args: list[str] | None = None) -> None:
                     executor.remove_node(node)
                 if container is not None:
                     executor.remove_node(container)
-            except Exception as error:  # noqa: BLE001 - final resource boundary
+            except BaseException as error:  # noqa: BLE001 - final resource boundary
                 _log_cleanup_error(logger, f"executor node removal failed: {error}")
             try:
                 if not executor.shutdown(timeout_sec=EXECUTOR_SHUTDOWN_TIMEOUT_S):
@@ -263,14 +251,14 @@ def main(args: list[str] | None = None) -> None:
                         "executor shutdown exceeded "
                         f"{EXECUTOR_SHUTDOWN_TIMEOUT_S:g} seconds",
                     )
-            except Exception as error:  # noqa: BLE001 - final resource boundary
+            except BaseException as error:  # noqa: BLE001 - final resource boundary
                 _log_cleanup_error(logger, f"executor shutdown failed: {error}")
         for error in destroy_hand_nodes(nodes):
             _log_cleanup_error(logger, error)
         try:
             if container is not None:
                 container.destroy_node()
-        except Exception as error:  # noqa: BLE001 - final resource boundary
+        except BaseException as error:  # noqa: BLE001 - final resource boundary
             _log_cleanup_error(logger, f"container destruction failed: {error}")
         finally:
             rclpy.try_shutdown()

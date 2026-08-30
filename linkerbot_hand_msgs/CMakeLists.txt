@@ -9,6 +9,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/CommandCapability.msg"
   "msg/HandCapabilities.msg"
   "msg/HandCommandStatus.msg"
+  "msg/HandCommandStatusBatch.msg"
   "msg/HandCommandTransition.msg"
   "msg/HandDeviceInfo.msg"
   "msg/HandJointCommand.msg"

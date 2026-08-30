@@ -131,7 +131,6 @@ def test_partial_node_construction_is_destroyed_in_reverse_order() -> None:
     configuration = MultiDeviceConfiguration(
         device_namespaces=("/left", "/right", "/third"),
         autostart=True,
-        executor_threads=4,
     )
 
     def factory(*, namespace: str):
@@ -180,7 +179,7 @@ def test_two_real_lifecycle_nodes_release_both_fake_devices() -> None:
         rclpy.try_shutdown()
 
 
-def test_container_normalizes_namespaces_and_computes_thread_count() -> None:
+def test_container_normalizes_namespaces() -> None:
     rclpy.init()
     container = MultiHandContainerNode(
         parameter_overrides=[
@@ -197,7 +196,6 @@ def test_container_normalizes_namespaces_and_computes_thread_count() -> None:
     assert configuration == MultiDeviceConfiguration(
         device_namespaces=("/left", "/right"),
         autostart=False,
-        executor_threads=4,
     )
 
 

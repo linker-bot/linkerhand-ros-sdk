@@ -30,22 +30,44 @@ def sample_metadata_to_message(
     if not isinstance(metadata, SampleMeta):
         raise ValidationError("metadata must be SampleMeta")
     _validate_ros_time(ros_now_ns)
-    age_s = 0.0 if metadata.age_s is None else float(metadata.age_s)
-    collected_at = Time()
-    if metadata.valid:
-        collected_at = _time_from_nanoseconds(
-            max(0, ros_now_ns - round(age_s * _NANOSECONDS_PER_SECOND))
-        )
-    return SampleMetadata(
-        collected_at=collected_at,
-        sequence=metadata.sequence,
-        age_s=age_s,
-        valid=metadata.valid,
-        stale=metadata.stale,
-        connection_generation=metadata.connection_generation,
-        origin=_ORIGIN_VALUES[metadata.origin],
-        within_declared_range=metadata.within_declared_range,
+    message = SampleMetadata()
+    update_sample_metadata_message(
+        message,
+        metadata,
+        ros_now_ns=ros_now_ns,
     )
+    return message
+
+
+def update_sample_metadata_message(
+    message: SampleMetadata,
+    metadata: SampleMeta,
+    *,
+    ros_now_ns: int,
+) -> None:
+    """Update a reusable ROS metadata message without allocating nested state."""
+
+    if not isinstance(message, SampleMetadata):
+        raise ValidationError("message must be SampleMetadata")
+    if not isinstance(metadata, SampleMeta):
+        raise ValidationError("metadata must be SampleMeta")
+    _validate_ros_time(ros_now_ns)
+    age_s = 0.0 if metadata.age_s is None else float(metadata.age_s)
+    collected_ns = (
+        max(0, ros_now_ns - round(age_s * _NANOSECONDS_PER_SECOND))
+        if metadata.valid
+        else 0
+    )
+    seconds, nanoseconds = divmod(collected_ns, _NANOSECONDS_PER_SECOND)
+    message.collected_at.sec = seconds
+    message.collected_at.nanosec = nanoseconds
+    message.sequence = metadata.sequence
+    message.age_s = age_s
+    message.valid = metadata.valid
+    message.stale = metadata.stale
+    message.connection_generation = metadata.connection_generation
+    message.origin = _ORIGIN_VALUES[metadata.origin]
+    message.within_declared_range = metadata.within_declared_range
 
 
 def monotonic_timestamp_to_message(
@@ -83,4 +105,8 @@ def _time_from_nanoseconds(timestamp_ns: int) -> Time:
     return Time(sec=seconds, nanosec=nanoseconds)
 
 
-__all__ = ["monotonic_timestamp_to_message", "sample_metadata_to_message"]
+__all__ = [
+    "monotonic_timestamp_to_message",
+    "sample_metadata_to_message",
+    "update_sample_metadata_message",
+]

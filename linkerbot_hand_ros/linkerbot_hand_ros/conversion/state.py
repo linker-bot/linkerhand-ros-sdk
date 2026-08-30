@@ -31,7 +31,7 @@ from linkerbot_hand import (
 
 from linkerbot_hand_msgs import msg as ros_messages
 
-from .time import sample_metadata_to_message
+from .time import sample_metadata_to_message, update_sample_metadata_message
 
 RawVectorSample = (
     MeasuredSpeedSample
@@ -81,6 +81,57 @@ def angle_sample_to_message(
         physical_rad=[0.0 if value is None else value for value in sample.physical_rad],
         physical_rad_valid=[value is not None for value in sample.physical_rad],
         meta=sample_metadata_to_message(sample.meta, ros_now_ns=ros_now_ns),
+    )
+
+
+def update_angle_message(
+    message: ros_messages.HandJointState,
+    sample: AngleSample,
+    capabilities: DeviceCapabilities,
+    *,
+    ros_now_ns: int,
+) -> None:
+    """Update a capability-shaped angle message for the high-rate publish path."""
+
+    if not isinstance(message, ros_messages.HandJointState):
+        raise ValidationError("message must be HandJointState")
+    if not isinstance(sample, AngleSample):
+        raise ValidationError("sample must be AngleSample")
+    if not isinstance(capabilities, DeviceCapabilities):
+        raise ValidationError("capabilities must be DeviceCapabilities")
+    joint_count = len(capabilities.joints)
+    if len(sample.raw) != joint_count or len(message.raw) != joint_count:
+        raise ValidationError("angle sample shape does not match reusable message")
+    for index in range(joint_count):
+        percent = sample.percent[index]
+        physical_rad = sample.physical_rad[index]
+        message.raw[index] = float(sample.raw[index])
+        message.percent[index] = 0.0 if percent is None else percent
+        message.percent_valid[index] = percent is not None
+        message.physical_rad[index] = 0.0 if physical_rad is None else physical_rad
+        message.physical_rad_valid[index] = physical_rad is not None
+    update_sample_metadata_message(
+        message.meta,
+        sample.meta,
+        ros_now_ns=ros_now_ns,
+    )
+
+
+def make_angle_message(
+    capabilities: DeviceCapabilities,
+) -> ros_messages.HandJointState:
+    """Create one reusable angle message with immutable capability dimensions."""
+
+    if not isinstance(capabilities, DeviceCapabilities):
+        raise ValidationError("capabilities must be DeviceCapabilities")
+    joint_count = len(capabilities.joints)
+    return ros_messages.HandJointState(
+        joint_names=list(capabilities.joint_names),
+        raw=[0.0] * joint_count,
+        percent=[0.0] * joint_count,
+        percent_valid=[False] * joint_count,
+        physical_rad=[0.0] * joint_count,
+        physical_rad_valid=[False] * joint_count,
     )
 
 
@@ -227,5 +278,7 @@ __all__ = [
     "RawVectorSample",
     "angle_sample_to_message",
     "force_sample_to_messages",
+    "make_angle_message",
     "telemetry_sample_to_message",
+    "update_angle_message",
 ]

@@ -23,6 +23,7 @@ from rclpy.lifecycle import LifecycleNode
 
 from linkerbot_hand_msgs.msg import (
     HandCommandStatus,
+    HandCommandStatusBatch,
     HandJointCommand,
     HandRawCommand,
 )
@@ -33,7 +34,12 @@ from .command_router import (
     route_raw_command,
 )
 from .conversion import command_status_to_message
-from .qos import COMMAND_QOS, STATUS_QOS
+from .qos import (
+    COMMAND_QOS,
+    HIGH_RATE_PUBLISHER_EVENTS,
+    HIGH_RATE_SUBSCRIPTION_EVENTS,
+    STATUS_QOS,
+)
 
 _RAW_COMMANDS = (
     CommandSemantic.SPEEDS,
@@ -43,6 +49,7 @@ _RAW_COMMANDS = (
     CommandSemantic.TORQUES,
     CommandSemantic.MOTION_TIMES,
 )
+_STATUS_BATCH_CAPACITY = 512
 
 
 @dataclass(slots=True)
@@ -68,6 +75,13 @@ class CommandInterface:
         on_error: Callable[[BaseException], None],
         tracking_capacity: int = 512,
     ) -> None:
+        if (
+            type(tracking_capacity) is not int
+            or not 0 < tracking_capacity <= _STATUS_BATCH_CAPACITY
+        ):
+            raise ValueError(
+                f"tracking_capacity must be within 1..{_STATUS_BATCH_CAPACITY}"
+            )
         self._node = node
         self._device = device
         self._is_active = is_active
@@ -78,9 +92,10 @@ class CommandInterface:
         # cannot pass each other while observation callbacks run independently.
         self._callback_group = node.default_callback_group
         self._status_publisher = node.create_publisher(
-            HandCommandStatus,
+            HandCommandStatusBatch,
             "~/command/status",
             STATUS_QOS,
+            event_callbacks=HIGH_RATE_PUBLISHER_EVENTS,
         )
         self._subscriptions: list[Any] = []
         self._tracked: OrderedDict[int, _TrackedCommand] = OrderedDict()
@@ -103,6 +118,7 @@ class CommandInterface:
                         self._handle_angles,
                         COMMAND_QOS,
                         callback_group=self._callback_group,
+                        event_callbacks=HIGH_RATE_SUBSCRIPTION_EVENTS,
                     )
                 )
             for semantic in _RAW_COMMANDS:
@@ -117,6 +133,7 @@ class CommandInterface:
                         ),
                         COMMAND_QOS,
                         callback_group=self._callback_group,
+                        event_callbacks=HIGH_RATE_SUBSCRIPTION_EVENTS,
                     )
                 )
         except Exception:
@@ -172,32 +189,60 @@ class CommandInterface:
             )
 
     def publish_updates(self) -> int:
-        """Publish changed handle histories without waiting on any handle."""
+        """Publish changed handle histories in one bounded status batch."""
 
         with self._lock:
             if not self._enabled:
                 return 0
             candidates = tuple(self._tracked.items())
 
-        publications = 0
+        changed: list[tuple[int, _TrackedCommand]] = []
         for command_id, tracked in candidates:
             transition_count = len(tracked.handle.history)
             if transition_count == tracked.published_transition_count:
                 self._remove_if_complete(command_id, tracked)
                 continue
+            changed.append((command_id, tracked))
+        if not changed:
+            return 0
+
+        ros_now_ns = self._node.get_clock().now().nanoseconds
+        monotonic_now = time.monotonic()
+        converted: list[tuple[int, _TrackedCommand, HandCommandStatus, int]] = []
+        for command_id, tracked in changed:
             try:
-                with self._publication_lock:
-                    with self._lock:
-                        if (
-                            not self._enabled
-                            or self._tracked.get(command_id) is not tracked
-                        ):
-                            continue
-                    published_count = self._publish(tracked)
+                message = self._message(
+                    tracked,
+                    ros_now_ns=ros_now_ns,
+                    monotonic_now=monotonic_now,
+                )
             except Exception as error:
                 self._report_status_error(error)
                 continue
-            publications += 1
+            converted.append((command_id, tracked, message, len(message.transitions)))
+        if not converted:
+            return 0
+
+        try:
+            with self._publication_lock:
+                with self._lock:
+                    if not self._enabled:
+                        return 0
+                    active = tuple(
+                        item
+                        for item in converted
+                        if self._tracked.get(item[0]) is item[1]
+                    )
+                if not active:
+                    return 0
+                self._status_publisher.publish(
+                    HandCommandStatusBatch(statuses=[item[2] for item in active])
+                )
+        except Exception as error:
+            self._report_status_error(error)
+            return 0
+
+        for command_id, tracked, _message, published_count in active:
             with self._lock:
                 if self._tracked.get(command_id) is not tracked:
                     continue
@@ -206,7 +251,7 @@ class CommandInterface:
                     published_count,
                 )
             self._remove_if_complete(command_id, tracked)
-        return publications
+        return len(active)
 
     def destroy(self) -> None:
         """Destroy subscriptions and the command status publisher."""
@@ -243,22 +288,22 @@ class CommandInterface:
         except Exception as error:
             self._on_error(error)
 
-    def _publish(
+    def _message(
         self,
         tracked: _TrackedCommand,
-    ) -> int:
-        now = self._node.get_clock().now().nanoseconds
-        message = command_status_to_message(
+        *,
+        ros_now_ns: int,
+        monotonic_now: float,
+    ) -> HandCommandStatus:
+        return command_status_to_message(
             tracked.handle,
             client_id=tracked.client_id,
             user_sequence=tracked.user_sequence,
             publisher_stamp=tracked.publisher_stamp,
             driver_received_at=tracked.driver_received_at,
-            monotonic_now=time.monotonic(),
-            ros_now_ns=now,
+            monotonic_now=monotonic_now,
+            ros_now_ns=ros_now_ns,
         )
-        self._status_publisher.publish(message)
-        return len(message.transitions)
 
     def _make_room(self) -> int | None:
         if len(self._tracked) < self._tracking_capacity:

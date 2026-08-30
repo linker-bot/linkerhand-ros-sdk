@@ -11,7 +11,7 @@ from typing import Any
 import rclpy
 from linkerbot_hand import HandDevice, HandError
 from rcl_interfaces.msg import SetParametersResult
-from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
+from rclpy.executors import ExternalShutdownException, SingleThreadedExecutor
 from rclpy.lifecycle import LifecycleNode, LifecycleState, TransitionCallbackReturn
 from rclpy.parameter import Parameter
 
@@ -337,7 +337,7 @@ class LinkerbotHandNode(LifecycleNode):
 def main(args: list[str] | None = None) -> None:
     rclpy.init(args=args)
     node: LinkerbotHandNode | None = None
-    executor = MultiThreadedExecutor(num_threads=4)
+    executor = SingleThreadedExecutor()
     try:
         node = LinkerbotHandNode()
         executor.add_node(node)

@@ -3,6 +3,7 @@ from builtin_interfaces.msg import Time
 from linkerbot_hand_msgs.msg import (
     HandCapabilities,
     HandCommandStatus,
+    HandCommandStatusBatch,
     HandJointCommand,
     HandJointState,
     HandTelemetry,
@@ -101,6 +102,9 @@ def test_command_status_does_not_conflate_dispatch_with_acknowledgement():
     assert status.client_id == 17
     assert status.user_sequence == 7
     assert status.driver_received_stamp.nanosec == 35
+
+    batch = HandCommandStatusBatch(statuses=[status])
+    assert batch.statuses == [status]
 
 
 def test_admin_services_return_structured_acceptance_and_errors():

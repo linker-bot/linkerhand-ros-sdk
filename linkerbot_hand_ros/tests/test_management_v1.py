@@ -109,8 +109,10 @@ def test_o6_save_parameters_service_tracks_acknowledged_operation(monkeypatch):
         assert response.accepted
         assert builder.latest_runtime.operations == ["save_parameters"]
         assert len(messages) == 1
-        assert messages[0].stage == messages[0].STAGE_ACKNOWLEDGED
-        assert messages[0].ack_support == messages[0].ACK_SUPPORTED
+        assert len(messages[0].statuses) == 1
+        status = messages[0].statuses[0]
+        assert status.stage == status.STAGE_ACKNOWLEDGED
+        assert status.ack_support == status.ACK_SUPPORTED
     finally:
         node.destroy_node()
         rclpy.try_shutdown()

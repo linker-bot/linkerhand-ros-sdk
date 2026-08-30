@@ -81,6 +81,8 @@ class FakeRuntime:
         self.recover_count = 0
         self.read_count = 0
         self.snapshot_get_count = 0
+        self.snapshot_wait_options: list[bool] = []
+        self.next_wait_snapshot: HandSnapshot | None = None
         self.health_get_count = 0
         self.capabilities_get_count = 0
         self.device_info_threads: list[str] = []
@@ -224,6 +226,24 @@ class FakeRuntime:
     def get_snapshot(self):
         self.snapshot_get_count += 1
         return self.snapshot
+
+    def wait_for_snapshot(
+        self,
+        previous: HandSnapshot,
+        timeout: float,
+        *,
+        wake_on_command_feedback: bool = True,
+    ):
+        assert isinstance(previous, HandSnapshot)
+        assert timeout > 0
+        self.snapshot_wait_options.append(wake_on_command_feedback)
+        snapshot = self.next_wait_snapshot
+        self.next_wait_snapshot = None
+        if snapshot is None:
+            time.sleep(timeout)
+            self.snapshot_get_count += 1
+            return self.snapshot
+        return snapshot
 
     def get_health(self):
         self.health_get_count += 1

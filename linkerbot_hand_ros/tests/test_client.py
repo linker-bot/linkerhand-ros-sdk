@@ -12,7 +12,7 @@ from linkerbot_hand_ros.client import HandCommandClient
 from linkerbot_hand_ros.conversion import capabilities_to_message
 from rclpy.node import Node
 
-from linkerbot_hand_msgs.msg import HandCommandStatus
+from linkerbot_hand_msgs.msg import HandCommandStatus, HandCommandStatusBatch
 
 
 class RecordingPublisher:
@@ -187,6 +187,29 @@ def test_status_cache_ignores_another_client_with_the_same_sequence(client_rig):
         assert other.get_status(publication.user_sequence) is foreign
     finally:
         other.destroy()
+
+
+def test_status_batch_updates_all_matching_client_sequences(client_rig):
+    client, _angle, _raw = client_rig
+    first = client.set_percent_angles([100] * 6)
+    second = client.set_percent_angles([100] * 6)
+    statuses = [
+        HandCommandStatus(
+            client_id=client.client_id,
+            user_sequence=publication.user_sequence,
+            command_id=index,
+            family="angle_target",
+            stage=HandCommandStatus.STAGE_DISPATCHED,
+            ack_support=HandCommandStatus.ACK_UNSUPPORTED,
+            sent_frames=1,
+        )
+        for index, publication in enumerate((first, second), start=1)
+    ]
+
+    client._update_status_batch(HandCommandStatusBatch(statuses=statuses))
+
+    assert client.get_status(first.user_sequence) is statuses[0]
+    assert client.get_status(second.user_sequence) is statuses[1]
 
 
 def test_readiness_requires_capability_and_driver_subscription(client_rig):

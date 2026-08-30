@@ -12,6 +12,7 @@ from typing import Any
 
 from linkerbot_hand import (
     CommandSemantic,
+    DeviceCapabilities,
     ErrorCode,
     HandDevice,
     HandError,
@@ -54,13 +55,17 @@ class ManagementInterface:
         self,
         node: LifecycleNode,
         *,
+        capabilities: DeviceCapabilities,
         device: Callable[[], HandDevice],
         is_active: Callable[[], bool],
         track: Callable[[RoutedCommand, float | None], None],
         shutdown_timeout_s: float,
         worker_capacity: int,
     ) -> None:
+        if not isinstance(capabilities, DeviceCapabilities):
+            raise TypeError("capabilities must be DeviceCapabilities")
         self._node = node
+        self._capabilities = capabilities
         self._device = device
         self._is_active = is_active
         self._track = track
@@ -108,32 +113,38 @@ class ManagementInterface:
         return self._worker.active
 
     def _create_services(self) -> None:
-        self._add_service(
-            GetDeviceInfo,
-            "~/get_device_info",
-            self._get_device_info,
-        )
-        self._add_service(
-            GetStallProtection,
-            "~/get_stall_protection",
-            self._get_stall_protection,
-        )
+        operations = self._capabilities.operations
+        if operations.read_device_info:
+            self._add_service(
+                GetDeviceInfo,
+                "~/get_device_info",
+                self._get_device_info,
+            )
+        if operations.read_stall_protection:
+            self._add_service(
+                GetStallProtection,
+                "~/get_stall_protection",
+                self._get_stall_protection,
+            )
         self._add_service(
             Recover,
             "~/recover",
             self._recover,
         )
-        for name in _STALL_SETTERS:
-            self._add_service(
-                SetRawValues,
-                f"~/set_{name}",
-                lambda request, response, value=name: self._set_raw_values(
-                    value,
-                    request,
-                    response,
-                ),
-            )
+        if operations.write_stall_protection:
+            for name in _STALL_SETTERS:
+                self._add_service(
+                    SetRawValues,
+                    f"~/set_{name}",
+                    lambda request, response, value=name: self._set_raw_values(
+                        value,
+                        request,
+                        response,
+                    ),
+                )
         for operation in DiscreteOperation:
+            if not getattr(operations, operation.value):
+                continue
             self._add_service(
                 SubmitCommand,
                 f"~/{operation.value}",

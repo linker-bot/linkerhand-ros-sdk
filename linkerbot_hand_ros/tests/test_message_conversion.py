@@ -42,9 +42,11 @@ from linkerbot_hand_ros.conversion import (
     command_status_to_message,
     device_info_to_message,
     force_sample_to_messages,
+    make_angle_message,
     sample_metadata_to_message,
     stall_protection_to_message,
     telemetry_sample_to_message,
+    update_angle_message,
 )
 
 from linkerbot_hand_msgs.msg import HandCommandStatus, SampleMetadata
@@ -261,6 +263,39 @@ def test_angle_message_never_conflates_raw_percent_and_physical_values():
     assert list(message.percent_valid) == [True, True, False, True, True, True]
     assert message.percent[2] == 0.0
     assert list(message.physical_rad_valid) == [False, True, False, False, False, False]
+
+
+def test_reusable_angle_message_is_fully_overwritten_between_samples():
+    capabilities = _capabilities("L6")
+    message = make_angle_message(capabilities)
+    message_id = id(message)
+    first = AngleSample(
+        raw=(255, 128, 64, 32, 16, 0),
+        percent=(100.0, 50.2, None, 12.5, 6.25, 0.0),
+        physical_rad=(None, 0.1, None, None, None, None),
+        meta=_meta(sequence=7),
+    )
+    second = AngleSample(
+        raw=(1, 2, 3, 4, 5, 6),
+        percent=(None, None, None, None, None, None),
+        physical_rad=(None, None, None, None, None, None),
+        meta=SampleMeta.unavailable(connection_generation=4),
+    )
+
+    update_angle_message(message, first, capabilities, ros_now_ns=ROS_NOW_NS)
+    update_angle_message(message, second, capabilities, ros_now_ns=ROS_NOW_NS + 1)
+
+    assert id(message) == message_id
+    assert list(message.joint_names) == list(capabilities.joint_names)
+    assert list(message.raw) == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    assert list(message.percent) == [0.0] * 6
+    assert list(message.percent_valid) == [False] * 6
+    assert list(message.physical_rad) == [0.0] * 6
+    assert list(message.physical_rad_valid) == [False] * 6
+    assert not message.meta.valid
+    assert message.meta.connection_generation == 4
+    assert message.meta.collected_at.sec == 0
+    assert message.meta.collected_at.nanosec == 0
 
 
 def test_command_cache_telemetry_is_not_published_as_device_measurement():

@@ -19,11 +19,12 @@ from linkerbot_hand_msgs.msg import (
     CommandCapability,
     HandCapabilities,
     HandCommandStatus,
+    HandCommandStatusBatch,
     HandJointCommand,
     HandRawCommand,
 )
 
-from .qos import COMMAND_QOS, METADATA_QOS, STATUS_QOS
+from .qos import COMMAND_QOS, HIGH_RATE_PUBLISHER_EVENTS, METADATA_QOS, STATUS_QOS
 
 _RAW_COMMANDS = (
     "speeds",
@@ -86,12 +87,14 @@ class HandCommandClient:
                 HandJointCommand,
                 self._topic("command/angles"),
                 COMMAND_QOS,
+                event_callbacks=HIGH_RATE_PUBLISHER_EVENTS,
             )
             for semantic in _RAW_COMMANDS:
                 self._raw_publishers[semantic] = node.create_publisher(
                     HandRawCommand,
                     self._topic(f"command/{semantic}"),
                     COMMAND_QOS,
+                    event_callbacks=HIGH_RATE_PUBLISHER_EVENTS,
                 )
             self._subscriptions.extend(
                 (
@@ -102,9 +105,9 @@ class HandCommandClient:
                         METADATA_QOS,
                     ),
                     node.create_subscription(
-                        HandCommandStatus,
+                        HandCommandStatusBatch,
                         self._topic("command/status"),
-                        self._update_status,
+                        self._update_status_batch,
                         STATUS_QOS,
                     ),
                 )
@@ -341,13 +344,25 @@ class HandCommandClient:
 
     def _update_status(self, message: HandCommandStatus) -> None:
         with self._condition:
-            if message.client_id != self._client_id or message.user_sequence == 0:
-                return
-            self._statuses[message.user_sequence] = message
-            self._statuses.move_to_end(message.user_sequence)
-            while len(self._statuses) > self._status_capacity:
-                self._statuses.popitem(last=False)
-            self._condition.notify_all()
+            if self._store_status_locked(message):
+                self._condition.notify_all()
+
+    def _update_status_batch(self, message: HandCommandStatusBatch) -> None:
+        with self._condition:
+            changed = False
+            for status in message.statuses:
+                changed = self._store_status_locked(status) or changed
+            if changed:
+                self._condition.notify_all()
+
+    def _store_status_locked(self, message: HandCommandStatus) -> bool:
+        if message.client_id != self._client_id or message.user_sequence == 0:
+            return False
+        self._statuses[message.user_sequence] = message
+        self._statuses.move_to_end(message.user_sequence)
+        while len(self._statuses) > self._status_capacity:
+            self._statuses.popitem(last=False)
+        return True
 
     def _require_command_capability(self, semantic: str) -> CommandCapability:
         with self._condition:

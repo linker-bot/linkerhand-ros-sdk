@@ -13,8 +13,9 @@ The value representation is always explicit:
 - `HandTelemetry` identifies configured and measured channels through its
   semantic and capability metadata.
 - `HandTactileState` represents one complete multi-finger tactile transaction.
-- `HandCommandStatus` distinguishes accepted, dispatched, acknowledged,
-  failed, and superseded commands. A non-zero `client_id` combined with
+- `HandCommandStatusBatch` carries changed `HandCommandStatus` records in one
+  bounded publication. Each record still distinguishes accepted, dispatched,
+  acknowledged, failed, and superseded commands. A non-zero `client_id` combined with
   `user_sequence` identifies one publisher's command without colliding with
   another publisher, while publisher and driver-receive timestamps expose the
   ROS admission latency.
