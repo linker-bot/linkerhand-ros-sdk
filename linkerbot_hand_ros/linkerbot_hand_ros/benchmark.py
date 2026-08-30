@@ -68,6 +68,7 @@ class BenchmarkMeasurements:
     client_id: int
     requested_angle_hz: float
     requested_tactile_hz: float
+    angle_feedback_policy: str
     started_at: float
     ended_at: float
     sent_at: tuple[float, ...]
@@ -88,6 +89,8 @@ class BenchmarkResult:
     command_accepted_hz: float
     command_terminal_hz: float
     command_dispatch_hz: float
+    angle_feedback_hz: float | None
+    angle_command_feedback_hz: float | None
     angle_read_completion_hz: float | None
     angle_cache_update_hz: float | None
     angle_ros_publish_hz: float | None
@@ -118,6 +121,13 @@ def evaluate_measurements(
         raise ValueError("minimum_ratio must be within (0, 1]")
     if type(measurements.client_id) is not int or measurements.client_id <= 0:
         raise ValueError("benchmark client_id must be a positive int")
+    feedback_policy = measurements.angle_feedback_policy
+    if feedback_policy not in {
+        "query_only",
+        "command_feedback_only",
+        "adaptive",
+    }:
+        raise ValueError("benchmark angle feedback policy is invalid")
     publish_hz = len(measurements.sent_at) / duration
     own_events = tuple(
         event
@@ -186,6 +196,16 @@ def evaluate_measurements(
         measurements.measurement_end_diagnostic,
         "channel_angles_completed_reads",
     )
+    angle_command_feedback_hz = _diagnostic_counter_rate(
+        measurements.start_diagnostic,
+        measurements.measurement_end_diagnostic,
+        "channel_angles_command_feedback_samples",
+    )
+    angle_feedback_hz = _diagnostic_counter_rate(
+        measurements.start_diagnostic,
+        measurements.measurement_end_diagnostic,
+        "channel_angles_feedback_samples",
+    )
     tactile_read_hz = (
         _diagnostic_counter_rate(
             measurements.start_diagnostic,
@@ -217,10 +237,24 @@ def evaluate_measurements(
         )
     _append_rate_failure(
         reasons,
-        "角度读取完成频率",
-        angle_read_hz,
+        "角度有效反馈频率",
+        angle_feedback_hz,
         minimum_angle,
     )
+    if feedback_policy == "query_only":
+        _append_rate_failure(
+            reasons,
+            "角度主动查询完成频率",
+            angle_read_hz,
+            minimum_angle,
+        )
+    elif feedback_policy == "command_feedback_only":
+        _append_rate_failure(
+            reasons,
+            "角度命令回显频率",
+            angle_command_feedback_hz,
+            minimum_angle,
+        )
     _append_rate_failure(
         reasons,
         "角度缓存更新频率",
@@ -275,6 +309,8 @@ def evaluate_measurements(
         command_accepted_hz=accepted_hz,
         command_terminal_hz=terminal_hz,
         command_dispatch_hz=dispatched_hz,
+        angle_feedback_hz=angle_feedback_hz,
+        angle_command_feedback_hz=angle_command_feedback_hz,
         angle_read_completion_hz=angle_read_hz,
         angle_cache_update_hz=angle_cache_hz,
         angle_ros_publish_hz=angle_publish_hz,
@@ -401,6 +437,12 @@ def _append_health_failures(
     }
     if len(generations) > 1:
         reasons.append("测试期间 health 连接代次发生变化")
+    feedback_policy = measurement_end.values.get("channel_angles_feedback_policy")
+    if feedback_policy != measurements.angle_feedback_policy:
+        reasons.append(
+            "角度反馈策略不匹配: "
+            f"期望 {measurements.angle_feedback_policy}, 实际 {feedback_policy or 'unknown'}"
+        )
     pending = end.integer("pending_commands")
     if pending is None:
         reasons.append("诊断中缺少 pending_commands")

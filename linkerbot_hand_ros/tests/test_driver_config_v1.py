@@ -2,6 +2,7 @@ import math
 
 import pytest
 from linkerbot_hand import (
+    AngleFeedbackPolicy,
     HandSide,
     UnsupportedOperationError,
     ValidationError,
@@ -36,6 +37,7 @@ def _parameters(**overrides):
         "publish_rate_hz": 100.0,
         "diagnostic_rate_hz": 1.0,
         "angles_hz": 100.0,
+        "angle_feedback": "adaptive",
         "speeds_hz": 0.0,
         "force_hz": 0.0,
         "temperature_hz": 0.0,
@@ -60,6 +62,7 @@ def test_configuration_uses_declared_sdk_capabilities_as_source_of_truth():
     assert configuration.declared_capabilities.identity.verified is False
     assert configuration.polling_plan.angles_hz == 100.0
     assert configuration.polling_plan.force_hz == 30.0
+    assert configuration.polling_plan.angle_feedback is AngleFeedbackPolicy.ADAPTIVE
 
 
 def test_l30_requires_an_empty_side_parameter():
@@ -85,6 +88,7 @@ def test_runtime_rate_update_is_atomic_and_capability_checked():
     updated = configuration.with_runtime_rates(
         {
             "angles_hz": 60.0,
+            "angle_feedback": "query_only",
             "current_hz": 10.0,
             "publish_rate_hz": 120.0,
             "diagnostic_rate_hz": 2.0,
@@ -94,6 +98,7 @@ def test_runtime_rate_update_is_atomic_and_capability_checked():
     assert configuration.polling_plan.angles_hz == 100.0
     assert updated.polling_plan.angles_hz == 60.0
     assert updated.polling_plan.current_hz == 10.0
+    assert updated.polling_plan.angle_feedback is AngleFeedbackPolicy.QUERY_ONLY
     assert updated.publish_rate_hz == 120.0
     assert updated.diagnostic_rate_hz == 2.0
 
@@ -156,6 +161,12 @@ def test_transport_json_rejects_ambiguous_or_unowned_fields(raw, error):
 def test_configuration_rejects_invalid_rates(name, value):
     with pytest.raises(ValidationError, match=f"{name} must be finite"):
         read_driver_configuration(_parameters(**{name: value}).__getitem__)
+
+
+@pytest.mark.parametrize("value", ("", "echo", 1))
+def test_configuration_rejects_invalid_angle_feedback(value):
+    with pytest.raises(ValidationError, match="angle_feedback"):
+        read_driver_configuration(_parameters(angle_feedback=value).__getitem__)
 
 
 def test_configuration_delegates_runtime_limits_to_sdk_device_config():

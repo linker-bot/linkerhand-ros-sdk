@@ -1,3 +1,4 @@
+from copy import deepcopy
 from dataclasses import replace
 
 import pytest
@@ -12,7 +13,11 @@ from linkerbot_hand_ros.benchmark import (
 )
 from linkerbot_hand_ros.examples.frequency_benchmark import FrequencyBenchmarkNode
 
-from linkerbot_hand_msgs.msg import HandCommandStatus, HandCommandTransition
+from linkerbot_hand_msgs.msg import (
+    HandCommandStatus,
+    HandCommandStatusBatch,
+    HandCommandTransition,
+)
 
 _CLIENT_ID = 17
 
@@ -51,8 +56,12 @@ def _diagnostic(
     timeouts=0,
     consecutive_errors=0,
     angle_completed=0,
+    angle_command_feedback=0,
+    angle_feedback=None,
+    feedback_policy="query_only",
     force_completed=0,
 ):
+    angle_feedback = angle_completed if angle_feedback is None else angle_feedback
     return DiagnosticObservation(
         observed_at,
         {
@@ -65,6 +74,9 @@ def _diagnostic(
             "channel_angles_timeouts": str(timeouts),
             "channel_force_timeouts": "0",
             "channel_angles_completed_reads": str(angle_completed),
+            "channel_angles_command_feedback_samples": str(angle_command_feedback),
+            "channel_angles_feedback_samples": str(angle_feedback),
+            "channel_angles_feedback_policy": feedback_policy,
             "channel_force_completed_reads": str(force_completed),
         },
     )
@@ -89,6 +101,9 @@ def _measurements(
     angle_sequence=500,
     angle_publications=None,
     angle_reads=500,
+    angle_command_feedback=0,
+    angle_feedback=None,
+    feedback_policy="query_only",
     tactile=False,
 ):
     sent = tuple(index / 50 for index in range(500))
@@ -124,18 +139,22 @@ def _measurements(
     end_diagnostic = _diagnostic(
         10,
         angle_completed=angle_reads,
+        angle_command_feedback=angle_command_feedback,
+        angle_feedback=(angle_reads if angle_feedback is None else angle_feedback),
+        feedback_policy=feedback_policy,
         force_completed=300 if tactile else 0,
     )
     return BenchmarkMeasurements(
         client_id=_CLIENT_ID,
         requested_angle_hz=50,
         requested_tactile_hz=30 if tactile else 0,
+        angle_feedback_policy=feedback_policy,
         started_at=0,
         ended_at=10,
         sent_at=sent,
         state_events=tuple(states),
         command_events=commands,
-        start_diagnostic=_diagnostic(0),
+        start_diagnostic=_diagnostic(0, feedback_policy=feedback_policy),
         measurement_end_diagnostic=end_diagnostic,
         end_diagnostic=end_diagnostic,
     )
@@ -150,6 +169,8 @@ def test_equal_workload_passes_at_requested_angle_rate():
     assert result.command_accepted_hz == 50
     assert result.command_terminal_hz == 50
     assert result.command_dispatch_hz == 50
+    assert result.angle_feedback_hz == 50
+    assert result.angle_command_feedback_hz == 0
     assert result.angle_read_completion_hz == 50
     assert result.angle_cache_update_hz == 50
     assert result.angle_ros_publish_hz == 50
@@ -174,7 +195,39 @@ def test_read_completion_rate_is_not_inflated_by_device_reports():
     assert result.angle_read_completion_hz == 30
     assert result.angle_cache_update_hz == 100
     assert result.angle_ros_publish_hz == 50
-    assert any("角度读取完成频率" in reason for reason in result.reasons)
+    assert any("角度主动查询完成频率" in reason for reason in result.reasons)
+
+
+def test_command_feedback_policy_uses_verified_echoes_instead_of_active_reads():
+    result = evaluate_measurements(
+        _measurements(
+            angle_reads=0,
+            angle_command_feedback=500,
+            angle_feedback=500,
+            feedback_policy="command_feedback_only",
+        )
+    )
+
+    assert result.passed
+    assert result.angle_read_completion_hz == 0
+    assert result.angle_command_feedback_hz == 50
+    assert result.angle_feedback_hz == 50
+
+
+def test_adaptive_policy_accepts_combined_query_and_command_feedback() -> None:
+    result = evaluate_measurements(
+        _measurements(
+            angle_reads=200,
+            angle_command_feedback=300,
+            angle_feedback=500,
+            feedback_policy="adaptive",
+        )
+    )
+
+    assert result.passed
+    assert result.angle_read_completion_hz == 20
+    assert result.angle_command_feedback_hz == 30
+    assert result.angle_feedback_hz == 50
 
 
 def test_low_cache_and_ros_rates_are_reported_separately():
@@ -233,7 +286,8 @@ def test_polling_counter_reset_cannot_be_reported_as_a_read_rate():
 
     assert not result.passed
     assert result.angle_read_completion_hz is None
-    assert any("角度读取完成频率 unknown" in reason for reason in result.reasons)
+    assert any("角度有效反馈频率 unknown" in reason for reason in result.reasons)
+    assert any("角度主动查询完成频率 unknown" in reason for reason in result.reasons)
 
 
 def test_failed_commands_fail_while_sparse_superseded_targets_are_reported():
@@ -376,10 +430,11 @@ def test_status_callback_uses_full_history_and_ignores_foreign_client():
             ],
         )
 
-        status.client_id = client_id + 1
-        node._on_command_status(status)
-        status.client_id = client_id
-        node._on_command_status(status)
+        foreign = deepcopy(status)
+        foreign.client_id = client_id + 1
+        node._on_command_status_batch(
+            HandCommandStatusBatch(statuses=[foreign, status])
+        )
 
         assert [event.stage for event in node.command_events] == [
             HandCommandStatus.STAGE_ACCEPTED,

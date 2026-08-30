@@ -7,6 +7,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, fields, replace
 
 from linkerbot_hand import (
+    AngleFeedbackPolicy,
     DeviceCapabilities,
     DeviceConfig,
     HandSide,
@@ -44,7 +45,12 @@ DEVICE_CONFIG_PARAMETERS = frozenset(
     }
 )
 RUNTIME_RATE_PARAMETERS = frozenset(
-    (*POLL_RATE_PARAMETERS, "publish_rate_hz", "diagnostic_rate_hz")
+    (
+        *POLL_RATE_PARAMETERS,
+        "angle_feedback",
+        "publish_rate_hz",
+        "diagnostic_rate_hz",
+    )
 )
 STATIC_PARAMETERS = frozenset(
     {"model", "side", "transport_json", *DEVICE_CONFIG_PARAMETERS}
@@ -94,6 +100,10 @@ class DriverConfiguration:
         for name in POLL_RATE_PARAMETERS:
             if name in updates:
                 plan_values[name] = _finite_rate(name, updates[name], allow_zero=True)
+        if "angle_feedback" in updates:
+            plan_values["angle_feedback"] = _angle_feedback_policy(
+                updates["angle_feedback"]
+            )
         plan = PollingPlan(**plan_values)
         validate_polling_plan(self.declared_capabilities, plan)
 
@@ -147,7 +157,8 @@ def read_driver_configuration(read_parameter: ParameterReader) -> DriverConfigur
         **{
             name: _finite_rate(name, read_parameter(name), allow_zero=True)
             for name in POLL_RATE_PARAMETERS
-        }
+        },
+        angle_feedback=_angle_feedback_policy(read_parameter("angle_feedback")),
     )
     validate_polling_plan(capabilities, plan)
     return DriverConfiguration(
@@ -201,6 +212,16 @@ def _finite_rate(name: str, value: object, *, allow_zero: bool) -> float:
         qualifier = "non-negative" if allow_zero else "positive"
         raise ValidationError(f"{name} must be finite and {qualifier}")
     return float(value)
+
+
+def _angle_feedback_policy(value: object) -> AngleFeedbackPolicy:
+    if not isinstance(value, str) or not value.strip():
+        raise ValidationError("angle_feedback must be a non-empty string")
+    try:
+        return AngleFeedbackPolicy(value.strip().lower())
+    except ValueError as error:
+        choices = ", ".join(policy.value for policy in AngleFeedbackPolicy)
+        raise ValidationError(f"angle_feedback must be one of: {choices}") from error
 
 
 __all__ = [

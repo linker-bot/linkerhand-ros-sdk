@@ -44,6 +44,27 @@ def test_entry_points_use_idempotent_rclpy_shutdown() -> None:
         assert "rclpy.shutdown()" not in source
 
 
+def test_production_entry_points_keep_default_rclpy_signal_handling() -> None:
+    for relative in ("node.py", "multi_device.py"):
+        source = (PACKAGE_ROOT / "linkerbot_hand_ros" / relative).read_text()
+
+        assert "rclpy.init(args=args)" in source
+        assert "SignalHandlerOptions.NO" not in source
+
+
+def test_driver_entry_points_use_single_threaded_executors() -> None:
+    sources = tuple(
+        (PACKAGE_ROOT / path).read_text(encoding="utf-8")
+        for path in (
+            "linkerbot_hand_ros/node.py",
+            "linkerbot_hand_ros/multi_device.py",
+        )
+    )
+
+    assert all("SingleThreadedExecutor" in source for source in sources)
+    assert all("MultiThreadedExecutor" not in source for source in sources)
+
+
 def test_launch_exposes_every_driver_parameter() -> None:
     launch_path = PACKAGE_ROOT / "launch/hand.launch.py"
     module = runpy.run_path(str(launch_path))

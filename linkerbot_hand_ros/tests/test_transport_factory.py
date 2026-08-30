@@ -69,6 +69,7 @@ def _driver_parameters(**overrides):
         "publish_rate_hz": 100.0,
         "diagnostic_rate_hz": 1.0,
         "angles_hz": 100.0,
+        "angle_feedback": "adaptive",
         "speeds_hz": 0.0,
         "force_hz": 0.0,
         "temperature_hz": 0.0,

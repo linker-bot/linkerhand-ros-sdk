@@ -20,6 +20,7 @@ from rclpy.utilities import remove_ros_args
 
 from linkerbot_hand_msgs.msg import (
     HandCommandStatus,
+    HandCommandStatusBatch,
     HandJointState,
     HandTactileState,
 )
@@ -61,9 +62,21 @@ def _parse_args(args: list[str]) -> argparse.Namespace:
         default=0.0,
         help="完整触觉轮询频率；0 表示仅测试角度",
     )
+    parser.add_argument(
+        "--angle-feedback",
+        choices=("query_only", "command_feedback_only", "adaptive"),
+        default="query_only",
+        help="角度反馈策略；主动收发基准默认使用 query_only",
+    )
     parser.add_argument("--duration", type=float, default=180.0)
     parser.add_argument("--warmup", type=float, default=2.0)
     parser.add_argument("--drain-time", type=float, default=1.0)
+    parser.add_argument(
+        "--diagnostic-hz",
+        type=float,
+        default=1.0,
+        help="驱动 health diagnostics 频率；上限测试建议保持 1 Hz",
+    )
     parser.add_argument("--startup-timeout", type=float, default=10.0)
     parser.add_argument("--minimum-ratio", type=float, default=0.9)
     parser.add_argument("--repetitions", type=int, default=3)
@@ -100,7 +113,7 @@ def _validate_args(parsed: argparse.Namespace) -> None:
         raise ValueError("--angle-rates 必须是有限正数")
     if any(later <= earlier for earlier, later in pairwise(rates)):
         raise ValueError("--angle-rates 必须严格递增且不能重复")
-    for name in ("duration", "drain_time", "startup_timeout"):
+    for name in ("duration", "drain_time", "startup_timeout", "diagnostic_hz"):
         value = getattr(parsed, name)
         if not math.isfinite(value) or value <= 0.0:
             raise ValueError(f"--{name.replace('_', '-')} 必须是有限正数")
@@ -155,9 +168,9 @@ class FrequencyBenchmarkNode(Node):
                     STATE_QOS,
                 ),
                 (
-                    HandCommandStatus,
+                    HandCommandStatusBatch,
                     f"{self.driver_name}/command/status",
-                    self._on_command_status,
+                    self._on_command_status_batch,
                     STATUS_QOS,
                 ),
                 (
@@ -258,6 +271,10 @@ class FrequencyBenchmarkNode(Node):
             for stage, transition_at in transitions
         )
 
+    def _on_command_status_batch(self, message: HandCommandStatusBatch) -> None:
+        for status in message.statuses:
+            self._on_command_status(status)
+
     def _on_diagnostics(self, message: DiagnosticArray) -> None:
         expected_name = f"{self.driver_name}: hand_driver"
         for status in message.status:
@@ -274,6 +291,8 @@ class FrequencyBenchmarkNode(Node):
         self,
         angle_hz: float,
         tactile_hz: float,
+        angle_feedback: str,
+        diagnostic_hz: float,
         timeout_s: float,
     ) -> None:
         """Atomically align SDK polling and ROS cache publication rates."""
@@ -283,9 +302,10 @@ class FrequencyBenchmarkNode(Node):
         publish_hz = max(angle_hz, tactile_hz)
         parameters = [
             Parameter("angles_hz", value=angle_hz),
+            Parameter("angle_feedback", value=angle_feedback),
             Parameter("force_hz", value=tactile_hz),
             Parameter("publish_rate_hz", value=publish_hz),
-            Parameter("diagnostic_rate_hz", value=min(publish_hz, 20.0)),
+            Parameter("diagnostic_rate_hz", value=diagnostic_hz),
         ]
         future = self.parameter_client.set_parameters_atomically(parameters)
         _spin_until_future(self, future, timeout_s)
@@ -456,6 +476,7 @@ def _run_window(
             client_id=node.command_client.client_id,
             requested_angle_hz=angle_hz,
             requested_tactile_hz=parsed.tactile_hz,
+            angle_feedback_policy=parsed.angle_feedback,
             started_at=started_at,
             ended_at=ended_at,
             sent_at=tuple(sent_at),
@@ -488,6 +509,8 @@ def _log_result(
         f"accepted={result.command_accepted_hz:.2f}Hz, "
         f"dispatch={result.command_dispatch_hz:.2f}Hz, "
         f"terminal={result.command_terminal_hz:.2f}Hz, "
+        f"angle_feedback={_format_rate(result.angle_feedback_hz)}, "
+        f"angle_echo={_format_rate(result.angle_command_feedback_hz)}, "
         f"angle_read={_format_rate(result.angle_read_completion_hz)}, "
         f"angle_cache={_format_rate(result.angle_cache_update_hz)}, "
         f"angle_ros={_format_rate(result.angle_ros_publish_hz)}, "
@@ -536,15 +559,27 @@ def _run(parsed: argparse.Namespace, node: FrequencyBenchmarkNode) -> bool:
     if not spin_until_ready(node, node.command_client, parsed.startup_timeout):
         raise RuntimeError(f"等待驱动角度接口就绪超时: {node.driver_name}")
     node.start_observing()
+    needs_angle_baseline = parsed.angle_values is None
+    if needs_angle_baseline and not parsed.no_configure_driver:
+        node.configure_rates(
+            100.0,
+            0.0,
+            "query_only",
+            parsed.diagnostic_hz,
+            parsed.startup_timeout,
+        )
     if not _spin_until(
         node,
         lambda: (
             node.latest_diagnostic is not None
-            and node.latest_percent_angles is not None
+            and (not needs_angle_baseline or node.latest_percent_angles is not None)
         ),
         parsed.startup_timeout,
     ):
-        raise RuntimeError("等待首次有效 percent 角度状态和 health diagnostics 超时")
+        expected = "health diagnostics"
+        if needs_angle_baseline:
+            expected = f"有效 percent 角度状态和 {expected}"
+        raise RuntimeError(f"等待首次{expected}超时")
     baseline = _resolve_angle_target(parsed, node)
     model = node.command_client.model
     node.get_logger().info(
@@ -559,6 +594,8 @@ def _run(parsed: argparse.Namespace, node: FrequencyBenchmarkNode) -> bool:
             node.configure_rates(
                 angle_hz,
                 parsed.tactile_hz,
+                parsed.angle_feedback,
+                parsed.diagnostic_hz,
                 parsed.startup_timeout,
             )
         state_start = len(node.state_events)

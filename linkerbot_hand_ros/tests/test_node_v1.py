@@ -19,6 +19,7 @@ from linkerbot_hand import (
     TelemetrySemantic,
     UnsupportedFirmwareError,
 )
+from linkerbot_hand_ros.command_interface import CommandInterface
 from linkerbot_hand_ros.node import LinkerbotHandNode
 from rclpy.lifecycle import TransitionCallbackReturn
 from rclpy.parameter import Parameter
@@ -78,6 +79,24 @@ def node_rig():
         rclpy.try_shutdown()
 
 
+@pytest.mark.parametrize("capacity", (0, 513, True))
+def test_command_tracking_capacity_matches_bounded_status_batch(
+    node_rig,
+    capacity,
+):
+    node, _builder = node_rig
+
+    with pytest.raises(ValueError, match="tracking_capacity"):
+        CommandInterface(
+            node,
+            device=lambda: None,
+            is_active=lambda: False,
+            on_accepted=lambda: None,
+            on_error=lambda _error: None,
+            tracking_capacity=capacity,
+        )
+
+
 def test_configure_constructs_no_runtime_io_or_worker_thread(node_rig):
     node, builder = node_rig
     threads_before = {thread.ident for thread in threading.enumerate()}
@@ -87,10 +106,27 @@ def test_configure_constructs_no_runtime_io_or_worker_thread(node_rig):
     assert len(builder.calls) == 1
     assert builder.runtime_factories[0].calls == 0
     assert not node._interfaces.management.worker_active
+    assert not node._interfaces._state_worker.active
+    assert not node._interfaces._status_worker.active
     assert {thread.ident for thread in threading.enumerate()} == threads_before
 
 
-def test_control_and_observation_entities_use_isolated_callback_groups(node_rig):
+def test_configure_only_creates_capability_supported_ros_entities(node_rig):
+    node, _builder = node_rig
+
+    assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+
+    publisher_topics = {name for name, _types in node.get_topic_names_and_types()}
+    service_names = {name for name, _types in node.get_service_names_and_types()}
+    assert "/linkerbot_hand/state/currents" in publisher_topics
+    assert "/linkerbot_hand/state/torques" not in publisher_topics
+    assert "/linkerbot_hand/clear_faults" in service_names
+    assert "/linkerbot_hand/save_parameters" in service_names
+    assert "/linkerbot_hand/enable" not in service_names
+    assert "/linkerbot_hand/calibrate" not in service_names
+
+
+def test_executor_owned_entities_use_isolated_callback_groups(node_rig):
     node, _builder = node_rig
 
     assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
@@ -99,9 +135,7 @@ def test_control_and_observation_entities_use_isolated_callback_groups(node_rig)
     commands = interfaces.commands
     management = interfaces.management
     observation_groups = (
-        interfaces._state_callback_group,
         interfaces._capability_callback_group,
-        interfaces._status_callback_group,
         interfaces._diagnostic_callback_group,
         management._callback_group,
     )
@@ -109,12 +143,10 @@ def test_control_and_observation_entities_use_isolated_callback_groups(node_rig)
     assert all(group is not node.default_callback_group for group in observation_groups)
     groups = (commands._callback_group, *observation_groups)
     assert len({id(group) for group in groups}) == len(groups)
-    assert interfaces.state_timer.callback_group is interfaces._state_callback_group
     assert (
         interfaces.capability_timer.callback_group
         is interfaces._capability_callback_group
     )
-    assert interfaces.status_timer.callback_group is interfaces._status_callback_group
     assert (
         interfaces.diagnostic_timer.callback_group
         is interfaces._diagnostic_callback_group
@@ -136,11 +168,17 @@ def test_lifecycle_opens_on_activate_and_closes_only_on_cleanup(node_rig):
 
     assert runtime.open_count == 1
     assert runtime.polling_plans[-1].angles_hz == 100.0
+    assert node._interfaces._state_worker.active
+    assert node._interfaces._state_worker.rate_hz == 100.0
+    assert node._interfaces._status_worker.active
+    assert node._interfaces._status_worker.rate_hz == 100.0
     assert node._interfaces.management.worker_active
 
     assert node.trigger_deactivate() == TransitionCallbackReturn.SUCCESS
     assert runtime.stop_polling_count == 1
     assert runtime.close_count == 0
+    assert not node._interfaces._state_worker.active
+    assert not node._interfaces._status_worker.active
     assert not node._interfaces.management.worker_active
 
     assert node.trigger_cleanup() == TransitionCallbackReturn.SUCCESS
@@ -169,6 +207,63 @@ def test_interface_deactivate_stops_admin_worker_after_command_cleanup_error(
         assert not interfaces.management.worker_active
     finally:
         commands.deactivate = original_deactivate
+
+
+def test_interface_deactivate_finishes_cleanup_after_keyboard_interrupt(node_rig):
+    node, _builder = node_rig
+    assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+    assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+    interfaces = node._interfaces
+    commands = interfaces.commands
+    assert commands is not None
+    original_deactivate = commands.deactivate
+
+    def interrupt_command_cleanup():
+        raise KeyboardInterrupt
+
+    commands.deactivate = interrupt_command_cleanup
+    try:
+        with pytest.raises(LifecycleError, match="active ROS interfaces"):
+            interfaces.deactivate()
+        assert not interfaces._state_worker.active
+        assert not interfaces._status_worker.active
+        assert not interfaces.management.worker_active
+    finally:
+        commands.deactivate = original_deactivate
+
+
+def test_interface_deactivate_attempts_both_periodic_workers_after_stop_error(
+    node_rig,
+):
+    node, _builder = node_rig
+    assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+    assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+    interfaces = node._interfaces
+    original_state_stop = interfaces._state_worker.stop
+    status_stop_calls = 0
+    original_status_stop = interfaces._status_worker.stop
+
+    def fail_state_stop(_timeout_s):
+        original_state_stop(1.0)
+        raise RuntimeError("state worker stop failed")
+
+    def record_status_stop(timeout_s):
+        nonlocal status_stop_calls
+        status_stop_calls += 1
+        original_status_stop(timeout_s)
+
+    interfaces._state_worker.stop = fail_state_stop
+    interfaces._status_worker.stop = record_status_stop
+    try:
+        with pytest.raises(LifecycleError, match="active ROS interfaces"):
+            interfaces.deactivate()
+    finally:
+        interfaces._state_worker.stop = original_state_stop
+        interfaces._status_worker.stop = original_status_stop
+
+    assert status_stop_calls == 1
+    assert not interfaces._state_worker.active
+    assert not interfaces._status_worker.active
 
 
 def test_activate_firmware_failure_is_closed_and_retryable():
@@ -231,6 +326,54 @@ def test_cached_state_publishes_new_sequence_once_without_active_read(node_rig):
     assert runtime.read_count == reads_before
 
 
+def test_query_only_cache_worker_does_not_wake_for_command_feedback(node_rig):
+    node, builder = node_rig
+    result = node.set_parameters_atomically(
+        (Parameter("angle_feedback", value="query_only"),)
+    )
+    assert result.successful
+    assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+    assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+    interfaces = node._interfaces
+    runtime = builder.latest_runtime
+    interfaces._state_worker.stop(1.0)
+    runtime.snapshot_wait_options.clear()
+
+    interfaces.wait_and_publish_cached_state(0.001)
+
+    assert runtime.snapshot_wait_options == [False]
+
+
+def test_cache_worker_uses_exact_change_without_rebuilding_snapshot(node_rig):
+    node, builder = node_rig
+    assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+    assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+    interfaces = node._interfaces
+    runtime = builder.latest_runtime
+    interfaces._state_worker.stop(1.0)
+    changed = replace(runtime.snapshot, snapshot_sequence=17)
+    runtime.next_wait_snapshot = changed
+    gets_before = runtime.snapshot_get_count
+    interfaces.wait_and_publish_cached_state(0.001)
+
+    assert runtime.snapshot_get_count == gets_before
+    assert interfaces._last_snapshot is changed
+
+
+def test_cache_worker_refreshes_sample_ages_after_idle_timeout(node_rig):
+    node, builder = node_rig
+    assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+    assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+    interfaces = node._interfaces
+    runtime = builder.latest_runtime
+    interfaces._state_worker.stop(1.0)
+    gets_before = runtime.snapshot_get_count
+
+    interfaces.wait_and_publish_cached_state(0.001)
+
+    assert runtime.snapshot_get_count == gets_before + 1
+
+
 def test_command_callback_routes_raw_angles_without_waiting(node_rig):
     node, builder = node_rig
     node.trigger_configure()
@@ -268,11 +411,13 @@ def test_command_callback_routes_raw_angles_without_waiting(node_rig):
     )
     assert runtime.read_count == 0
     assert len(publisher.messages) == 1
-    assert publisher.messages[0].stage == publisher.messages[0].STAGE_DISPATCHED
-    assert publisher.messages[0].client_id == 29
-    assert publisher.messages[0].publisher_stamp == Time(sec=12, nanosec=34)
-    received = publisher.messages[0].driver_received_stamp
-    accepted = publisher.messages[0].transitions[0].stamp
+    assert len(publisher.messages[0].statuses) == 1
+    status = publisher.messages[0].statuses[0]
+    assert status.stage == status.STAGE_DISPATCHED
+    assert status.client_id == 29
+    assert status.publisher_stamp == Time(sec=12, nanosec=34)
+    received = status.driver_received_stamp
+    accepted = status.transitions[0].stamp
     assert (received.sec, received.nanosec) <= (accepted.sec, accepted.nanosec)
     assert commands.tracked_count == 0
 
@@ -337,6 +482,36 @@ def test_status_publication_does_not_hold_command_tracking_lock(node_rig):
 
     assert publisher.lock_was_available
     assert len(publisher.messages) == 1
+
+
+def test_changed_command_statuses_share_one_dds_publication(node_rig):
+    node, _builder = node_rig
+    node.trigger_configure()
+    node.trigger_activate()
+    commands = node._interfaces.commands
+    original = commands._status_publisher
+    publisher = FakePublisher()
+    commands._status_publisher = publisher
+    try:
+        for sequence in (21, 22):
+            commands._handle_angles(
+                HandJointCommand(
+                    client_id=1,
+                    user_sequence=sequence,
+                    representation=HandJointCommand.REPRESENTATION_PERCENT,
+                    values=[100.0] * 6,
+                )
+            )
+
+        assert commands.publish_updates() == 2
+    finally:
+        commands._status_publisher = original
+
+    assert len(publisher.messages) == 1
+    assert [status.user_sequence for status in publisher.messages[0].statuses] == [
+        21,
+        22,
+    ]
 
 
 def test_command_deactivate_waits_for_inflight_status_publication(node_rig):

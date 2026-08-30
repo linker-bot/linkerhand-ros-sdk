@@ -21,6 +21,7 @@ _ARGUMENTS = (
     ("publish_rate_hz", "100.0", float),
     ("diagnostic_rate_hz", "1.0", float),
     ("angles_hz", "100.0", float),
+    ("angle_feedback", "adaptive", str),
     ("speeds_hz", "0.0", float),
     ("force_hz", "0.0", float),
     ("temperature_hz", "0.0", float),
