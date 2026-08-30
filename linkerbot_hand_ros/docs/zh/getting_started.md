@@ -148,6 +148,8 @@ ros2 topic echo /linkerbot_hand/command/status
 
 `representation=1` 是 percent；`representation=2` 是协议 raw。关节数量和顺序只能从
 capability 读取。收到 `DISPATCHED` 只证明 transport send 成功，机械到位仍需状态反馈判断。
+`/command/status` 的类型是 `HandCommandStatusBatch`；其中每个 `statuses[]` 元素对应一条命令，
+不能把整批消息当成单条状态。
 
 下一步参阅[参数配置](configuration.md)、[ROS API](ros_api.md)和
 [业务集成](business_integration.md)。

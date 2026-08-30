@@ -56,7 +56,8 @@ ros2 topic echo /linkerbot_hand/command/status
 ```
 
 用 `(client_id, user_sequence)` 关联目标。无 ACK 型号在 `DISPATCHED` 成功终止；有协议 ACK 的型号等待
-`ACKNOWLEDGED`。机械到位由 `state/angles` 的新鲜反馈判断。
+`ACKNOWLEDGED`。Topic 类型是 `HandCommandStatusBatch`，直接订阅时逐条处理 `statuses[]`；
+机械到位由 `state/angles` 的新鲜反馈判断。
 
 ## 常驻 Python 客户端
 

@@ -47,7 +47,7 @@ ros2 launch linkerbot_hand_ros hand.launch.py \
 | 其他通用数组状态 | `HandTelemetry`，显式 semantic、channels、raw 和 metadata |
 | force 三维数组 | `HandTactileState`，每指矩阵和完整事务 metadata |
 | `joint_names`、`model` 字符串 | `HandCapabilities` 和 `HandDeviceInfo` |
-| `command/accepted/*` | 统一 `HandCommandStatus` 阶段流 |
+| `command/accepted/*` | `HandCommandStatusBatch.statuses[]` 中统一的命令阶段流 |
 
 新状态都携带 sequence、采集时间、age、valid、stale、connection generation 和 origin。
 业务不再通过 diagnostics 拼接状态元数据。
@@ -81,7 +81,7 @@ ros2 launch linkerbot_hand_ros hand.launch.py \
 
 1. 删除业务中的旧 topic 名、旧参数别名和本地型号表。
 2. 从 capability 构造关节布局与命令支持矩阵。
-3. 用 `(client_id, user_sequence)` 和 `HandCommandStatus` 管理送达状态。
+3. 遍历 `HandCommandStatusBatch.statuses[]`，用 `(client_id, user_sequence)` 管理送达状态。
 4. 用当前 generation 的有效 `HandJointState` 判断到位。
 5. 分别完成 percent/raw 小范围实机验证。
 6. 停止 polling 后抓总线确认零查询。

@@ -108,6 +108,10 @@ ros2 topic echo --once /linkerbot_hand/state/angles
 ros2 topic echo /linkerbot_hand/command/status
 ```
 
+`/command/status` uses `HandCommandStatusBatch`; consumers must iterate every
+changed status in `statuses[]` and correlate both `client_id` and
+`user_sequence`.
+
 Send one percent target with the typed message:
 
 ```bash
@@ -130,8 +134,17 @@ tactile transactions separately:
 
 ```bash
 ros2 run linkerbot_hand_ros frequency_benchmark \
-  --angle-rates 50 100 150 200 --duration 180 --repetitions 3
+  --angle-feedback query_only --angle-rates 50 100 150 200 \
+  --duration 180 --repetitions 3
 ```
+
+The production driver uses a single-threaded executor to avoid Python GIL
+contention between short callbacks. SDK cache revisions wake a dedicated state
+publisher immediately, so equal-rate timer aliasing does not discard feedback.
+`publish_rate_hz` controls idle cache checks for age/stale transitions; zero
+pauses ROS state publication. An unchanged sequence is never republished.
+In `query_only`, command feedback remains in SDK cache and metrics but
+`~/state/angles` publishes active-query responses only.
 
 See [ROS API](docs/ros_api.md), the
 [Chinese integration guide](docs/zh/business_integration.md), and the

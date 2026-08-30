@@ -78,7 +78,8 @@ best-effort + keep-last(1)，SDK 内部仍执行 per-family latest-wins。
 
 Topic：`~/command/status`
 
-类型：`linkerbot_hand_msgs/msg/HandCommandStatus`，reliable QoS。
+类型：`linkerbot_hand_msgs/msg/HandCommandStatusBatch`，reliable QoS。每次消息的
+`statuses[]` 最多包含 512 条发生变化的 `HandCommandStatus`，调用方必须逐条遍历。
 
 | stage | 精确定义 |
 | --- | --- |
@@ -197,4 +198,5 @@ ROS 不把 health timer 变成故障轮询器。
 - 状态和触觉：sensor-data 风格 best-effort、小深度。
 - command status 和 service：reliable、有界。
 - capabilities/device info：reliable、transient local。
-- `publish_rate_hz` 只是缓存检查上限；sequence 未变化时不会重复发布旧样本伪装新数据。
+- SDK 缓存 revision 变化会立即唤醒独立状态发布线程；`publish_rate_hz` 只控制无新数据时
+  age/stale 的缓存复查频率，sequence 未变化时不会重复发布旧样本伪装新数据。

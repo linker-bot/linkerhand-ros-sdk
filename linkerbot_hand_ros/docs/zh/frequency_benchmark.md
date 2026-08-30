@@ -61,6 +61,7 @@ ros2 launch linkerbot_hand_ros hand.launch.py \
 
 ```bash
 ros2 run linkerbot_hand_ros frequency_benchmark \
+  --angle-feedback query_only \
   --angle-rates 50 100 150 200 \
   --duration 180 --repetitions 3
 ```
@@ -68,11 +69,36 @@ ros2 run linkerbot_hand_ros frequency_benchmark \
 工具会对每个候选点原子设置：
 
 - `angles_hz=<候选频率>`
+- `angle_feedback=query_only`（或命令行显式选择的策略）
 - `force_hz=0`
-- `publish_rate_hz=<候选频率>`
-- `diagnostic_rate_hz=min(候选频率, 20)`
+- `publish_rate_hz=<候选频率>`（无新 revision 时的 age/stale 复查频率）
+- `diagnostic_rate_hz=1`（可通过 `--diagnostic-hz` 调整）
 
 不会修改静态 `command_rate_hz`，也不会重建连接。
+
+diagnostics 是运维观测面，不属于角度数据面。高频调用 `get_health()` 会构造完整计数器和
+延迟分位数，在 Python 驱动接近设备往返上限时会与 I/O actor 竞争 GIL；频率上限测试默认
+保持 1 Hz。短时调试若提高 `--diagnostic-hz`，结果必须同时记录该配置，不能与 1 Hz 基线
+直接比较。
+
+未显式提供 `--angle-values` 时，工具会先临时配置 `query_only + 100 Hz`，读取一次当前姿态
+作为安全基准，再切换到待测策略和频率。该预读发生在计时窗口之外，不计入结果；显式传入
+`--angle-values` 或使用 `--no-configure-driver` 时不会执行这一步。
+
+三种策略应分别测试，不能把结果混为同一负载：
+
+```bash
+ros2 run linkerbot_hand_ros frequency_benchmark --angle-feedback query_only \
+  --angle-rates 100 200 300
+ros2 run linkerbot_hand_ros frequency_benchmark --angle-feedback command_feedback_only \
+  --angle-rates 100 200 300
+ros2 run linkerbot_hand_ros frequency_benchmark --angle-feedback adaptive \
+  --angle-rates 100 200 300
+```
+
+`query_only` 每个周期包含主动查询，适合与 raw SocketCAN“设置+查询”对比；
+`command_feedback_only` 使用设置后的当前角度回显，CAN 事务量约为前者的一半；`adaptive`
+衡量实际生产调度，在回显不足时才补查询。
 
 ## 角度 + 完整触觉
 
@@ -118,7 +144,9 @@ ros2 run linkerbot_hand_ros frequency_benchmark \
 - SDK `ACCEPTED` Hz 不低于 90%。
 - 命令协议终态 Hz 不低于 90%。
 - 完整阶段历史中实际进入 `DISPATCHED` 的命令 Hz 不低于 90%。
-- 角度读取完成 Hz、缓存更新 Hz 和 ROS publish Hz 分别不低于角度目标的 90%。
+- SDK 角度有效反馈 Hz、缓存更新 Hz 和 ROS publish Hz 分别不低于角度目标的 90%。
+- `query_only` 还要求主动查询完成 Hz 达标；`command_feedback_only` 还要求命令回显 Hz 达标；
+  `adaptive` 允许两者共同满足目标。
 - 启用触觉时，完整触觉读取完成 Hz、缓存更新 Hz 和 ROS publish Hz 分别不低于触觉目标的
   90%。
 - 没有 FAILED 命令；SUPERSEDED 单独记录，并通过实际下发频率门槛约束。

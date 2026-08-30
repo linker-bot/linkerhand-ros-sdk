@@ -23,12 +23,21 @@ Static parameters are accepted only while unconfigured:
 `auto_reconnect`, `reconnect_initial_delay_s`, and
 `reconnect_max_delay_s`.
 
-Runtime rates are `publish_rate_hz`, `diagnostic_rate_hz`, `angles_hz`,
+Runtime parameters are `publish_rate_hz`, `diagnostic_rate_hz`, `angles_hz`,
 `speeds_hz`, `force_hz`, `temperature_hz`, `current_hz`, `faults_hz`,
-`torques_hz`, and `voltage_hz`. Zero disables that SDK polling channel;
-`publish_rate_hz=0` only pauses ROS state publication. Runtime capability
+`torques_hz`, `voltage_hz`, and `angle_feedback`. The feedback policy accepts
+`query_only`, `command_feedback_only`, or `adaptive`. Zero disables that SDK
+polling channel; `publish_rate_hz=0` only pauses ROS state publication. Runtime capability
 fallback is still checked from SDK memory and republished at 10 Hz without
-performing device I/O.
+performing device I/O. The production process uses a `SingleThreadedExecutor`;
+SDK cache revisions wake the state publisher immediately. `publish_rate_hz`
+controls idle cache checks for age/stale transitions, and zero pauses ROS state
+publication. An unchanged sequence is never republished.
+
+With `query_only`, verified angle-command feedback remains available in the SDK
+snapshot and metrics but is not published on `~/state/angles`; that topic then
+contains active-query responses only. The other feedback policies publish
+verified command feedback normally.
 
 The default transport is:
 
@@ -40,7 +49,7 @@ The default transport is:
 
 `multi_hand.launch.py` loads multiple `/namespace/linkerbot_hand` Lifecycle
 nodes into one Python process from a ROS parameter file. The process-level
-parameters are `device_namespaces`, `autostart`, and `executor_threads`. With
+parameters are `device_namespaces` and `autostart`. With
 autostart enabled, all nodes configure before any node activates; a failure
 rolls the group back in reverse order. Identical physical transport keys share
 one process-local runtime. Separate driver processes cannot share that arbiter.
@@ -56,7 +65,7 @@ one process-local runtime. Separate driver processes cannot share that arbiter.
 | `~/command/effort_limits` | `linkerbot_hand_msgs/msg/HandRawCommand` | Protocol-raw dimensionless effort limit |
 | `~/command/torques` | `linkerbot_hand_msgs/msg/HandRawCommand` | True torque only when capability supports it |
 | `~/command/motion_times` | `linkerbot_hand_msgs/msg/HandRawCommand` | Protocol-raw motion-time setting |
-| `~/command/status` | `linkerbot_hand_msgs/msg/HandCommandStatus` | SDK command stage history |
+| `~/command/status` | `linkerbot_hand_msgs/msg/HandCommandStatusBatch` | Bounded batch of changed SDK command histories |
 
 Continuous command topics use best-effort, depth-one QoS. Unsupported command
 topics are not subscribed while active. `ACCEPTED` means admitted to the SDK;
@@ -64,10 +73,11 @@ topics are not subscribed while active. `ACCEPTED` means admitted to the SDK;
 device-protocol ACK. None of these means mechanical arrival.
 
 Each command carries a non-zero `client_id`, a client-local `user_sequence`,
-and `publisher_stamp`. `HandCommandStatus` echoes that composite key and adds
-`driver_received_stamp` plus the complete SDK transition history. Clients must
-match both ID fields; a final `ACKNOWLEDGED` status does not replace the explicit
-`DISPATCHED` transition when measuring actual sends.
+and `publisher_stamp`. Every `HandCommandStatusBatch.statuses[]` entry echoes
+that composite key and adds `driver_received_stamp` plus the complete SDK
+transition history. Clients must iterate every entry and match both ID fields;
+a final `ACKNOWLEDGED` status does not replace the explicit `DISPATCHED`
+transition when measuring actual sends.
 
 ## State Topics
 

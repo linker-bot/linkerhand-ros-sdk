@@ -37,8 +37,10 @@ if self.hand.is_ready("angles"):
     self.pending_command = (publication.client_id, publication.user_sequence)
 ```
 
-这一步只表示 DDS publish 完成。命令状态从 `/command/status` 异步到达。高频 timer/callback
-中不得调用 `wait_for_terminal_status()`，否则同一 executor 可能无法处理 status。使用状态机：
+这一步只表示 DDS publish 完成。命令状态以 `HandCommandStatusBatch` 从 `/command/status`
+异步到达；直接订阅时必须遍历 `statuses[]`，`HandCommandClient` 已代为完成批消息展开和
+`client_id` 过滤。高频 timer/callback 中不得调用 `wait_for_terminal_status()`，否则同一
+executor 可能无法处理 status。使用状态机：
 
 ```text
 publish target

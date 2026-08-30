@@ -38,11 +38,12 @@ ros2 lifecycle set /linkerbot_hand activate
 | `reconnect_initial_delay_s` | `0.1` | 首次重连退避 |
 | `reconnect_max_delay_s` | `2.0` | 最大重连退避 |
 
-## 动态频率
+## 动态轮询与发布
 
 | 参数 | 默认值 | 查询/发布对象 |
 | --- | --- | --- |
 | `angles_hz` | `100` | SDK 角度查询 |
+| `angle_feedback` | `adaptive` | 角度查询与设备命令回显的组合策略 |
 | `speeds_hz` | `0` | SDK 实测速度查询 |
 | `force_hz` | `0` | SDK force 或完整触觉事务 |
 | `temperature_hz` | `0` | SDK 温度查询 |
@@ -50,15 +51,28 @@ ros2 lifecycle set /linkerbot_hand activate
 | `faults_hz` | `0` | SDK 故障查询 |
 | `torques_hz` | `0` | SDK 真实扭矩查询，仅 capability 支持时 |
 | `voltage_hz` | `0` | SDK 电压查询 |
-| `publish_rate_hz` | `100` | ROS 检查缓存的频率 |
+| `publish_rate_hz` | `100` | 无新 revision 时的缓存 age/stale 复查频率 |
 | `diagnostic_rate_hz` | `1` | `/diagnostics` 发布频率 |
 
 非零 polling 只允许 capability 声明 `device_queried=true` 的通道。请求不支持通道时参数
 事务失败，不会静默忽略。频率设为 0 后 SDK 不再生成该通道的查询；
 `publish_rate_hz=0` 只暂停 ROS 状态发布，并不停止设备 polling。
 
+`angle_feedback` 的三个取值分别为：
+
+- `query_only`：只由主动角度查询满足 `angles_hz`，命令回显仍更新 SDK 缓存和指标，但不发布到
+  ROS `~/state/angles`、也不唤醒状态发布线程，避免同一目标周期产生两条角度消息；
+- `command_feedback_only`：只用已验证的设置回显满足反馈，不主动补充角度查询；
+- `adaptive`：优先使用设置回显，目标周期内没有回显时主动查询补足，默认使用该策略。
+
+生产入口固定使用 `SingleThreadedExecutor`。Python 多线程 executor 在高频短回调下会因 GIL
+和线程切换降低吞吐。SDK 缓存 revision 变化会立即唤醒独立状态发布线程，避免固定 timer
+与反馈同频时发生采样混叠；`publish_rate_hz` 只控制无新 revision 时 age/stale 的复查频率。
+sequence 未变化时不会重复发布旧样本。
+
 ```bash
 ros2 param set /linkerbot_hand angles_hz 100.0
+ros2 param set /linkerbot_hand angle_feedback query_only
 ros2 param set /linkerbot_hand force_hz 30.0
 ros2 param set /linkerbot_hand publish_rate_hz 100.0
 ros2 param set /linkerbot_hand diagnostic_rate_hz 10.0
@@ -109,7 +123,6 @@ Lifecycle 节点。参数文件结构如下：
   ros__parameters:
     device_namespaces: [l6_left, o6_right]
     autostart: true
-    executor_threads: 4
 
 /l6_left/linkerbot_hand:
   ros__parameters:
@@ -139,7 +152,6 @@ ros2 launch linkerbot_hand_ros multi_hand.launch.py \
 | --- | --- | --- |
 | `device_namespaces` | 空 | 非空且不重复的设备 namespace 列表 |
 | `autostart` | `true` | 先 configure 全部设备，再 activate 全部设备 |
-| `executor_threads` | `0` | executor 线程数；0 表示按设备数量计算，至少 4 |
 
 `autostart=true` 时，任一节点 configure 或 activate 失败都会按逆序 deactivate/cleanup
 已经启动的节点，进程不会保留部分激活状态。`autostart=false` 时可逐个控制：

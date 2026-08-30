@@ -128,8 +128,9 @@ ros2 topic pub --once /linkerbot_hand/command/angles \
 
 - `representation=1`：percent，严格 `0..100`。
 - `representation=2`：精确协议 raw，不做方向、LUT 或物理单位转换。
-- SDK 接受后通过 `/command/status` 发布 `ACCEPTED`；实际发送后才是
-  `DISPATCHED`。只有设备协议明确确认时才会出现 `ACKNOWLEDGED`。
+- SDK 接受后通过 `/command/status` 的 `HandCommandStatusBatch.statuses[]` 发布
+  `ACCEPTED`；实际发送后才是 `DISPATCHED`。只有设备协议明确确认时才会出现
+  `ACKNOWLEDGED`。
 - 正式程序使用 `HandCommandClient` 自动生成非零 `client_id`，并以
   `(client_id, user_sequence)` 关联状态；多个发布者不能只按序号匹配。
 
@@ -145,6 +146,7 @@ ros2 run linkerbot_hand_ros angle_controller
 
 ```bash
 ros2 param set /linkerbot_hand angles_hz 100.0
+ros2 param set /linkerbot_hand angle_feedback query_only
 ros2 param set /linkerbot_hand force_hz 30.0
 ros2 param set /linkerbot_hand publish_rate_hz 100.0
 ros2 param set /linkerbot_hand diagnostic_rate_hz 10.0
@@ -153,6 +155,15 @@ ros2 param set /linkerbot_hand diagnostic_rate_hz 10.0
 通道频率设为 0 后 SDK 不再产生该类查询。`publish_rate_hz=0` 只停止 ROS 状态发布，
 不会替代 `angles_hz=0`。型号、side、transport 和 runtime 容量等静态参数需先
 `deactivate -> cleanup` 才能修改。
+
+SDK 缓存 revision 变化会立即唤醒独立状态发布线程，不再依赖与设备反馈同频的 timer
+扫描。`publish_rate_hz` 控制无新数据时 age/stale 的缓存复查频率，不限制新 SDK sequence
+的即时发布频率；未变化的 sequence 不会重复发布。
+
+`angle_feedback` 可选 `query_only`、`command_feedback_only` 或 `adaptive`。主动设置并
+主动查询的等工作量测试必须使用 `query_only`；只用设备设置回显做数采时使用
+`command_feedback_only`；生产默认 `adaptive`，由回显满足反馈目标并只查询缺口。
+`query_only` 下回显仍保留在 SDK 缓存和指标中，但不会发布到 ROS 角度状态 topic。
 
 ## 文档
 
