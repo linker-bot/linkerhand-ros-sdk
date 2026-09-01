@@ -7,3 +7,6 @@
 
 安装、运行和接口说明见[驱动中文文档](./linkerbot_hand_ros/README_zh.md)，英文说明见
 [driver README](./linkerbot_hand_ros/README.md)。
+
+版本变更分别记录在 [`linkerbot_hand_msgs/CHANGELOG.rst`](./linkerbot_hand_msgs/CHANGELOG.rst)
+和 [`linkerbot_hand_ros/CHANGELOG.rst`](./linkerbot_hand_ros/CHANGELOG.rst)。

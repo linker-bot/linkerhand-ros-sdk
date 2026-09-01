@@ -38,3 +38,6 @@ management service.
 中文约定：普通 `raw` 字段始终表示设备协议原值，不做物理单位换算；`percent` 仅表示
 SDK capability 定义的 `0..100` 映射。屈伸轴为 `0=弯曲，100=伸直`，侧摆和旋转轴的
 两端方向由对应 `PercentMapping` 明确给出。
+
+See [CHANGELOG.rst](CHANGELOG.rst) for interface changes. Every pull request
+that changes a public message or service must update its `Unreleased` section.

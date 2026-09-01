@@ -227,7 +227,6 @@ def test_sdk_install_instructions_include_private_and_public_indexes() -> None:
         PACKAGE_ROOT / "README_zh.md",
         PACKAGE_ROOT / "docs/zh/getting_started.md",
         PACKAGE_ROOT / "docs/zh/troubleshooting.md",
-        PACKAGE_ROOT / "docs/zh/migration_0_3.md",
     )
     private_index = "https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple"
     public_index = "https://pypi.org/simple"
@@ -265,3 +264,14 @@ def test_python_and_ros_package_versions_match() -> None:
         == module_version.group(1)
     )
     assert setup_version.group(1) == "0.99.0"
+
+
+def test_each_ros_package_maintains_an_unreleased_changelog() -> None:
+    changelogs = (
+        PACKAGE_ROOT.parent / "linkerbot_hand_msgs/CHANGELOG.rst",
+        PACKAGE_ROOT / "CHANGELOG.rst",
+    )
+
+    for path in changelogs:
+        source = path.read_text(encoding="utf-8")
+        assert "Unreleased\n----------" in source

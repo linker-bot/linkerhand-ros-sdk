@@ -15,16 +15,12 @@ setup(
         ("share/ament_index/resource_index/packages", [f"resource/{PACKAGE_NAME}"]),
         (
             f"share/{PACKAGE_NAME}",
-            ["package.xml", "README.md", "README_zh.md"],
+            ["package.xml", "README.md", "README_zh.md", "CHANGELOG.rst"],
         ),
         (f"share/{PACKAGE_NAME}/launch", glob("launch/*.launch.py")),
         (f"share/{PACKAGE_NAME}/config", glob("config/*.yaml")),
         (f"share/{PACKAGE_NAME}/docs", glob("docs/*.md")),
         (f"share/{PACKAGE_NAME}/docs/zh", glob("docs/zh/*.md")),
-        (
-            f"share/{PACKAGE_NAME}/docs/zh/test_reports",
-            glob("docs/zh/test_reports/*.md"),
-        ),
     ],
     install_requires=[
         "setuptools",

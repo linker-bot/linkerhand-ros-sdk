@@ -173,8 +173,12 @@ SDK 缓存 revision 变化会立即唤醒独立状态发布线程，不再依赖
 - [业务集成](docs/zh/business_integration.md)
 - [命令与 Python 示例](docs/zh/examples.md)
 - [频率上限测试](docs/zh/frequency_benchmark.md)
-- [破坏性迁移说明](docs/zh/migration_0_3.md)
 - [故障排查](docs/zh/troubleshooting.md)
+- [版本变更记录](CHANGELOG.rst)
+
+所有影响驱动行为、配置、依赖、安装工具或用户文档的 PR，都必须同步更新
+`CHANGELOG.rst` 的“Unreleased”章节。消息或服务契约变更还必须同步更新
+`linkerbot_hand_msgs/CHANGELOG.rst`。
 
 ## 安全说明
 

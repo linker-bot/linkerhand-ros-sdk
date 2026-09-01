@@ -148,7 +148,10 @@ In `query_only`, command feedback remains in SDK cache and metrics but
 
 See [ROS API](docs/ros_api.md), the
 [Chinese integration guide](docs/zh/business_integration.md), and the
-[frequency benchmark guide](docs/zh/frequency_benchmark.md).
+[frequency benchmark guide](docs/zh/frequency_benchmark.md). Release history is
+maintained in [CHANGELOG.rst](CHANGELOG.rst); every user-facing pull request
+must update its `Unreleased` section. Message or service contract changes must
+also update `linkerbot_hand_msgs/CHANGELOG.rst`.
 
 ## Safety
 
