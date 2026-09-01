@@ -2,18 +2,27 @@
 
 ## 1. 环境
 
-本文只适用于 Ubuntu 24.04、ROS 2 Jazzy 和 Hand SDK 1.x。每个终端先执行：
+本文只适用于 Ubuntu 24.04、ROS 2 Jazzy 和 Hand SDK 1.x。完整依赖链为
+`linkerbot-transport -> linkerbot-hand -> linkerbot_hand_msgs/linkerbot_hand_ros`。
+安装系统工具并创建可以读取 ROS 系统包的隔离环境：
 
 ```bash
+sudo apt update
+sudo apt install -y git can-utils python3-venv python3-rosdep \
+  python3-colcon-common-extensions
+
 source /opt/ros/jazzy/setup.bash
+python3 -m venv --system-site-packages ~/venvs/linkerbot-hand-ros-1.0.0
+source ~/venvs/linkerbot-hand-ros-1.0.0/bin/activate
 ```
 
-安装已发布 SDK：
+显式安装已发布的 Transport 和 Hand：
 
 ```bash
-python3 -m pip install \
+python -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
+  'linkerbot-transport[all]==1.0.0' \
   'linkerbot-hand==1.0.0'
 ```
 
@@ -22,15 +31,8 @@ python3 -m pip install \
 ```bash
 git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-transport.git
 git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand.git
-python3 -m pip install -e ./linkerbot-transport -e ./linkerbot-hand
-python3 -c 'import linkerbot_hand; print(linkerbot_hand.__file__)'
-```
-
-系统工具：
-
-```bash
-sudo apt update
-sudo apt install python3-colcon-common-extensions python3-rosdep can-utils
+python -m pip install -e ./linkerbot-transport -e ./linkerbot-hand
+python -c 'import linkerbot_hand; print(linkerbot_hand.__file__)'
 ```
 
 ## 2. CAN 接口
@@ -65,15 +67,22 @@ wheel 中。必须从同一个 `v1.0.0` 标签构建消息和驱动两个 packag
 mkdir -p ~/linkerbot_ws/src
 cd ~/linkerbot_ws/src
 git clone --branch v1.0.0 --depth 1 \
-  ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand-ros.git
+  https://gitea.linkerhub.work/zhuzhixiang/linkerbot-hand-ros.git
 cd ~/linkerbot_ws
 source /opt/ros/jazzy/setup.bash
 rosdep install --from-paths src --ignore-src -y --rosdistro jazzy
-colcon build --symlink-install
+python -m colcon build --symlink-install
 source ~/linkerbot_ws/install/setup.bash
+
+python -c 'import linkerbot_transport, linkerbot_hand; print("Python dependencies: OK")'
+ros2 pkg prefix linkerbot_hand_msgs
+ros2 pkg prefix linkerbot_hand_ros
+ros2 interface show linkerbot_hand_msgs/msg/HandJointCommand >/dev/null
+ros2 pkg executables linkerbot_hand_ros
 ```
 
 rosdep 的弃用警告可以记录后继续，unresolved key 或 `ERROR:` 必须处理。
+以上验证不连接设备，也不会发送 CAN 帧。
 
 ## 4. 启动与检查
 

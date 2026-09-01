@@ -38,16 +38,21 @@ SDK polling / scheduler -> linkerbot-transport -> 设备
 
 - Ubuntu 24.04 + ROS 2 Jazzy
 - Python 3.10 或更新版本
+- `linkerbot-transport>=1.0.0,<2.0.0`
 - `linkerbot-hand>=1.0.0,<2.0.0`
 - 已配置的 SocketCAN/CAN FD 接口或受支持厂商适配器
 
-安装已发布的 SDK 包时，同时配置私有源和公共 PyPI：
+首次安装可以直接执行[仓库快速启动](../README_zh.md#快速启动)。手工分步安装时，在能够
+读取 ROS 系统包的隔离环境中显式安装 Transport 和 Hand：
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-python3 -m pip install \
+python3 -m venv --system-site-packages ~/venvs/linkerbot-hand-ros-1.0.0
+source ~/venvs/linkerbot-hand-ros-1.0.0/bin/activate
+python -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
+  'linkerbot-transport[all]==1.0.0' \
   'linkerbot-hand==1.0.0'
 ```
 
@@ -56,8 +61,8 @@ python3 -m pip install \
 ```bash
 git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-transport.git
 git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand.git
-python3 -m pip install -e ./linkerbot-transport -e ./linkerbot-hand
-python3 -c 'import linkerbot_hand; print(linkerbot_hand.__file__)'
+python -m pip install -e ./linkerbot-transport -e ./linkerbot-hand
+python -c 'import linkerbot_hand; print(linkerbot_hand.__file__)'
 ```
 
 ## 构建
@@ -70,16 +75,23 @@ package 为准：
 mkdir -p ~/linkerbot_ws/src
 cd ~/linkerbot_ws/src
 git clone --branch v1.0.0 --depth 1 \
-  ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand-ros.git
+  https://gitea.linkerhub.work/zhuzhixiang/linkerbot-hand-ros.git
 cd ~/linkerbot_ws
 source /opt/ros/jazzy/setup.bash
 rosdep install --from-paths src --ignore-src -y --rosdistro jazzy
-colcon build --symlink-install
+python -m colcon build --symlink-install
 source ~/linkerbot_ws/install/setup.bash
+
+python -c 'import linkerbot_transport, linkerbot_hand; print("Python dependencies: OK")'
+ros2 pkg prefix linkerbot_hand_msgs
+ros2 pkg prefix linkerbot_hand_ros
+ros2 interface show linkerbot_hand_msgs/msg/HandJointCommand >/dev/null
+ros2 pkg executables linkerbot_hand_ros
 ```
 
 系统 rosdep 输出的 `pkg_resources is deprecated` 是警告；任何 unresolved key 或
 `ERROR:` 都是实际失败，不能忽略。
+以上验证只检查依赖、ROSIDL 接口、ament 索引和程序入口，不连接设备或发送 CAN 帧。
 
 ## 启动
 

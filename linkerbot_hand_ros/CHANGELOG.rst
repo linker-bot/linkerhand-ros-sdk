@@ -11,6 +11,10 @@ section.
 Unreleased
 ----------
 
+* Add Chinese and English quick-start instructions covering the complete
+  Transport, Hand, ROSIDL, driver, source-build, and post-install verification
+  chain without requiring hardware.
+
 1.0.0 (2026-09-01)
 ------------------
 
