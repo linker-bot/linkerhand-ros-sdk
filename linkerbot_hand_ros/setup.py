@@ -9,7 +9,7 @@ LONG_DESCRIPTION = Path(__file__).with_name("README.md").read_text(encoding="utf
 
 setup(
     name=PACKAGE_NAME,
-    version="0.99.0",
+    version="1.0.0",
     packages=find_packages(exclude=("tests",)),
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{PACKAGE_NAME}"]),
@@ -24,7 +24,7 @@ setup(
     ],
     install_requires=[
         "setuptools",
-        "linkerbot-hand>=1.0.0.dev0,<2.0.0",
+        "linkerbot-hand>=1.0.0,<2.0.0",
     ],
     extras_require={"test": ["pytest"]},
     python_requires=">=3.10",
@@ -35,6 +35,28 @@ setup(
     long_description=LONG_DESCRIPTION,
     long_description_content_type="text/markdown",
     license="Apache-2.0",
+    url="https://gitea.linkerhub.work/zhuzhixiang/linkerbot-hand-ros",
+    project_urls={
+        "Changelog": (
+            "https://gitea.linkerhub.work/zhuzhixiang/"
+            "linkerbot-hand-ros/src/branch/main/linkerbot_hand_ros/CHANGELOG.rst"
+        ),
+        "Documentation": (
+            "https://gitea.linkerhub.work/zhuzhixiang/"
+            "linkerbot-hand-ros/src/branch/main/linkerbot_hand_ros/README_zh.md"
+        ),
+        "Repository": ("https://gitea.linkerhub.work/zhuzhixiang/linkerbot-hand-ros"),
+    },
+    classifiers=[
+        "Development Status :: 5 - Production/Stable",
+        "Intended Audience :: Developers",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3 :: Only",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+    ],
     entry_points={
         "console_scripts": [
             "hand_node = linkerbot_hand_ros.node:main",

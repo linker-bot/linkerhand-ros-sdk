@@ -11,6 +11,9 @@ section.
 Unreleased
 ----------
 
+1.0.0 (2026-09-01)
+------------------
+
 * Publish the SDK's command-feedback origin, firmware-specific capability
   fallback, parameter-save operation, and angle-feedback health metrics.
 * Add ``query_only``, ``command_feedback_only``, and ``adaptive`` angle feedback

@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>linkerbot_hand_msgs</name>
-  <version>0.99.0</version>
+  <version>1.0.0</version>
   <description>Typed ROS 2 interfaces for Linkerbot dexterous hands.</description>
   <maintainer email="1849346915@qq.com">zhuzhixiang</maintainer>
   <license>Apache-2.0</license>

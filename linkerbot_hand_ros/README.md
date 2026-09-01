@@ -27,7 +27,7 @@ submitted through the capability-gated `save_parameters` service.
 
 - Ubuntu 24.04 and ROS 2 Jazzy
 - Python 3.10 or newer
-- `linkerbot-hand>=1.0.0.dev0,<2.0.0`
+- `linkerbot-hand>=1.0.0,<2.0.0`
 - a configured SocketCAN/CAN FD interface or supported vendor adapter
 
 Install a published SDK build with both the private package index and public
@@ -38,7 +38,7 @@ source /opt/ros/jazzy/setup.bash
 python3 -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
-  'linkerbot-hand>=1.0.0.dev0,<2.0.0'
+  'linkerbot-hand==1.0.0'
 ```
 
 For unreleased 1.x development, install the independent source repositories
@@ -53,10 +53,16 @@ python3 -c 'import linkerbot_hand; print(linkerbot_hand.__file__)'
 
 ## Build
 
+`linkerbot_hand_msgs` contains ROSIDL interfaces and must be generated for the
+installed ROS distribution; it is therefore delivered in the tagged ROS source
+release rather than inside the platform-independent driver wheel. Build both
+ROS packages from the same `v1.0.0` tag:
+
 ```bash
 mkdir -p ~/linkerbot_ws/src
 cd ~/linkerbot_ws/src
-git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand-ros.git
+git clone --branch v1.0.0 --depth 1 \
+  ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand-ros.git
 cd ~/linkerbot_ws
 source /opt/ros/jazzy/setup.bash
 rosdep install --from-paths src --ignore-src -y --rosdistro jazzy

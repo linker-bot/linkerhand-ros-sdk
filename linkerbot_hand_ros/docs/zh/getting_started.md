@@ -14,7 +14,7 @@ source /opt/ros/jazzy/setup.bash
 python3 -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
-  'linkerbot-hand>=1.0.0.dev0,<2.0.0'
+  'linkerbot-hand==1.0.0'
 ```
 
 测试尚未发行的源码时，在同一个 Python 环境安装：
@@ -58,10 +58,14 @@ ip -details -statistics link show can0
 
 ## 3. 构建 ROS 工作空间
 
+`linkerbot_hand_msgs` 是需要由 Jazzy 生成的 ROSIDL package，不包含在驱动 Python
+wheel 中。必须从同一个 `v1.0.0` 标签构建消息和驱动两个 package：
+
 ```bash
 mkdir -p ~/linkerbot_ws/src
 cd ~/linkerbot_ws/src
-git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand-ros.git
+git clone --branch v1.0.0 --depth 1 \
+  ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand-ros.git
 cd ~/linkerbot_ws
 source /opt/ros/jazzy/setup.bash
 rosdep install --from-paths src --ignore-src -y --rosdistro jazzy

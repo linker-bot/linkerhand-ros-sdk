@@ -38,7 +38,7 @@ SDK polling / scheduler -> linkerbot-transport -> 设备
 
 - Ubuntu 24.04 + ROS 2 Jazzy
 - Python 3.10 或更新版本
-- `linkerbot-hand>=1.0.0.dev0,<2.0.0`
+- `linkerbot-hand>=1.0.0,<2.0.0`
 - 已配置的 SocketCAN/CAN FD 接口或受支持厂商适配器
 
 安装已发布的 SDK 包时，同时配置私有源和公共 PyPI：
@@ -48,7 +48,7 @@ source /opt/ros/jazzy/setup.bash
 python3 -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
-  'linkerbot-hand>=1.0.0.dev0,<2.0.0'
+  'linkerbot-hand==1.0.0'
 ```
 
 测试尚未发行的 1.x 源码时，在 ROS 使用的同一个 Python 环境安装独立仓库：
@@ -62,10 +62,15 @@ python3 -c 'import linkerbot_hand; print(linkerbot_hand.__file__)'
 
 ## 构建
 
+`linkerbot_hand_msgs` 包含 ROSIDL 接口，必须针对当前 ROS 发行版生成，不能放入
+与平台无关的驱动 wheel。因此 ROS 的正式交付以同一个 `v1.0.0` 标签下的两个源码
+package 为准：
+
 ```bash
 mkdir -p ~/linkerbot_ws/src
 cd ~/linkerbot_ws/src
-git clone ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand-ros.git
+git clone --branch v1.0.0 --depth 1 \
+  ssh://git@git.linkerhub.work:12222/zhuzhixiang/linkerbot-hand-ros.git
 cd ~/linkerbot_ws
 source /opt/ros/jazzy/setup.bash
 rosdep install --from-paths src --ignore-src -y --rosdistro jazzy

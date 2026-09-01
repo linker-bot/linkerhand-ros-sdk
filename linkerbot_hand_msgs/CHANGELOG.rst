@@ -10,6 +10,9 @@ a dated version section and create a new empty ``Unreleased`` section.
 Unreleased
 ----------
 
+1.0.0 (2026-09-01)
+------------------
+
 * Add firmware-specific unsupported telemetry and parameter-save capability
   fields so clients can distinguish model support from current-firmware
   availability.

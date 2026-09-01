@@ -44,7 +44,7 @@ ROS publish Hz 则单独反映状态发布和 DDS 接收链路。diagnostics 同
 python3 -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
-  'linkerbot-hand>=1.0.0.dev0,<2.0.0'
+  'linkerbot-hand==1.0.0'
 ```
 
 启动示例：
