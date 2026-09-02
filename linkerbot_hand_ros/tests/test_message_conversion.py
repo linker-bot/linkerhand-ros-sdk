@@ -121,6 +121,15 @@ def test_all_model_capabilities_project_without_a_ros_model_table(model):
         assert len(ros_value.raw_ranges) == expected_ranges
 
 
+def test_l20_capability_projects_the_corrected_public_model_name():
+    capabilities = _capabilities("L20")
+
+    message = capabilities_to_message(capabilities)
+
+    assert message.identity.model == "L20"
+    assert len(message.joints) == 16
+
+
 @pytest.mark.parametrize("model", SUPPORTED_MODELS)
 def test_all_public_raw_telemetry_channels_use_the_generic_projection(model):
     capabilities = _capabilities(model)

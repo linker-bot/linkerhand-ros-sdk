@@ -65,6 +65,16 @@ def test_configuration_uses_declared_sdk_capabilities_as_source_of_truth():
     assert configuration.polling_plan.angle_feedback is AngleFeedbackPolicy.ADAPTIVE
 
 
+def test_l20_configuration_uses_the_corrected_public_model_name():
+    configuration = read_driver_configuration(
+        _parameters(model="l20", side="left").__getitem__
+    )
+
+    assert configuration.model == "L20"
+    assert configuration.declared_capabilities.model == "L20"
+    assert len(configuration.declared_capabilities.joints) == 16
+
+
 def test_l30_requires_an_empty_side_parameter():
     configuration = read_driver_configuration(
         _parameters(model="l30", side="").__getitem__

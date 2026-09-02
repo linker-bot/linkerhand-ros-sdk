@@ -24,7 +24,7 @@ ros2 lifecycle set /linkerbot_hand activate
 
 | 参数 | 默认值 | 含义 |
 | --- | --- | --- |
-| `model` | `l6` | `l6/o6/l20lite/l25/o20/l30/o30i` |
+| `model` | `l6` | `l6/o6/l20lite/l20/o20/l30/o30i` |
 | `side` | `left` | `left/right`；L30 必须为空字符串 |
 | `transport_json` | SocketCAN `can0` | 严格 JSON transport 配置 |
 | `command_rate_hz` | `250` | SDK 连续命令调度上限 |

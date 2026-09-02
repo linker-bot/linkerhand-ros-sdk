@@ -3,7 +3,7 @@
 [English](README.md) | [简体中文](README_zh.md)
 
 面向 ROS 2 Jazzy 的 Linkerbot 灵巧手 Lifecycle 驱动，统一支持 O6、L6、L20Lite、
-L25、O20、O30I 和 L30。ROS 只使用 `linkerbot-hand` 1.x 的唯一公开设备类
+L20、O20、O30I 和 L30。ROS 只使用 `linkerbot-hand` 1.x 的唯一公开设备类
 `HandDevice`，型号、关节顺序、范围和传感器能力全部来自 SDK capability。
 
 ## 运行边界

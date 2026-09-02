@@ -11,6 +11,9 @@ section.
 Unreleased
 ----------
 
+* Replace the incorrect public hand model name ``L25/l25`` with ``L20/l20``
+  in driver configuration and documentation, matching the corrected Hand SDK
+  capability name.
 * Add Chinese and English quick-start instructions covering the complete
   Transport, Hand, ROSIDL, driver, source-build, and post-install verification
   chain without requiring hardware.
