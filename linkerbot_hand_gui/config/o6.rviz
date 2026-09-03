@@ -1,0 +1,42 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/RobotModel
+      Name: O6 actual
+      Description Source: Topic
+      Description Topic:
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /linkerbot_hand_gui/actual/robot_description
+      Enabled: true
+      TF Prefix: actual
+    - Class: rviz_default_plugins/RobotModel
+      Name: O6 target
+      Description Source: Topic
+      Description Topic:
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /linkerbot_hand_gui/target/robot_description
+      Enabled: true
+      TF Prefix: target
+  Global Options:
+    Fixed Frame: world
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 0.35
+      Focal Point: {X: 0.11, Y: 0.0, Z: 0.06}
+      Pitch: 0.35
+      Yaw: 0.6
