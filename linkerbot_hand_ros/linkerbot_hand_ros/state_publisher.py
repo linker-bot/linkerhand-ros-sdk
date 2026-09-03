@@ -17,8 +17,10 @@ from rclpy.lifecycle import LifecycleNode
 from linkerbot_hand_msgs.msg import (
     HandCapabilities,
     HandDeviceInfo,
+    HandNormalForceResultant,
     HandJointState,
     HandStallProtectionState,
+    HandTactileSensorState,
     HandTactileState,
     HandTelemetry,
 )
@@ -33,6 +35,8 @@ from .conversion import (
     update_angle_message,
 )
 from .qos import HIGH_RATE_PUBLISHER_EVENTS, METADATA_QOS, STATE_QOS
+
+_DESCRIPTOR_TACTILE_ENCODING = "o30_tactile_descriptor"
 
 _SAMPLE_ATTRIBUTES = {
     TelemetrySemantic.MEASURED_SPEEDS: "measured_speeds",
@@ -105,8 +109,25 @@ class SnapshotPublisher:
             force_capability = capabilities.telemetry_channel(TelemetrySemantic.FORCE)
             force_publisher = None
             tactile_publisher = None
+            tactile_sensor_publisher = None
+            force_resultant_publisher = None
             if force_capability is not None:
-                if len(force_capability.shape) == 1:
+                if force_capability.raw_encoding == _DESCRIPTOR_TACTILE_ENCODING:
+                    tactile_sensor_publisher = node.create_lifecycle_publisher(
+                        HandTactileSensorState,
+                        "~/state/tactile_sensors",
+                        STATE_QOS,
+                        event_callbacks=HIGH_RATE_PUBLISHER_EVENTS,
+                    )
+                    lifecycle_publishers.append(tactile_sensor_publisher)
+                    force_resultant_publisher = node.create_lifecycle_publisher(
+                        HandNormalForceResultant,
+                        "~/state/normal_force_resultant",
+                        STATE_QOS,
+                        event_callbacks=HIGH_RATE_PUBLISHER_EVENTS,
+                    )
+                    lifecycle_publishers.append(force_resultant_publisher)
+                elif len(force_capability.shape) == 1:
                     force_publisher = node.create_lifecycle_publisher(
                         HandTelemetry,
                         "~/state/force",
@@ -143,6 +164,8 @@ class SnapshotPublisher:
         self._telemetry_publishers = telemetry_publishers
         self._force_publisher = force_publisher
         self._tactile_publisher = tactile_publisher
+        self._tactile_sensor_publisher = tactile_sensor_publisher
+        self._force_resultant_publisher = force_resultant_publisher
         self._stall_publisher = stall_publisher
         self._published: dict[str, object] = {}
         self._published_capabilities: DeviceCapabilities | None = None
@@ -251,8 +274,29 @@ class SnapshotPublisher:
                 self._tactile_publisher.publish(messages.tactile)
                 publications += 1
             if (
-                messages.telemetry is not None and self._force_publisher is not None
-            ) or (messages.tactile is not None and self._tactile_publisher is not None):
+                messages.tactile_sensors is not None
+                and self._tactile_sensor_publisher is not None
+            ):
+                self._tactile_sensor_publisher.publish(messages.tactile_sensors)
+                publications += 1
+            if (
+                messages.force_resultant is not None
+                and self._force_resultant_publisher is not None
+            ):
+                self._force_resultant_publisher.publish(messages.force_resultant)
+                publications += 1
+            if (
+                (messages.telemetry is not None and self._force_publisher is not None)
+                or (messages.tactile is not None and self._tactile_publisher is not None)
+                or (
+                    messages.tactile_sensors is not None
+                    and self._tactile_sensor_publisher is not None
+                )
+                or (
+                    messages.force_resultant is not None
+                    and self._force_resultant_publisher is not None
+                )
+            ):
                 self._mark_published("force", _metadata_signature(force.meta))
 
         stall_key = tuple(

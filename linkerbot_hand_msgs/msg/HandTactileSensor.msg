@@ -1,0 +1,10 @@
+string finger_name
+string sensor_type
+string data_unit
+uint16 data_range
+uint16 rows
+uint16 columns
+string descriptor
+uint16 total_data_length
+HandTactileField[] fields
+uint8[] raw_bytes

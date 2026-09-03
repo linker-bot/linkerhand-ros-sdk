@@ -4,8 +4,12 @@ from linkerbot_hand_msgs.msg import (
     HandCapabilities,
     HandCommandStatus,
     HandCommandStatusBatch,
+    HandNormalForceResultant,
     HandJointCommand,
     HandJointState,
+    HandTactileField,
+    HandTactileSensor,
+    HandTactileSensorState,
     HandTelemetry,
     SampleMetadata,
     TactileMatrix,
@@ -127,3 +131,45 @@ def test_capability_contract_exposes_firmware_degradation_and_parameter_save():
     assert capabilities.firmware_unsupported_telemetry == ["force"]
     assert capabilities.operations.save_parameters
     assert capabilities.operations.acknowledged_operations == ["save_parameters"]
+
+
+def test_descriptor_tactile_messages_carry_semantic_fields_and_raw_bytes():
+    field = HandTactileField(
+        semantic="FnS",
+        data_type="U16",
+        element_count=1,
+        byte_offset=0,
+        byte_length=2,
+        component_count=1,
+        values=[42.0],
+    )
+    sensor = HandTactileSensor(
+        finger_name="thumb",
+        sensor_type="TSSP_JZG",
+        data_unit="g",
+        data_range=255,
+        rows=10,
+        columns=7,
+        descriptor="FnS_U16_1;Fn_U8_70",
+        total_data_length=72,
+        fields=[field],
+        raw_bytes=[0] * 72,
+    )
+    state = HandTactileSensorState(sensors=[sensor])
+
+    assert state.sensors[0].sensor_type == "TSSP_JZG"
+    assert state.sensors[0].fields[0].semantic == "FnS"
+    assert list(state.sensors[0].fields[0].values) == [42.0]
+    assert len(state.sensors[0].raw_bytes) == 72
+
+
+def test_force_resultant_message_aligns_names_values_and_units():
+    resultant = HandNormalForceResultant(
+        finger_names=["thumb", "index"],
+        normal_force_resultant=[3.0, 7.0],
+        units=["g", "g"],
+    )
+
+    assert list(resultant.finger_names) == ["thumb", "index"]
+    assert list(resultant.normal_force_resultant) == [3.0, 7.0]
+    assert list(resultant.units) == ["g", "g"]

@@ -17,6 +17,7 @@ from linkerbot_hand import (
     ForceSample,
     MeasuredSpeedSample,
     MotionTimeSample,
+    NormalForceResultantSample,
     SampleMeta,
     StallDetectionTimeSample,
     StallHoldCurrentSample,
@@ -25,6 +26,7 @@ from linkerbot_hand import (
     TelemetrySemantic,
     TemperatureSample,
     TorqueSample,
+    UnsupportedOperationError,
     ValidationError,
     VoltageSample,
 )
@@ -51,12 +53,17 @@ RawVectorSample = (
 )
 
 
+_DESCRIPTOR_TACTILE_ENCODING = "o30_tactile_descriptor"
+
+
 @dataclass(frozen=True, slots=True)
 class ForceMessages:
-    """Scalar and matrix projections produced from one force transaction."""
+    """Scalar, matrix, and descriptor projections from one force transaction."""
 
     telemetry: ros_messages.HandTelemetry | None
     tactile: ros_messages.HandTactileState | None
+    tactile_sensors: ros_messages.HandTactileSensorState | None = None
+    force_resultant: ros_messages.HandNormalForceResultant | None = None
 
 
 def angle_sample_to_message(
@@ -227,7 +234,93 @@ def force_sample_to_messages(
             unit_confidence=capability.unit_confidence.value,
             meta=sample_metadata_to_message(sample.meta, ros_now_ns=ros_now_ns),
         )
-    return ForceMessages(telemetry=telemetry, tactile=tactile)
+
+    tactile_sensors = None
+    force_resultant = None
+    if sample.sensors:
+        if capability.raw_encoding != _DESCRIPTOR_TACTILE_ENCODING:
+            raise ValidationError(
+                "descriptor tactile sensors require the descriptor force capability"
+            )
+        if len(capability.shape) != 1 or len(sample.sensors) != prod(capability.shape):
+            raise ValidationError("descriptor sensor count does not match capabilities")
+        if (
+            tuple(item.metadata.sensor_name for item in sample.sensors)
+            != capability.channels
+        ):
+            raise ValidationError("descriptor sensor order does not match capabilities")
+        tactile_sensors = _tactile_sensor_state_message(sample, ros_now_ns=ros_now_ns)
+        force_resultant = _force_resultant_message(sample, ros_now_ns=ros_now_ns)
+
+    return ForceMessages(
+        telemetry=telemetry,
+        tactile=tactile,
+        tactile_sensors=tactile_sensors,
+        force_resultant=force_resultant,
+    )
+
+
+def _tactile_sensor_state_message(
+    sample: ForceSample,
+    *,
+    ros_now_ns: int,
+) -> ros_messages.HandTactileSensorState:
+    """Project every descriptor-decoded fingertip stream without conversion."""
+
+    return ros_messages.HandTactileSensorState(
+        sensors=[
+            ros_messages.HandTactileSensor(
+                finger_name=item.metadata.sensor_name,
+                sensor_type=item.metadata.sensor_type,
+                data_unit=item.metadata.data_unit or "",
+                data_range=item.metadata.data_range,
+                rows=item.metadata.maximum_rows,
+                columns=item.metadata.maximum_columns,
+                descriptor=item.metadata.descriptor_text or "",
+                total_data_length=item.metadata.total_data_length,
+                fields=[
+                    ros_messages.HandTactileField(
+                        semantic=field.semantic,
+                        data_type=field.data_type,
+                        element_count=field.element_count,
+                        byte_offset=field.byte_offset,
+                        byte_length=field.byte_length,
+                        component_count=3 if field.semantic == "xyz" else 1,
+                        values=[
+                            float(scalar)
+                            for value in field.values
+                            for scalar in (
+                                value if isinstance(value, tuple) else (value,)
+                            )
+                        ],
+                    )
+                    for field in item.fields
+                ],
+                raw_bytes=list(item.raw_data),
+            )
+            for item in sample.sensors
+        ],
+        meta=sample_metadata_to_message(sample.meta, ros_now_ns=ros_now_ns),
+    )
+
+
+def _force_resultant_message(
+    sample: ForceSample,
+    *,
+    ros_now_ns: int,
+) -> ros_messages.HandNormalForceResultant | None:
+    """Extract one scalar ``FnS`` resultant per fingertip when all expose it."""
+
+    try:
+        resultant = NormalForceResultantSample.from_force_sample(sample)
+    except UnsupportedOperationError:
+        return None
+    return ros_messages.HandNormalForceResultant(
+        finger_names=list(resultant.sensor_names),
+        normal_force_resultant=[float(value) for value in resultant.raw],
+        units=[unit or "" for unit in resultant.units],
+        meta=sample_metadata_to_message(resultant.meta, ros_now_ns=ros_now_ns),
+    )
 
 
 def _raw_telemetry_message(

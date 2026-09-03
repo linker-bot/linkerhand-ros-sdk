@@ -26,7 +26,11 @@ from linkerbot_hand import (
     StallDetectionTimeSample,
     StallHoldCurrentSample,
     StallThresholdSample,
+    TactileFieldDescriptor,
+    TactileFieldSample,
     TactileMatrix,
+    TactileSensorMetadata,
+    TactileSensorSample,
     TelemetrySemantic,
     TemperatureSample,
     TorqueSample,
@@ -326,6 +330,119 @@ def test_command_cache_telemetry_is_not_published_as_device_measurement():
     assert not message.device_measured
     assert not message.device_queried
     assert message.meta.origin == SampleMetadata.ORIGIN_COMMAND_CACHE
+
+
+def _o30_force_sample(resultants=(11, 22, 33, 44, 55)):
+    channels = ("thumb", "index", "middle", "ring", "pinky")
+    descriptors = (
+        TactileFieldDescriptor(
+            semantic="FnS",
+            data_type="U16",
+            element_count=1,
+            byte_offset=0,
+            byte_length=2,
+        ),
+        TactileFieldDescriptor(
+            semantic="Fn",
+            data_type="U8",
+            element_count=70,
+            byte_offset=2,
+            byte_length=70,
+        ),
+    )
+    sensors = []
+    for index, (name, resultant) in enumerate(zip(channels, resultants), start=1):
+        normal_force = tuple((index + cell) & 0xFF for cell in range(70))
+        raw_data = resultant.to_bytes(2, "little") + bytes(normal_force)
+        metadata = TactileSensorMetadata(
+            selected_sensor=index,
+            sensor_name=name,
+            sensor_type="TSSP_JZG",
+            data_unit="g",
+            data_range=255,
+            maximum_rows=10,
+            maximum_columns=7,
+            requested_rows=10,
+            requested_columns=7,
+            valid_data_position_mode=False,
+            rectangle_fill=False,
+            descriptor_text="FnS_U16_1;Fn_U8_70",
+            field_descriptors=descriptors,
+            total_data_length=72,
+        )
+        sensors.append(
+            TactileSensorSample(
+                metadata=metadata,
+                raw_data=raw_data,
+                fields=(
+                    TactileFieldSample(
+                        semantic="FnS",
+                        data_type="U16",
+                        element_count=1,
+                        byte_offset=0,
+                        byte_length=2,
+                        values=(resultant,),
+                    ),
+                    TactileFieldSample(
+                        semantic="Fn",
+                        data_type="U8",
+                        element_count=70,
+                        byte_offset=2,
+                        byte_length=70,
+                        values=normal_force,
+                    ),
+                ),
+            )
+        )
+    return ForceSample(raw=(), tactile=(), sensors=tuple(sensors), meta=_meta())
+
+
+def test_o30_descriptor_force_projects_sensors_and_resultant():
+    capabilities = _capabilities("O30", side="right")
+    channel = capabilities.telemetry_channel(TelemetrySemantic.FORCE)
+    assert channel is not None
+    assert channel.raw_encoding == "o30_tactile_descriptor"
+    sample = _o30_force_sample()
+
+    messages = force_sample_to_messages(sample, channel, ros_now_ns=ROS_NOW_NS)
+
+    assert messages.telemetry is None
+    assert messages.tactile is None
+    assert messages.tactile_sensors is not None
+    assert messages.force_resultant is not None
+
+    sensors = messages.tactile_sensors.sensors
+    assert [item.finger_name for item in sensors] == [
+        "thumb",
+        "index",
+        "middle",
+        "ring",
+        "pinky",
+    ]
+    thumb = sensors[0]
+    assert thumb.sensor_type == "TSSP_JZG"
+    assert thumb.data_unit == "g"
+    assert (thumb.rows, thumb.columns) == (10, 7)
+    assert thumb.descriptor == "FnS_U16_1;Fn_U8_70"
+    assert thumb.total_data_length == 72
+    assert len(thumb.raw_bytes) == 72
+    resultant_field, normal_field = thumb.fields
+    assert resultant_field.semantic == "FnS"
+    assert resultant_field.component_count == 1
+    assert list(resultant_field.values) == [11.0]
+    assert normal_field.semantic == "Fn"
+    assert len(normal_field.values) == 70
+
+    resultant = messages.force_resultant
+    assert list(resultant.finger_names) == [
+        "thumb",
+        "index",
+        "middle",
+        "ring",
+        "pinky",
+    ]
+    assert list(resultant.normal_force_resultant) == [11.0, 22.0, 33.0, 44.0, 55.0]
+    assert list(resultant.units) == ["g", "g", "g", "g", "g"]
 
 
 @pytest.mark.parametrize("online", [True, False, None])

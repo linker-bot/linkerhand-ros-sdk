@@ -7,7 +7,12 @@ from linkerbot_hand import (
     AngleFeedbackPolicy,
     AngleSample,
     DataOrigin,
+    ForceSample,
     SampleMeta,
+    TactileFieldDescriptor,
+    TactileFieldSample,
+    TactileSensorMetadata,
+    TactileSensorSample,
     TelemetrySemantic,
     get_declared_capabilities,
 )
@@ -347,3 +352,157 @@ def test_capability_publisher_emits_runtime_firmware_degradation_once():
     assert publisher._capabilities_publisher.messages[
         -1
     ].firmware_unsupported_telemetry == ["force"]
+
+
+def _o30_force_sample(metadata: SampleMeta) -> ForceSample:
+    descriptors = (
+        TactileFieldDescriptor(
+            semantic="FnS",
+            data_type="U16",
+            element_count=1,
+            byte_offset=0,
+            byte_length=2,
+        ),
+        TactileFieldDescriptor(
+            semantic="Fn",
+            data_type="U8",
+            element_count=70,
+            byte_offset=2,
+            byte_length=70,
+        ),
+    )
+    sensors = []
+    for index, name in enumerate(
+        ("thumb", "index", "middle", "ring", "pinky"), start=1
+    ):
+        normal_force = tuple((index + cell) & 0xFF for cell in range(70))
+        sensors.append(
+            TactileSensorSample(
+                metadata=TactileSensorMetadata(
+                    selected_sensor=index,
+                    sensor_name=name,
+                    sensor_type="TSSP_JZG",
+                    data_unit="g",
+                    data_range=255,
+                    maximum_rows=10,
+                    maximum_columns=7,
+                    requested_rows=10,
+                    requested_columns=7,
+                    valid_data_position_mode=False,
+                    rectangle_fill=False,
+                    descriptor_text="FnS_U16_1;Fn_U8_70",
+                    field_descriptors=descriptors,
+                    total_data_length=72,
+                ),
+                raw_data=(index * 3).to_bytes(2, "little") + bytes(normal_force),
+                fields=(
+                    TactileFieldSample(
+                        semantic="FnS",
+                        data_type="U16",
+                        element_count=1,
+                        byte_offset=0,
+                        byte_length=2,
+                        values=(index * 3,),
+                    ),
+                    TactileFieldSample(
+                        semantic="Fn",
+                        data_type="U8",
+                        element_count=70,
+                        byte_offset=2,
+                        byte_length=70,
+                        values=normal_force,
+                    ),
+                ),
+            )
+        )
+    return ForceSample(raw=(), tactile=(), sensors=tuple(sensors), meta=metadata)
+
+
+def _empty_snapshot(**overrides: object) -> SimpleNamespace:
+    fields = {
+        name: None
+        for name in (
+            "angles",
+            "measured_speeds",
+            "configured_speeds",
+            "configured_accelerations",
+            "currents",
+            "current_limits",
+            "effort_limits",
+            "torques",
+            "temperatures",
+            "faults",
+            "voltages",
+            "motion_times",
+            "force",
+            "stall_detection_times",
+            "stall_thresholds",
+            "stall_hold_currents",
+            "device_info",
+        )
+    }
+    fields.update(overrides)
+    return SimpleNamespace(**fields)
+
+
+def test_o30_descriptor_force_publishes_sensors_and_resultant_topics():
+    class _PassingNode:
+        def create_publisher(self, *_args, **_kwargs):
+            return RecordingStatePublisher()
+
+        def create_lifecycle_publisher(self, *_args, **_kwargs):
+            return RecordingStatePublisher()
+
+    capabilities = get_declared_capabilities("o30", side="right")
+
+    publisher = SnapshotPublisher(_PassingNode(), capabilities)
+
+    assert publisher._tactile_sensor_publisher is not None
+    assert publisher._force_resultant_publisher is not None
+    assert publisher._force_publisher is None
+    assert publisher._tactile_publisher is None
+
+    # Swap in recording publishers to observe the force publish path.
+    publisher._tactile_sensor_publisher = RecordingStatePublisher()
+    publisher._force_resultant_publisher = RecordingStatePublisher()
+    # This force-focused test drives a lightweight snapshot, so silence the
+    # unrelated stall path that expects a full HandSnapshot.
+    publisher._stall_publisher = None
+
+    metadata = SampleMeta(
+        sequence=4,
+        collected_at=1.0,
+        age_s=0.0,
+        valid=True,
+        stale=False,
+        connection_generation=1,
+        origin=DataOrigin.DEVICE_RESPONSE,
+        within_declared_range=True,
+    )
+    snapshot = _empty_snapshot(force=_o30_force_sample(metadata))
+
+    published = publisher.publish_snapshot(
+        snapshot,
+        ros_now_ns=1,
+        angle_feedback_policy=AngleFeedbackPolicy.ADAPTIVE,
+    )
+
+    assert published == 2
+    sensor_messages = publisher._tactile_sensor_publisher.messages
+    resultant_messages = publisher._force_resultant_publisher.messages
+    assert len(sensor_messages) == 1
+    assert len(resultant_messages) == 1
+    assert [item.finger_name for item in sensor_messages[0].sensors] == [
+        "thumb",
+        "index",
+        "middle",
+        "ring",
+        "pinky",
+    ]
+    assert list(resultant_messages[0].normal_force_resultant) == [
+        3.0,
+        6.0,
+        9.0,
+        12.0,
+        15.0,
+    ]
