@@ -41,6 +41,11 @@ class TransportFactories:
     vendor_canfd: TransportConstructor = CANFDTransport
 
 
+# Fallback CAN FD data bitrate for profiles that leave it unconstrained (BRS
+# off, e.g. O30) when the caller does not set one.
+_DEFAULT_FD_DATA_BITRATE = 5_000_000
+
+
 def create_transport(
     configuration: TransportConfiguration,
     capabilities: DeviceCapabilities,
@@ -124,8 +129,7 @@ def _create_socketcan(
             f"{capabilities.transport.kind.value}",
             model=capabilities.model,
         )
-    data_bitrate = _declared_bitrate(
-        "data_bitrate",
+    data_bitrate = _data_bitrate(
         configuration.data_bitrate,
         capabilities.transport.data_bitrate,
         capabilities.model,
@@ -177,8 +181,7 @@ def _create_vendor_canfd(
         capabilities.transport.nominal_bitrate,
         capabilities.model,
     )
-    data_bitrate = _declared_bitrate(
-        "data_bitrate",
+    data_bitrate = _data_bitrate(
         configuration.data_bitrate,
         capabilities.transport.data_bitrate,
         capabilities.model,
@@ -213,6 +216,21 @@ def _declared_bitrate(
     if configured is not None and configured != declared:
         raise ValidationError(
             f"{name} {configured} conflicts with {model} capability {declared}",
+            model=model,
+        )
+    return declared
+
+
+def _data_bitrate(configured: int | None, declared: int | None, model: str) -> int:
+    # A CAN FD profile with no declared data bitrate (e.g. O30, BRS off) fixes
+    # the data phase at the nominal rate, so the interface data bitrate is
+    # irrelevant. Accept whatever the caller configured, defaulting to the
+    # common 5 Mbit hardware bus.
+    if declared is None:
+        return configured if configured is not None else _DEFAULT_FD_DATA_BITRATE
+    if configured is not None and configured != declared:
+        raise ValidationError(
+            f"data_bitrate {configured} conflicts with {model} capability {declared}",
             model=model,
         )
     return declared

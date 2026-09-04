@@ -124,11 +124,31 @@ def test_socketcan_fd_uses_model_declared_bitrates():
     assert not classic.calls
 
 
-def test_transport_factory_rejects_bitrate_and_backend_conflicts():
-    with pytest.raises(ValidationError, match="conflicts with O30i capability"):
+def test_o30_accepts_any_data_bitrate_when_unconstrained():
+    # O30 is BRS off (capability data_bitrate is None); any dbitrate is allowed
+    # and passed through, defaulting to 5 Mbit when the caller sets none.
+    for configured, expected in (
+        (5_000_000, 5_000_000),
+        (7_000_000, 7_000_000),
+        (None, 5_000_000),
+    ):
+        socketcan_fd = ConstructorSpy(result=NoIOTransport())
         create_transport(
-            SocketCANConfiguration("can0", data_bitrate=5_000_000),
-            _capabilities("O30i"),
+            SocketCANConfiguration("can0", data_bitrate=configured),
+            _capabilities("O30"),
+            factories=TransportFactories(
+                ConstructorSpy(), socketcan_fd, ConstructorSpy()
+            ),
+        )
+        assert socketcan_fd.calls[0][1]["bitrate"] == 1_000_000
+        assert socketcan_fd.calls[0][1]["data_bitrate"] == expected
+
+
+def test_transport_factory_rejects_bitrate_and_backend_conflicts():
+    with pytest.raises(ValidationError, match="conflicts with O20 capability"):
+        create_transport(
+            SocketCANConfiguration("can0", data_bitrate=1_000_000),
+            _capabilities("O20"),
             factories=TransportFactories(
                 ConstructorSpy(), ConstructorSpy(), ConstructorSpy()
             ),
