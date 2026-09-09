@@ -17,8 +17,8 @@ from rclpy.lifecycle import LifecycleNode
 from linkerbot_hand_msgs.msg import (
     HandCapabilities,
     HandDeviceInfo,
-    HandNormalForceResultant,
     HandJointState,
+    HandNormalForceResultant,
     HandStallProtectionState,
     HandTactileSensorState,
     HandTactileState,
@@ -167,6 +167,12 @@ class SnapshotPublisher:
         self._tactile_sensor_publisher = tactile_sensor_publisher
         self._force_resultant_publisher = force_resultant_publisher
         self._stall_publisher = stall_publisher
+        # ``destroy()`` reuses the exact lists that the failed-construction
+        # rollback above builds, so a publisher can never be created without
+        # also being destroyed. Enumerating the attributes by hand is what left
+        # the descriptor tactile publishers leaking on deactivate.
+        self._lifecycle_publishers = tuple(lifecycle_publishers)
+        self._plain_publishers = tuple(plain_publishers)
         self._published: dict[str, object] = {}
         self._published_capabilities: DeviceCapabilities | None = None
         self._set_conversion_capabilities(capabilities)
@@ -287,7 +293,9 @@ class SnapshotPublisher:
                 publications += 1
             if (
                 (messages.telemetry is not None and self._force_publisher is not None)
-                or (messages.tactile is not None and self._tactile_publisher is not None)
+                or (
+                    messages.tactile is not None and self._tactile_publisher is not None
+                )
                 or (
                     messages.tactile_sensors is not None
                     and self._tactile_sensor_publisher is not None
@@ -339,17 +347,12 @@ class SnapshotPublisher:
         """Destroy every publisher owned by this interface."""
 
         with self._lock:
-            for publisher in (
-                self._angles_publisher,
-                *self._telemetry_publishers.values(),
-                self._force_publisher,
-                self._tactile_publisher,
-                self._stall_publisher,
-            ):
-                if publisher is not None:
-                    self._node.destroy_lifecycle_publisher(publisher)
-            self._node.destroy_publisher(self._capabilities_publisher)
-            self._node.destroy_publisher(self._device_info_publisher)
+            for publisher in reversed(self._lifecycle_publishers):
+                self._node.destroy_lifecycle_publisher(publisher)
+            for publisher in reversed(self._plain_publishers):
+                self._node.destroy_publisher(publisher)
+            self._lifecycle_publishers = ()
+            self._plain_publishers = ()
             self._telemetry_publishers.clear()
             self._published.clear()
             self._published_capabilities = None

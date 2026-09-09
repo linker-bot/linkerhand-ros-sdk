@@ -11,6 +11,13 @@ section.
 Unreleased
 ----------
 
+* Stop leaking the two O30 descriptor-tactile lifecycle publishers
+  (``~/state/tactile_sensors`` and ``~/state/normal_force_resultant``) on
+  deactivate and cleanup. ``SnapshotPublisher.destroy()`` now reuses the exact
+  publisher lists built during construction instead of re-enumerating the
+  attributes by hand, so every created publisher is always destroyed, and
+  repeated ``destroy()`` calls are now idempotent.
+
 * Replace the incorrect public hand model name ``L25/l25`` with ``L20/l20``
   in driver configuration and documentation, matching the corrected Hand SDK
   capability name.

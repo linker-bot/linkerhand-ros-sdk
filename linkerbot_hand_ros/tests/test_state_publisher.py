@@ -56,6 +56,61 @@ def test_partial_construction_rolls_back_plain_and_lifecycle_publishers():
     assert set(node.destroyed_lifecycle) == set(node.lifecycle)
 
 
+class RecordingPublisherNode(FailingPublisherNode):
+    """Records every publisher without ever failing construction."""
+
+    def create_lifecycle_publisher(self, *_args, **_kwargs):
+        publisher = object()
+        self.lifecycle.append(publisher)
+        return publisher
+
+
+@pytest.mark.parametrize(
+    ("model", "side"),
+    [
+        ("l6", "right"),
+        ("o6", "right"),
+        ("l20lite", "right"),
+        ("l20", "right"),
+        ("o20", "right"),
+        ("l30", None),
+        ("o30", "left"),
+        ("o30", "right"),
+    ],
+)
+def test_destroy_releases_every_publisher_it_created(model, side):
+    """``destroy()`` must not leak any publisher for any model.
+
+    O30 declares descriptor tactile, so it also creates
+    ``~/state/tactile_sensors`` and ``~/state/normal_force_resultant``. A
+    hand-maintained destroy list silently leaked exactly those two.
+    """
+
+    node = RecordingPublisherNode()
+    capabilities = get_declared_capabilities(model, side=side)
+    publisher = SnapshotPublisher(node, capabilities)
+
+    publisher.destroy()
+
+    assert node.lifecycle, "model created no lifecycle publishers"
+    assert set(node.destroyed_lifecycle) == set(node.lifecycle)
+    assert set(node.destroyed_plain) == set(node.plain)
+    assert len(node.destroyed_lifecycle) == len(node.lifecycle)
+    assert len(node.destroyed_plain) == len(node.plain)
+
+
+def test_destroy_is_idempotent():
+    node = RecordingPublisherNode()
+    capabilities = get_declared_capabilities("o30", side="left")
+    publisher = SnapshotPublisher(node, capabilities)
+
+    publisher.destroy()
+    destroyed = len(node.destroyed_lifecycle) + len(node.destroyed_plain)
+    publisher.destroy()
+
+    assert len(node.destroyed_lifecycle) + len(node.destroyed_plain) == destroyed
+
+
 class FlakyPublisher:
     def __init__(self) -> None:
         self.calls = 0
