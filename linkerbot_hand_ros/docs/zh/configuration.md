@@ -96,7 +96,13 @@ Linux SocketCAN，classic CAN 和 CAN FD 均由 capability 决定：
 ```
 
 可选字段：`nominal_bitrate`、`data_bitrate`、`auto_reconfigure`、
-`receive_own_messages`。配置 bitrate 与 capability 冲突时 configure 失败。
+`receive_own_messages`。
+
+`nominal_bitrate` 必须与型号 capability 一致，冲突时 configure 失败。
+
+`data_bitrate` 分两种情况。声明了数据段速率的型号（O20、L30 为 5 Mbit/s）同样严格校验，冲突即失败。而 O30 使用 BRS off，数据段恒等于标称速率、接口 dbitrate 不影响通信，其 capability 不声明数据段速率 —— 这类型号**推荐 5 Mbit/s，但任意波特率都可用**：不填 `data_bitrate` 时驱动采用该 SocketCAN 链路当前实际运行的数据段速率，只有在链路读不到时（未配置、未 UP）才回落到推荐的 5 Mbit/s。显式填写时以填写值为准，此时不读链路。
+
+因此在 1M、2M、7M 等任意数据段速率的总线上都无需为 O30 额外配置 `data_bitrate`。
 
 其他 python-can classic backend：
 

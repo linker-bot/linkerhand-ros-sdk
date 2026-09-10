@@ -11,6 +11,22 @@ section.
 Unreleased
 ----------
 
+* Open O30 on a bus running any data bitrate. A profile that leaves the data
+  phase unconstrained (O30 runs BRS off) used to get a fixed 5 Mbit/s
+  substituted when the caller set none, and SocketCAN asserts the requested data
+  bitrate against the link: a correctly configured 1M, 2M or 7M bus therefore
+  failed to open, with an error suggesting the user change a perfectly good bus
+  to 5 Mbit/s. With ``auto_reconfigure`` enabled it was worse, since the driver
+  would take the link down and back up at 5 Mbit/s and interrupt every other
+  node on that bus. The SocketCAN path now adopts the data bitrate the link is
+  actually running, read through the SDK's public discovery source, and keeps the
+  recommended 5 Mbit/s only when the link cannot be read so the transport still
+  emits its "channel is not configured, run ip link set ..." guidance. An
+  explicit ``data_bitrate`` remains authoritative and skips the link lookup, a
+  profile that does declare a data bitrate (O20, L30) keeps the strict
+  conflict check, and the vendor CAN FD path is unchanged because there the
+  value configures the adapter rather than being matched against a Linux link.
+
 * Add CI and a local pre-commit gate. ``.gitea/workflows/ci.yml`` runs
   ``ruff check .`` and ``ruff format --check .`` on pushes to ``main`` and on
   pull requests, covering all three packages without building anything.

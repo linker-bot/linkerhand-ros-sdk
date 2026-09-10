@@ -124,24 +124,118 @@ def test_socketcan_fd_uses_model_declared_bitrates():
     assert not classic.calls
 
 
+@dataclass
+class LinkReaderSpy:
+    """Stands in for reading the data bitrate a SocketCAN link is running."""
+
+    observed: int | None = None
+    channels: list[str] = field(default_factory=list)
+
+    def __call__(self, channel: str) -> int | None:
+        self.channels.append(channel)
+        return self.observed
+
+
 def test_o30_accepts_any_data_bitrate_when_unconstrained():
     # O30 is BRS off (capability data_bitrate is None); any dbitrate is allowed
-    # and passed through, defaulting to 5 Mbit when the caller sets none.
+    # and passed through. The link reader is injected so the expectation does not
+    # depend on whatever CAN interfaces this host happens to have.
     for configured, expected in (
         (5_000_000, 5_000_000),
         (7_000_000, 7_000_000),
-        (None, 5_000_000),
     ):
         socketcan_fd = ConstructorSpy(result=NoIOTransport())
+        link = LinkReaderSpy(observed=2_000_000)
         create_transport(
             SocketCANConfiguration("can0", data_bitrate=configured),
             _capabilities("O30"),
             factories=TransportFactories(
-                ConstructorSpy(), socketcan_fd, ConstructorSpy()
+                ConstructorSpy(), socketcan_fd, ConstructorSpy(), link
             ),
         )
         assert socketcan_fd.calls[0][1]["bitrate"] == 1_000_000
         assert socketcan_fd.calls[0][1]["data_bitrate"] == expected
+        # An explicit request is authoritative; the link is not consulted.
+        assert link.channels == []
+
+
+def test_unconstrained_profile_adopts_the_rate_the_link_is_running():
+    """Inventing a rate breaks a correctly configured non-5M bus.
+
+    SocketCAN asserts the requested data bitrate against the link and refuses to
+    open on a mismatch. A profile that leaves the data phase unconstrained works
+    at any rate, so the rate the link actually runs has to be adopted rather than
+    a fixed default substituted.
+    """
+
+    socketcan_fd = ConstructorSpy(result=NoIOTransport())
+    link = LinkReaderSpy(observed=2_000_000)
+
+    create_transport(
+        SocketCANConfiguration("can7"),
+        _capabilities("O30"),
+        factories=TransportFactories(
+            ConstructorSpy(), socketcan_fd, ConstructorSpy(), link
+        ),
+    )
+
+    assert link.channels == ["can7"]
+    assert socketcan_fd.calls[0][1]["data_bitrate"] == 2_000_000
+
+
+def test_unconstrained_profile_falls_back_to_the_recommended_rate():
+    # Link absent, down, or reporting nothing: keep the recommended 5 Mbit so the
+    # transport still emits its "channel is not configured, run ip link set ..."
+    # guidance instead of a rate-mismatch error.
+    socketcan_fd = ConstructorSpy(result=NoIOTransport())
+    link = LinkReaderSpy(observed=None)
+
+    create_transport(
+        SocketCANConfiguration("can0"),
+        _capabilities("O30"),
+        factories=TransportFactories(
+            ConstructorSpy(), socketcan_fd, ConstructorSpy(), link
+        ),
+    )
+
+    assert link.channels == ["can0"]
+    assert socketcan_fd.calls[0][1]["data_bitrate"] == 5_000_000
+
+
+@pytest.mark.parametrize("model", ("O20", "L30"))
+def test_declared_data_bitrate_is_still_strict_and_ignores_the_link(model):
+    # A profile that does declare a data bitrate keeps the strict contract: the
+    # declared value wins and the link is never inspected.
+    socketcan_fd = ConstructorSpy(result=NoIOTransport())
+    link = LinkReaderSpy(observed=2_000_000)
+
+    create_transport(
+        SocketCANConfiguration("can0"),
+        _capabilities(model),
+        factories=TransportFactories(
+            ConstructorSpy(), socketcan_fd, ConstructorSpy(), link
+        ),
+    )
+
+    assert link.channels == []
+    assert socketcan_fd.calls[0][1]["data_bitrate"] == 5_000_000
+
+
+def test_vendor_canfd_does_not_consult_the_link():
+    # The vendor adapter is configured by these values rather than validated
+    # against an existing Linux link, so the recommended default stays correct
+    # there and no link inspection happens.
+    vendor = ConstructorSpy(result=NoIOTransport())
+    link = LinkReaderSpy(observed=2_000_000)
+
+    create_transport(
+        VendorCANFDConfiguration(device_index=0, channel_index=0),
+        _capabilities("O30"),
+        factories=TransportFactories(ConstructorSpy(), ConstructorSpy(), vendor, link),
+    )
+
+    assert link.channels == []
+    assert vendor.calls[0][1]["config"].dat_baud == 5_000_000
 
 
 def test_transport_factory_rejects_bitrate_and_backend_conflicts():

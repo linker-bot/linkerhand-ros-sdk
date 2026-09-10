@@ -30,6 +30,28 @@ from .transport_config import (
 
 TransportConstructor = Callable[..., object]
 DeviceConstructor = Callable[..., HandDevice]
+LinkDataBitrateReader = Callable[[str], int | None]
+
+
+def _read_link_data_bitrate(channel: str) -> int | None:
+    """Return the data bitrate the named SocketCAN link is actually running.
+
+    Reuses the SDK's public discovery source rather than re-implementing
+    ``ip -d -j link show`` here. Returns ``None`` when the link is absent, is
+    not up, or reports no data bitrate, which leaves the caller free to fall
+    back to the recommended rate.
+    """
+
+    from linkerbot_hand import DiscoveryConfig, SocketCANDiscoverySource
+
+    try:
+        channels = SocketCANDiscoverySource().list_channels(DiscoveryConfig())
+    except Exception:  # noqa: BLE001 - link inspection must never break configure
+        return None
+    for candidate in channels:
+        if candidate.name == channel:
+            return candidate.data_bitrate
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,11 +61,14 @@ class TransportFactories:
     classic_can: TransportConstructor = CANTransport
     socketcan_fd: TransportConstructor = SocketCANFDTransport
     vendor_canfd: TransportConstructor = CANFDTransport
+    link_data_bitrate: LinkDataBitrateReader = _read_link_data_bitrate
 
 
-# Fallback CAN FD data bitrate for profiles that leave it unconstrained (BRS
-# off, e.g. O30) when the caller does not set one.
-_DEFAULT_FD_DATA_BITRATE = 5_000_000
+# Recommended CAN FD data bitrate. A profile that leaves the data phase
+# unconstrained (BRS off, e.g. O30) works at any rate, so this is only a
+# starting point: on SocketCAN the rate the link actually runs is adopted
+# instead, and this value is used only when that cannot be determined.
+_RECOMMENDED_FD_DATA_BITRATE = 5_000_000
 
 
 def create_transport(
@@ -129,8 +154,15 @@ def _create_socketcan(
             f"{capabilities.transport.kind.value}",
             model=capabilities.model,
         )
+    requested_data_bitrate = configuration.data_bitrate
+    if capabilities.transport.data_bitrate is None and requested_data_bitrate is None:
+        # The profile does not constrain the data phase, but SocketCAN asserts
+        # the requested rate against the link and refuses to open on a mismatch.
+        # Inventing a rate therefore breaks a correctly configured bus that runs
+        # anything other than the recommended one, so adopt what the link runs.
+        requested_data_bitrate = factories.link_data_bitrate(configuration.channel)
     data_bitrate = _data_bitrate(
-        configuration.data_bitrate,
+        requested_data_bitrate,
         capabilities.transport.data_bitrate,
         capabilities.model,
     )
@@ -223,11 +255,11 @@ def _declared_bitrate(
 
 def _data_bitrate(configured: int | None, declared: int | None, model: str) -> int:
     # A CAN FD profile with no declared data bitrate (e.g. O30, BRS off) fixes
-    # the data phase at the nominal rate, so the interface data bitrate is
-    # irrelevant. Accept whatever the caller configured, defaulting to the
-    # common 5 Mbit hardware bus.
+    # the data phase at the nominal rate, so any interface data bitrate works.
+    # Take whatever the caller resolved; the recommended rate is only a last
+    # resort, used when the actual rate could not be determined.
     if declared is None:
-        return configured if configured is not None else _DEFAULT_FD_DATA_BITRATE
+        return configured if configured is not None else _RECOMMENDED_FD_DATA_BITRATE
     if configured is not None and configured != declared:
         raise ValidationError(
             f"data_bitrate {configured} conflicts with {model} capability {declared}",
