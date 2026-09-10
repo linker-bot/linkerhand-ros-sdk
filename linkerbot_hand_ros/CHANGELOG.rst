@@ -11,6 +11,19 @@ section.
 Unreleased
 ----------
 
+* Add CI and a local pre-commit gate. ``.gitea/workflows/ci.yml`` runs
+  ``ruff check .`` and ``ruff format --check .`` on pushes to ``main`` and on
+  pull requests, covering all three packages without building anything.
+  ``.pre-commit-config.yaml`` uses ``repo: local`` to call the ruff already in
+  the environment rather than pulling ``ruff-pre-commit``, which ships its own
+  pinned version, so the hook, a manual run and CI stay on one ruff and one rule
+  set. Each clone needs ``pre-commit install`` once, which installs both the
+  commit-time and the push-time hook; the push hook is what actually gates
+  code today, because with no Gitea runner online the workflow only queues. CI does not run pytest yet:
+  the driver tests need ROS 2 Jazzy, a built ``linkerbot_hand_msgs``, and
+  ``linkerbot-hand`` plus ``linkerbot-transport``, neither of which is on a
+  public index.
+
 * Decide force topics from the declared ``payload_projection`` instead of
   reverse-engineering ``raw_encoding`` and the number of ``shape`` dimensions.
   Those two describe the wire format, which is independent of which sample field

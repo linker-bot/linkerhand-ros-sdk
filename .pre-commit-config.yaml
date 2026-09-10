@@ -1,0 +1,33 @@
+# Local gates mirroring .gitea/workflows/ci.yml.
+#
+# Install once per clone:
+#     pre-commit install
+#
+# That installs both hook types listed below, so the gates run at ``git commit``
+# and again at ``git push``. The push hook is the one that matters while the
+# Gitea runner is offline: without a runner the workflow only queues, so the
+# local push gate is the last check before code reaches the remote.
+#
+# ``repo: local`` with ``language: system`` deliberately calls the ruff already
+# available in this environment instead of pulling astral-sh/ruff-pre-commit.
+# That mirror ships its own pinned ruff, which would leave the hook, a manual
+# ``ruff check`` and CI on three different versions. Rule selection always comes
+# from pyproject.toml, and covers all three packages.
+default_install_hook_types: [pre-commit, pre-push]
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: ruff check --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: ruff-format
+        name: ruff format --check
+        entry: ruff format --check --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
