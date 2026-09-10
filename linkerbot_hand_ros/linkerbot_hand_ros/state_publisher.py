@@ -10,6 +10,7 @@ from linkerbot_hand import (
     DeviceCapabilities,
     HandSnapshot,
     SampleMeta,
+    SampleProjection,
     TelemetrySemantic,
 )
 from rclpy.lifecycle import LifecycleNode
@@ -37,8 +38,6 @@ from .conversion import (
     update_angle_message,
 )
 from .qos import HIGH_RATE_PUBLISHER_EVENTS, METADATA_QOS, STATE_QOS
-
-_DESCRIPTOR_TACTILE_ENCODING = "o30_tactile_descriptor"
 
 _SAMPLE_ATTRIBUTES = {
     TelemetrySemantic.MEASURED_SPEEDS: "measured_speeds",
@@ -98,6 +97,12 @@ class SnapshotPublisher:
             )
             lifecycle_publishers.append(angles_publisher)
             for semantic in _SAMPLE_ATTRIBUTES:
+                # Declared presence on purpose, not ``telemetry_supported()``.
+                # Publishers are built once per configure from the declared
+                # profile; a channel the firmware later turns out not to answer
+                # keeps its publisher and simply goes silent, so that a
+                # reconnect which re-verifies the channel does not find it
+                # without one.
                 if capabilities.telemetry_channel(semantic) is None:
                     continue
                 publisher = node.create_lifecycle_publisher(
@@ -114,7 +119,8 @@ class SnapshotPublisher:
             tactile_sensor_publisher = None
             force_resultant_publisher = None
             if force_capability is not None:
-                if force_capability.raw_encoding == _DESCRIPTOR_TACTILE_ENCODING:
+                projection = force_capability.payload_projection
+                if projection is SampleProjection.TACTILE_DESCRIPTOR:
                     tactile_sensor_publisher = node.create_lifecycle_publisher(
                         HandTactileSensorState,
                         "~/state/tactile_sensors",
@@ -129,7 +135,7 @@ class SnapshotPublisher:
                         event_callbacks=HIGH_RATE_PUBLISHER_EVENTS,
                     )
                     lifecycle_publishers.append(force_resultant_publisher)
-                elif len(force_capability.shape) == 1:
+                elif projection is SampleProjection.RAW_VECTOR:
                     force_publisher = node.create_lifecycle_publisher(
                         HandTelemetry,
                         "~/state/force",
@@ -137,7 +143,7 @@ class SnapshotPublisher:
                         event_callbacks=HIGH_RATE_PUBLISHER_EVENTS,
                     )
                     lifecycle_publishers.append(force_publisher)
-                elif len(force_capability.shape) == 3:
+                elif projection is SampleProjection.TACTILE_MATRIX:
                     tactile_publisher = node.create_lifecycle_publisher(
                         HandTactileState,
                         "~/state/tactile",

@@ -658,3 +658,42 @@ def test_models_without_documented_fault_bits_get_no_status_topic(model, side):
     publisher = SnapshotPublisher(_RecordingNode(), capabilities)
 
     assert publisher._fault_status_publisher is None
+
+
+@pytest.mark.parametrize(
+    ("model", "side", "matrix_topic", "descriptor_topics"),
+    [
+        ("l6", "right", True, False),
+        ("o6", "right", True, False),
+        ("l20lite", "right", True, False),
+        ("l20", "right", True, False),
+        ("o20", "right", True, False),
+        ("l30", None, True, False),
+        ("o30", "right", False, True),
+    ],
+)
+def test_force_topics_follow_the_declared_projection(
+    model,
+    side,
+    matrix_topic,
+    descriptor_topics,
+):
+    """Which force topics exist is decided by ``payload_projection`` alone.
+
+    This used to be inferred from ``raw_encoding`` plus the number of ``shape``
+    dimensions. Those two are entangled: O30's descriptor force is also
+    one-dimensional, so the descriptor branch had to run first or O30 would have
+    been treated as a scalar channel.
+    """
+
+    capabilities = get_declared_capabilities(model, side=side)
+
+    publisher = SnapshotPublisher(_RecordingNode(), capabilities)
+
+    assert (publisher._tactile_publisher is not None) is matrix_topic
+    assert (publisher._tactile_sensor_publisher is not None) is descriptor_topics
+    assert (publisher._force_resultant_publisher is not None) is descriptor_topics
+    # No model declares a RAW_VECTOR force today, so ``~/state/force`` stays
+    # unused. It is now an explicit projection branch rather than an accident of
+    # the ordering; removing the branch is tracked separately.
+    assert publisher._force_publisher is None

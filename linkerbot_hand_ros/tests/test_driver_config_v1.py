@@ -185,3 +185,34 @@ def test_configuration_delegates_runtime_limits_to_sdk_device_config():
 
     with pytest.raises(ValidationError, match="auto_reconnect"):
         read_driver_configuration(_parameters(auto_reconnect="false").__getitem__)
+
+
+def test_polling_validation_rejects_a_runtime_disabled_channel():
+    """A channel the firmware turned out not to answer must not be pollable.
+
+    ``telemetry_channel(...) is not None`` stays true after runtime degradation,
+    so validating with it alone accepted a rate that then silently produced no
+    data. ``telemetry_supported()`` is what excludes the degraded channel.
+    """
+
+    import dataclasses
+
+    from linkerbot_hand import PollingPlan, TelemetrySemantic, get_declared_capabilities
+    from linkerbot_hand_ros.driver_config import validate_polling_plan
+
+    capabilities = get_declared_capabilities("o6", side="right")
+    plan = PollingPlan(angles_hz=30.0, force_hz=10.0)
+
+    # Declared profile: polling force is fine.
+    validate_polling_plan(capabilities, plan)
+
+    degraded = dataclasses.replace(
+        capabilities,
+        firmware_unsupported_telemetry=(TelemetrySemantic.FORCE,),
+    )
+    # The channel is still declared, so the old check would have passed.
+    assert degraded.telemetry_channel(TelemetrySemantic.FORCE) is not None
+    assert not degraded.telemetry_supported(TelemetrySemantic.FORCE)
+
+    with pytest.raises(UnsupportedOperationError, match="cannot poll force"):
+        validate_polling_plan(degraded, plan)

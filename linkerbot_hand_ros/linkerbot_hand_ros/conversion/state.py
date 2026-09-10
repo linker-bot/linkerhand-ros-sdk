@@ -19,6 +19,7 @@ from linkerbot_hand import (
     MotionTimeSample,
     NormalForceResultantSample,
     SampleMeta,
+    SampleProjection,
     StallDetectionTimeSample,
     StallHoldCurrentSample,
     StallThresholdSample,
@@ -51,9 +52,6 @@ RawVectorSample = (
     | StallThresholdSample
     | StallHoldCurrentSample
 )
-
-
-_DESCRIPTOR_TACTILE_ENCODING = "o30_tactile_descriptor"
 
 
 @dataclass(frozen=True, slots=True)
@@ -282,7 +280,7 @@ def force_sample_to_messages(
     tactile_sensors = None
     force_resultant = None
     if sample.sensors:
-        if capability.raw_encoding != _DESCRIPTOR_TACTILE_ENCODING:
+        if capability.payload_projection is not SampleProjection.TACTILE_DESCRIPTOR:
             raise ValidationError(
                 "descriptor tactile sensors require the descriptor force capability"
             )

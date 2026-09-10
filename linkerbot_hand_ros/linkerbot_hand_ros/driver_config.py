@@ -192,8 +192,18 @@ def validate_polling_plan(
     for parameter_name, semantic in POLL_RATE_PARAMETERS.items():
         if getattr(plan, parameter_name) == 0:
             continue
+        # ``telemetry_supported()`` also excludes a channel the firmware turned
+        # out not to answer, which ``telemetry_channel(...) is not None`` does
+        # not. This validator runs against verified capabilities while the node
+        # is active (``node.py``), so without it a rate set for a runtime
+        # disabled channel is accepted and then silently never produces data.
         telemetry = capabilities.telemetry_channel(semantic)
-        if telemetry is None or not telemetry.device_queried:
+        pollable = (
+            capabilities.telemetry_supported(semantic)
+            and telemetry is not None
+            and telemetry.device_queried
+        )
+        if not pollable:
             raise UnsupportedOperationError(
                 f"{capabilities.model} cannot poll {semantic.value}",
                 operation="start_polling",

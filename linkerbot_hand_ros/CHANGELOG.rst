@@ -11,6 +11,25 @@ section.
 Unreleased
 ----------
 
+* Decide force topics from the declared ``payload_projection`` instead of
+  reverse-engineering ``raw_encoding`` and the number of ``shape`` dimensions.
+  Those two describe the wire format, which is independent of which sample field
+  a profile fills, and they were entangled: O30's descriptor force is also
+  one-dimensional, so the descriptor test had to run first or O30 would have
+  been treated as a scalar channel. Capability decisions in the state publisher
+  and the state conversion now read the capability only. Topic creation is
+  unchanged for all seven models. Requires a Hand SDK that declares
+  ``payload_projection``.
+
+* Reject a polling rate for a channel the firmware turned out not to answer.
+  ``validate_polling_plan()`` checked ``telemetry_channel(...) is not None``,
+  which stays true after runtime degradation, so ``ros2 param set force_hz`` was
+  accepted on a degraded channel and then silently produced no data. It now also
+  requires ``telemetry_supported()``, which excludes runtime-disabled channels.
+  Publisher creation deliberately keeps using declared presence: publishers are
+  built once per configure, and a degraded channel keeps its publisher so a
+  reconnect that re-verifies the channel does not find it without one.
+
 * Publish the decoded per-joint fault bits instead of dropping them. The SDK
   reports ``FaultSample.statuses`` for a model whose protocol profile documents
   its fault bits, but the conversion layer only read ``sample.raw``, so every
