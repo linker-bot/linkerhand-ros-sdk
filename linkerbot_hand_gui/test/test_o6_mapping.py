@@ -5,7 +5,6 @@ import struct
 from pathlib import Path
 
 import pytest
-
 from linkerbot_hand_gui.asset_resolver import (
     O6Assets,
     load_o6_decoder,
@@ -13,7 +12,6 @@ from linkerbot_hand_gui.asset_resolver import (
     resolve_o6_assets,
 )
 from linkerbot_hand_gui.joint_mapping import O6JointMapping
-
 
 ASSET_ROOT = (
     Path(os.environ["LINKERBOT_HAND_ASSETS_ROOT"]).expanduser()
@@ -190,9 +188,7 @@ def test_rviz_material_extensions_are_removed_without_changing_base_colors(
                     "KHR_materials_specular": {"specularColorFactor": [1.4, 1.4, 1.4]},
                     "KHR_materials_ior": {"ior": 1.0},
                 },
-                "pbrMetallicRoughness": {
-                    "baseColorFactor": [0.1, 0.2, 0.8, 1.0]
-                },
+                "pbrMetallicRoughness": {"baseColorFactor": [0.1, 0.2, 0.8, 1.0]},
             }
         ],
     }

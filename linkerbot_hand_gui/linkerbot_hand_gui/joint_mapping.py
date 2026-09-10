@@ -43,7 +43,7 @@ class O6JointMapping:
     side: str
 
     @classmethod
-    def from_assets(cls, assets: O6Assets) -> "O6JointMapping":
+    def from_assets(cls, assets: O6Assets) -> O6JointMapping:
         """Build a mapping from official URDF and decoder metadata."""
 
         root = ElementTree.parse(assets.urdf_path).getroot()
@@ -52,11 +52,17 @@ class O6JointMapping:
         limits: dict[str, JointLimit] = {}
         for joint in root.findall("joint"):
             name = joint.get("name")
-            if not name or joint.get("type") == "fixed" or joint.find("mimic") is not None:
+            if (
+                not name
+                or joint.get("type") == "fixed"
+                or joint.find("mimic") is not None
+            ):
                 continue
             limit = joint.find("limit")
             if limit is None:
-                raise ValueError(f"{assets.urdf_path}: active joint {name!r} has no limit")
+                raise ValueError(
+                    f"{assets.urdf_path}: active joint {name!r} has no limit"
+                )
             active.append(name)
             limits[name] = JointLimit(
                 lower=float(limit.get("lower", "nan")),
@@ -65,8 +71,7 @@ class O6JointMapping:
 
         decoder_channels = load_o6_decoder(assets)
         expected = tuple(
-            f"{prefix}h_{suffix}"
-            for suffix in _CAPABILITY_TO_DECODER_NAME.values()
+            f"{prefix}h_{suffix}" for suffix in _CAPABILITY_TO_DECODER_NAME.values()
         )
         if decoder_channels != expected:
             raise ValueError(
@@ -86,7 +91,9 @@ class O6JointMapping:
             side=assets.side,
         )
 
-    def validate_capabilities(self, names: tuple[str, ...], model: str, side: str) -> None:
+    def validate_capabilities(
+        self, names: tuple[str, ...], model: str, side: str
+    ) -> None:
         """Reject a runtime profile that cannot be mapped safely."""
 
         if model.upper() != "O6":

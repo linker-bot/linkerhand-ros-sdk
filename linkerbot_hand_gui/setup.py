@@ -1,6 +1,5 @@
 from setuptools import find_packages, setup
 
-
 PACKAGE_NAME = "linkerbot_hand_gui"
 
 setup(

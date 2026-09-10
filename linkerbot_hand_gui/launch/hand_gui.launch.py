@@ -9,7 +9,6 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
-
 from linkerbot_hand_gui.asset_resolver import load_o6_urdf, resolve_o6_assets
 
 
@@ -56,9 +55,22 @@ def _launch_preview_nodes(description: str, root_link: str):
             name="o6_preview_world_anchor",
             output="screen",
             arguments=[
-                "--x", "0", "--y", "0", "--z", "0",
-                "--roll", "0", "--pitch", "0", "--yaw", "0",
-                "--frame-id", "world", "--child-frame-id", root_link,
+                "--x",
+                "0",
+                "--y",
+                "0",
+                "--z",
+                "0",
+                "--roll",
+                "0",
+                "--pitch",
+                "0",
+                "--yaw",
+                "0",
+                "--frame-id",
+                "world",
+                "--child-frame-id",
+                root_link,
             ],
         ),
         Node(
@@ -69,7 +81,11 @@ def _launch_preview_nodes(description: str, root_link: str):
             arguments=[
                 "-d",
                 PathJoinSubstitution(
-                    [FindPackageShare("linkerbot_hand_gui"), "config", "o6_preview.rviz"]
+                    [
+                        FindPackageShare("linkerbot_hand_gui"),
+                        "config",
+                        "o6_preview.rviz",
+                    ]
                 ),
             ],
         ),
@@ -134,9 +150,7 @@ def _launch_nodes(context):
                     # hand state before control is armed.  The bridge emits
                     # one seed sample only; continuous actual feedback must
                     # not overwrite a target while the user is dragging.
-                    "source_list": [
-                        "/linkerbot_hand_gui/initial_joint_states"
-                    ],
+                    "source_list": ["/linkerbot_hand_gui/initial_joint_states"],
                 }
             ],
             remappings=[
@@ -189,9 +203,22 @@ def _launch_nodes(context):
             name="o6_actual_world_anchor",
             output="screen",
             arguments=[
-                "--x", "0.22", "--y", "0", "--z", "0",
-                "--roll", "0", "--pitch", "0", "--yaw", "0",
-                "--frame-id", "world", "--child-frame-id", f"actual/{root_link}",
+                "--x",
+                "0.22",
+                "--y",
+                "0",
+                "--z",
+                "0",
+                "--roll",
+                "0",
+                "--pitch",
+                "0",
+                "--yaw",
+                "0",
+                "--frame-id",
+                "world",
+                "--child-frame-id",
+                f"actual/{root_link}",
             ],
         ),
         Node(
@@ -200,9 +227,22 @@ def _launch_nodes(context):
             name="o6_target_world_anchor",
             output="screen",
             arguments=[
-                "--x", "0", "--y", "0", "--z", "0",
-                "--roll", "0", "--pitch", "0", "--yaw", "0",
-                "--frame-id", "world", "--child-frame-id", f"target/{root_link}",
+                "--x",
+                "0",
+                "--y",
+                "0",
+                "--z",
+                "0",
+                "--roll",
+                "0",
+                "--pitch",
+                "0",
+                "--yaw",
+                "0",
+                "--frame-id",
+                "world",
+                "--child-frame-id",
+                f"target/{root_link}",
             ],
         ),
         Node(

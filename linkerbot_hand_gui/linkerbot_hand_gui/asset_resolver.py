@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import importlib
 import hashlib
+import importlib
 import json
 import os
 import struct
@@ -34,7 +34,9 @@ class O6Assets:
     decoder_path: Path
 
 
-def resolve_o6_assets(side: str, assets_root: str | os.PathLike[str] | None = None) -> O6Assets:
+def resolve_o6_assets(
+    side: str, assets_root: str | os.PathLike[str] | None = None
+) -> O6Assets:
     """Find the official O6 URDF and decoder for ``side``.
 
     Resolution order is explicit path, ``LINKERBOT_HAND_ASSETS_ROOT``, then
@@ -146,7 +148,9 @@ def _collision_companion(path: Path) -> Path:
     if "_vis." not in visual_name:
         return path
     collision_name = visual_name.replace("_vis.", "_col.")
-    return path.parent.parent / "collision" / Path(collision_name).with_suffix(".obj").name
+    return (
+        path.parent.parent / "collision" / Path(collision_name).with_suffix(".obj").name
+    )
 
 
 def _is_mesh_file(path: Path) -> bool:
@@ -283,9 +287,9 @@ def _materialize_visual_materials(path: Path) -> Path:
         if not changed:
             return path
 
-        encoded = json.dumps(document, separators=(",", ":"), ensure_ascii=False).encode(
-            "utf-8"
-        )
+        encoded = json.dumps(
+            document, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
         encoded += b" " * ((-len(encoded)) % 4)
         chunks[json_index] = (0x4E4F534A, encoded)
         rebuilt = bytearray(struct.pack("<4sII", b"glTF", version, 0))
@@ -295,10 +299,14 @@ def _materialize_visual_materials(path: Path) -> Path:
         struct.pack_into("<I", rebuilt, 8, len(rebuilt))
 
         cache_root = Path(os.environ.get("XDG_CACHE_HOME", tempfile.gettempdir())) / (
-            "linkerbot_hand_gui" if "XDG_CACHE_HOME" in os.environ else "linkerbot_hand_gui_meshes"
+            "linkerbot_hand_gui"
+            if "XDG_CACHE_HOME" in os.environ
+            else "linkerbot_hand_gui_meshes"
         )
         cache_root.mkdir(parents=True, exist_ok=True)
-        digest = hashlib.sha256(data + _MATERIAL_PATCH_VERSION.encode()).hexdigest()[:16]
+        digest = hashlib.sha256(data + _MATERIAL_PATCH_VERSION.encode()).hexdigest()[
+            :16
+        ]
         cached = cache_root / f"{path.stem}.{digest}.glb"
         if not cached.is_file() or not _is_mesh_file(cached):
             temporary = cached.with_suffix(cached.suffix + ".tmp")
@@ -317,8 +325,10 @@ def load_o6_decoder(assets: O6Assets) -> tuple[str, ...]:
     with assets.decoder_path.open(encoding="utf-8") as stream:
         spec = yaml.safe_load(stream) or {}
     channels = spec.get("channels")
-    if not isinstance(channels, list) or not channels or not all(
-        isinstance(value, str) and value for value in channels
+    if (
+        not isinstance(channels, list)
+        or not channels
+        or not all(isinstance(value, str) and value for value in channels)
     ):
         raise ValueError(f"{assets.decoder_path}: channels must be a non-empty list")
     # ``{S}h_...`` expands to ``lh_...`` or ``rh_...``; only the
@@ -332,7 +342,13 @@ def _component_candidates(root: Path) -> tuple[Path, ...]:
 
     return (
         root / "components" / "hands" / _COMPONENT,
-        root / "src" / "linker_robot_assets" / "assets" / "components" / "hands" / _COMPONENT,
+        root
+        / "src"
+        / "linker_robot_assets"
+        / "assets"
+        / "components"
+        / "hands"
+        / _COMPONENT,
         root / _COMPONENT,
         root,
     )

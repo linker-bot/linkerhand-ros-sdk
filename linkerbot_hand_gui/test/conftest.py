@@ -1,8 +1,7 @@
 """Make the ament Python package importable from a source checkout."""
 
-from pathlib import Path
 import sys
-
+from pathlib import Path
 
 PACKAGE_ROOT = Path(__file__).parents[1]
 if str(PACKAGE_ROOT) not in sys.path:

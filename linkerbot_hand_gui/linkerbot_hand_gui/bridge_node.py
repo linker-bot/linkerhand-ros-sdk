@@ -7,12 +7,13 @@ import threading
 import time
 from typing import Any
 
-from linkerbot_hand_msgs.msg import HandCapabilities, HandJointCommand, HandJointState
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Header
 from std_srvs.srv import SetBool
+
+from linkerbot_hand_msgs.msg import HandCapabilities, HandJointCommand, HandJointState
 
 from .asset_resolver import load_o6_decoder, resolve_o6_assets
 from .joint_mapping import O6JointMapping
@@ -72,7 +73,9 @@ class O6GuiBridge(Node):
         self._client_id = secrets.randbits(63) or 1
         self._control_enabled = bool(self.get_parameter("control_enabled").value)
 
-        self._actual_publisher = self.create_publisher(JointState, _ACTUAL_OUTPUT_TOPIC, 10)
+        self._actual_publisher = self.create_publisher(
+            JointState, _ACTUAL_OUTPUT_TOPIC, 10
+        )
         # ``joint_state_publisher_gui`` subscribes to this topic through its
         # ``source_list`` parameter.  The bridge publishes exactly one sample
         # after the first verified device state, so later feedback cannot drag
@@ -92,7 +95,9 @@ class O6GuiBridge(Node):
         # during DDS discovery.  Republish the initial state briefly so the
         # slider process always receives it, then stop permanently.
         self._initial_seed_timer = self.create_timer(0.1, self._publish_initial_seed)
-        self._target_publisher = self.create_publisher(JointState, _TARGET_OUTPUT_TOPIC, 10)
+        self._target_publisher = self.create_publisher(
+            JointState, _TARGET_OUTPUT_TOPIC, 10
+        )
         self._command_publisher = self.create_publisher(
             HandJointCommand,
             f"{driver_name}/command/angles",
@@ -145,13 +150,15 @@ class O6GuiBridge(Node):
             capabilities = self._capabilities
         if capabilities is None:
             return
-        if tuple(message.joint_names) != tuple(joint.name for joint in capabilities.joints):
+        if tuple(message.joint_names) != tuple(
+            joint.name for joint in capabilities.joints
+        ):
             self.get_logger().error("state/angles 关节顺序与 capability 不一致")
             return
         valid = bool(message.meta.valid and not message.meta.stale)
-        all_percent_valid = len(message.percent_valid) == len(self._mapping.capability_names) and all(
-            message.percent_valid
-        )
+        all_percent_valid = len(message.percent_valid) == len(
+            self._mapping.capability_names
+        ) and all(message.percent_valid)
         if valid and all_percent_valid:
             values = tuple(float(value) for value in message.percent)
             with self._lock:
@@ -271,7 +278,10 @@ class O6GuiBridge(Node):
     ) -> SetBool.Response:
         with self._lock:
             if request.data:
-                if self._capabilities is None or not self._capabilities.identity.verified:
+                if (
+                    self._capabilities is None
+                    or not self._capabilities.identity.verified
+                ):
                     response.success = False
                     response.message = "等待已验证的 O6 capabilities"
                     return response
@@ -296,7 +306,9 @@ class O6GuiBridge(Node):
         self._latest_target = None
 
     @staticmethod
-    def _publish_joint_state(publisher: Any, values: dict[str, float], stamp: Any) -> None:
+    def _publish_joint_state(
+        publisher: Any, values: dict[str, float], stamp: Any
+    ) -> None:
         publisher.publish(
             JointState(
                 header=Header(stamp=stamp),
