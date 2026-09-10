@@ -13,6 +13,10 @@ The value representation is always explicit:
 - `HandTelemetry` identifies configured and measured channels through its
   semantic and capability metadata.
 - `HandTactileState` represents one complete multi-finger tactile transaction.
+- `HandFaultStatusState` carries the decoded per-joint fault bits as
+  `HandJointFaultStatus` records, for models whose protocol profile documents
+  them. Each record keeps the exact protocol byte in `raw` next to the named
+  flags, and the raw `~/state/faults` channel is unaffected.
 - `HandCommandStatusBatch` carries changed `HandCommandStatus` records in one
   bounded publication. Each record still distinguishes accepted, dispatched,
   acknowledged, failed, and superseded commands. A non-zero `client_id` combined with

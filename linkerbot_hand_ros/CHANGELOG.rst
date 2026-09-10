@@ -11,6 +11,20 @@ section.
 Unreleased
 ----------
 
+* Publish the decoded per-joint fault bits instead of dropping them. The SDK
+  reports ``FaultSample.statuses`` for a model whose protocol profile documents
+  its fault bits, but the conversion layer only read ``sample.raw``, so every
+  subscriber had to re-implement the bit masks and look up each bit's meaning in
+  the protocol. Adds the ``linkerbot_hand_msgs`` types
+  ``HandFaultStatusState`` and ``HandJointFaultStatus`` and the lifecycle topic
+  ``~/state/fault_statuses``, created only for a channel whose capability sets
+  ``decoded_statuses``, which today means O30. Each record keeps the exact
+  protocol byte in ``raw`` next to the named flags. ``TelemetryCapability``
+  gains the matching ``decoded_statuses`` field so the published capability
+  metadata stays in step with the SDK. The existing ``~/state/faults`` topic is
+  unchanged in name, content, and behaviour. Requires rebuilding
+  ``linkerbot_hand_msgs``, and a Hand SDK that declares ``decoded_statuses``.
+
 * Stop leaking the two O30 descriptor-tactile lifecycle publishers
   (``~/state/tactile_sensors`` and ``~/state/normal_force_resultant``) on
   deactivate and cleanup. ``SnapshotPublisher.destroy()`` now reuses the exact

@@ -6,6 +6,7 @@ from .device_info import device_info_to_message
 from .stall import stall_protection_to_message
 from .state import (
     angle_sample_to_message,
+    fault_statuses_to_message,
     force_sample_to_messages,
     make_angle_message,
     telemetry_sample_to_message,
@@ -19,6 +20,7 @@ __all__ = [
     "capabilities_to_message",
     "command_status_to_message",
     "device_info_to_message",
+    "fault_statuses_to_message",
     "force_sample_to_messages",
     "make_angle_message",
     "sample_metadata_to_message",

@@ -199,6 +199,7 @@ def _telemetry_to_message(
         estimated_transaction_s=float(value.estimated_transaction_s),
         device_measured=value.device_measured,
         device_queried=value.device_queried,
+        decoded_statuses=value.decoded_statuses,
     )
 
 

@@ -17,6 +17,7 @@ from rclpy.lifecycle import LifecycleNode
 from linkerbot_hand_msgs.msg import (
     HandCapabilities,
     HandDeviceInfo,
+    HandFaultStatusState,
     HandJointState,
     HandNormalForceResultant,
     HandStallProtectionState,
@@ -28,6 +29,7 @@ from linkerbot_hand_msgs.msg import (
 from .conversion import (
     capabilities_to_message,
     device_info_to_message,
+    fault_statuses_to_message,
     force_sample_to_messages,
     make_angle_message,
     stall_protection_to_message,
@@ -152,6 +154,19 @@ class SnapshotPublisher:
                     event_callbacks=HIGH_RATE_PUBLISHER_EVENTS,
                 )
                 lifecycle_publishers.append(stall_publisher)
+            fault_capability = capabilities.telemetry_channel(TelemetrySemantic.FAULTS)
+            fault_status_publisher = None
+            # The profile declares whether its samples carry decoded statuses.
+            # Do not infer this from ``raw_encoding``: that describes the wire
+            # layout, which is independent of what the SDK decodes.
+            if fault_capability is not None and fault_capability.decoded_statuses:
+                fault_status_publisher = node.create_lifecycle_publisher(
+                    HandFaultStatusState,
+                    "~/state/fault_statuses",
+                    STATE_QOS,
+                    event_callbacks=HIGH_RATE_PUBLISHER_EVENTS,
+                )
+                lifecycle_publishers.append(fault_status_publisher)
         except Exception:
             for publisher in reversed(lifecycle_publishers):
                 node.destroy_lifecycle_publisher(publisher)
@@ -167,6 +182,7 @@ class SnapshotPublisher:
         self._tactile_sensor_publisher = tactile_sensor_publisher
         self._force_resultant_publisher = force_resultant_publisher
         self._stall_publisher = stall_publisher
+        self._fault_status_publisher = fault_status_publisher
         # ``destroy()`` reuses the exact lists that the failed-construction
         # rollback above builds, so a publisher can never be created without
         # also being destroyed. Enumerating the attributes by hand is what left
@@ -260,6 +276,18 @@ class SnapshotPublisher:
             )
             self._mark_published(semantic.value, _metadata_signature(sample.meta))
             publications += 1
+            if (
+                semantic is TelemetrySemantic.FAULTS
+                and self._fault_status_publisher is not None
+            ):
+                statuses = fault_statuses_to_message(
+                    sample,
+                    capability,
+                    ros_now_ns=ros_now_ns,
+                )
+                if statuses is not None:
+                    self._fault_status_publisher.publish(statuses)
+                    publications += 1
 
         force = snapshot.force
         force_capability = self._force_capability

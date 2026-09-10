@@ -172,6 +172,50 @@ def telemetry_sample_to_message(
     )
 
 
+def fault_statuses_to_message(
+    sample: FaultSample,
+    capability: TelemetryCapability,
+    *,
+    ros_now_ns: int,
+) -> ros_messages.HandFaultStatusState | None:
+    """Project decoded per-joint fault bits, or ``None`` when the SDK has none.
+
+    The raw ``~/state/faults`` channel already carries ``sample.raw``. This adds
+    the decoded flags that only some protocol profiles document, and returns
+    ``None`` rather than fabricating all-false statuses for a profile that does
+    not decode them.
+    """
+
+    if not isinstance(sample, FaultSample):
+        raise ValidationError("sample must be FaultSample")
+    if (
+        not isinstance(capability, TelemetryCapability)
+        or capability.semantic is not TelemetrySemantic.FAULTS
+    ):
+        raise ValidationError("capability must describe fault telemetry")
+    if not sample.statuses:
+        return None
+    if len(sample.statuses) != len(capability.channels):
+        raise ValidationError("fault statuses do not match the declared channels")
+    return ros_messages.HandFaultStatusState(
+        joint_names=list(capability.channels),
+        statuses=[
+            ros_messages.HandJointFaultStatus(
+                raw=status.raw,
+                hand_layer_stall=status.hand_layer_stall,
+                actuator_layer_stall=status.actuator_layer_stall,
+                over_current=status.over_current,
+                over_temperature=status.over_temperature,
+                actuator_abnormal=status.actuator_abnormal,
+                actuator_offline=status.actuator_offline,
+                reserved_bits=status.reserved_bits,
+            )
+            for status in sample.statuses
+        ],
+        meta=sample_metadata_to_message(sample.meta, ros_now_ns=ros_now_ns),
+    )
+
+
 def force_sample_to_messages(
     sample: ForceSample,
     capability: TelemetryCapability,

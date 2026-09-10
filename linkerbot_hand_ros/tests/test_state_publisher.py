@@ -7,7 +7,9 @@ from linkerbot_hand import (
     AngleFeedbackPolicy,
     AngleSample,
     DataOrigin,
+    FaultSample,
     ForceSample,
+    JointFaultStatus,
     SampleMeta,
     TactileFieldDescriptor,
     TactileFieldSample,
@@ -561,3 +563,98 @@ def test_o30_descriptor_force_publishes_sensors_and_resultant_topics():
         12.0,
         15.0,
     ]
+
+
+def _o30_fault_sample(metadata: SampleMeta) -> FaultSample:
+    raw = [0] * 20
+    raw[0] = 0x01
+    raw[3] = 0x08
+    raw[7] = 0x40 | 0x80
+    raw[11] = 0x10
+    statuses = tuple(
+        JointFaultStatus(
+            raw=value,
+            hand_layer_stall=bool(value & 0x01),
+            actuator_layer_stall=bool(value & 0x02),
+            over_current=bool(value & 0x04),
+            over_temperature=bool(value & 0x08),
+            actuator_abnormal=bool(value & 0x40),
+            actuator_offline=bool(value & 0x80),
+            reserved_bits=value & 0x30,
+        )
+        for value in raw
+    )
+    return FaultSample(raw=tuple(raw), statuses=statuses, meta=metadata)
+
+
+class _RecordingNode:
+    def create_publisher(self, *_args, **_kwargs):
+        return RecordingStatePublisher()
+
+    def create_lifecycle_publisher(self, *_args, **_kwargs):
+        return RecordingStatePublisher()
+
+
+def test_o30_publishes_decoded_fault_statuses_alongside_raw_faults():
+    """The decoded bits must reach subscribers, not just the raw bytes.
+
+    ``~/state/faults`` keeps carrying the raw vector unchanged; the decoded
+    flags go to a separate topic so the generic HandTelemetry message stays
+    generic.
+    """
+
+    capabilities = get_declared_capabilities("o30", side="right")
+    publisher = SnapshotPublisher(_RecordingNode(), capabilities)
+
+    assert publisher._fault_status_publisher is not None
+    fault_telemetry = publisher._telemetry_publishers[TelemetrySemantic.FAULTS]
+    publisher._stall_publisher = None
+
+    metadata = SampleMeta(
+        sequence=7,
+        collected_at=1.0,
+        age_s=0.0,
+        valid=True,
+        stale=False,
+        connection_generation=1,
+        origin=DataOrigin.DEVICE_RESPONSE,
+        within_declared_range=True,
+    )
+    sample = _o30_fault_sample(metadata)
+
+    published = publisher.publish_snapshot(
+        _empty_snapshot(faults=sample),
+        ros_now_ns=1,
+        angle_feedback_policy=AngleFeedbackPolicy.ADAPTIVE,
+    )
+
+    # One raw fault message plus one decoded-status message.
+    assert published == 2
+    assert len(fault_telemetry.messages) == 1
+    assert list(fault_telemetry.messages[0].raw) == [float(v) for v in sample.raw]
+
+    messages = publisher._fault_status_publisher.messages
+    assert len(messages) == 1
+    decoded = messages[0]
+    assert list(decoded.joint_names) == list(capabilities.joint_names)
+    assert len(decoded.statuses) == 20
+    assert [item.raw for item in decoded.statuses] == list(sample.raw)
+    assert decoded.statuses[0].hand_layer_stall
+    assert not decoded.statuses[0].actuator_layer_stall
+    assert decoded.statuses[3].over_temperature
+    assert decoded.statuses[7].actuator_abnormal
+    assert decoded.statuses[7].actuator_offline
+    assert decoded.statuses[11].reserved_bits == 0x10
+    assert not decoded.statuses[1].over_current
+
+
+@pytest.mark.parametrize(
+    ("model", "side"),
+    [("l6", "right"), ("o6", "right"), ("l20", "right"), ("l30", None)],
+)
+def test_models_without_documented_fault_bits_get_no_status_topic(model, side):
+    capabilities = get_declared_capabilities(model, side=side)
+
+    publisher = SnapshotPublisher(_RecordingNode(), capabilities)
+
+    assert publisher._fault_status_publisher is None
