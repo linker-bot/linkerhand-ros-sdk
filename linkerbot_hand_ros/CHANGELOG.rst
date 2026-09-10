@@ -11,21 +11,22 @@ section.
 Unreleased
 ----------
 
-* Open O30 on a bus running any data bitrate. A profile that leaves the data
-  phase unconstrained (O30 runs BRS off) used to get a fixed 5 Mbit/s
-  substituted when the caller set none, and SocketCAN asserts the requested data
-  bitrate against the link: a correctly configured 1M, 2M or 7M bus therefore
-  failed to open, with an error suggesting the user change a perfectly good bus
-  to 5 Mbit/s. With ``auto_reconfigure`` enabled it was worse, since the driver
-  would take the link down and back up at 5 Mbit/s and interrupt every other
-  node on that bus. The SocketCAN path now adopts the data bitrate the link is
-  actually running, read through the SDK's public discovery source, and keeps the
-  recommended 5 Mbit/s only when the link cannot be read so the transport still
-  emits its "channel is not configured, run ip link set ..." guidance. An
-  explicit ``data_bitrate`` remains authoritative and skips the link lookup, a
-  profile that does declare a data bitrate (O20, L30) keeps the strict
-  conflict check, and the vendor CAN FD path is unchanged because there the
-  value configures the adapter rather than being matched against a Linux link.
+* Open O30 on a CAN FD bus running any data bitrate; 5 Mbit/s is recommended.
+  In 1.0.0 O30 could not be opened from the driver at all: O30 runs BRS off, so
+  its data phase equals the nominal rate and the SDK reports
+  ``capability.transport.data_bitrate`` as ``None``, which the transport factory
+  rejected with "does not declare data_bitrate". The SocketCAN path now adopts
+  the data bitrate the link is actually running, read through the SDK's public
+  discovery source, and uses the recommended 5 Mbit/s only when the link cannot
+  be read, so the transport still emits its "channel is not configured, run
+  ip link set ..." guidance rather than a confusing rate mismatch. An explicit
+  ``data_bitrate`` remains authoritative and skips the link lookup; a profile
+  that does declare a data bitrate (O20, L30) keeps the strict conflict check;
+  and the vendor CAN FD path is unchanged, because there the value configures
+  the adapter rather than being matched against a Linux link. Because the
+  requested
+  rate now matches the link, ``auto_reconfigure`` no longer takes the link down
+  and back up, so it cannot interrupt other nodes on the same bus.
 
 * Add CI and a local pre-commit gate. ``.gitea/workflows/ci.yml`` runs
   ``ruff check .`` and ``ruff format --check .`` on pushes to ``main`` and on
@@ -35,10 +36,13 @@ Unreleased
   pinned version, so the hook, a manual run and CI stay on one ruff and one rule
   set. Each clone needs ``pre-commit install`` once, which installs both the
   commit-time and the push-time hook; the push hook is what actually gates
-  code today, because with no Gitea runner online the workflow only queues. CI does not run pytest yet:
-  the driver tests need ROS 2 Jazzy, a built ``linkerbot_hand_msgs``, and
-  ``linkerbot-hand`` plus ``linkerbot-transport``, neither of which is on a
-  public index.
+  code today, because with no Gitea runner online the workflow only queues. CI
+  does not run pytest yet: the driver tests need ROS 2 Jazzy and a built
+  ``linkerbot_hand_msgs``, the only registered runner is offline and carries no
+  ROS label, and reaching ``linkerbot-hand`` and ``linkerbot-transport`` needs a
+  read-only package token as an Actions secret. Those packages are published to
+  this instance's own PyPI registry, so the dependencies themselves are
+  obtainable; the runner and the secret are what is missing.
 
 * Decide force topics from the declared ``payload_projection`` instead of
   reverse-engineering ``raw_encoding`` and the number of ``shape`` dimensions.
@@ -79,6 +83,15 @@ Unreleased
   publisher lists built during construction instead of re-enumerating the
   attributes by hand, so every created publisher is always destroyed, and
   repeated ``destroy()`` calls are now idempotent.
+
+* Publish the O30 descriptor tactile and normal-force-resultant state on the new
+  lifecycle topics ``~/state/tactile_sensors`` and
+  ``~/state/normal_force_resultant``. Both are created only for a model whose
+  force capability produces the descriptor tactile projection, which today means
+  O30. Device values are published as reported with no unit conversion. When the
+  firmware does not support tactile reads, the existing SDK capability
+  degradation and explicit error status apply. Requires rebuilding
+  ``linkerbot_hand_msgs`` for the four new message types.
 
 * Replace the incorrect public hand model name ``L25/l25`` with ``L20/l20``
   in driver configuration and documentation, matching the corrected Hand SDK
