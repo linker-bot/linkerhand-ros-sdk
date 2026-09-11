@@ -11,6 +11,40 @@ section.
 Unreleased
 ----------
 
+* Add a release flow: ``scripts/release.py`` (``check`` / ``tag`` /
+  ``verify-tag``) and ``.gitea/workflows/release.yml``, documented in
+  ``scripts/README.md``. This repository publishes no artifact — the documented
+  install path is ``git clone --branch v<version>`` plus ``colcon build``, and
+  ``linkerbot_hand_msgs`` is a ROSIDL interface with no platform-independent
+  wheel — so a release is just a tag. Two things still went wrong in 2.0.0 and
+  both are now gated. The tag was pushed while the documentation fix was
+  unmerged, so it pointed at a commit whose docs said 1.0.0 and had to be
+  deleted from the remote and redone; ``check`` therefore requires a clean
+  ``main`` that equals ``origin/main`` and requires every version the
+  documentation names to match. And ``setup.py`` declared
+  ``linkerbot-hand>=2.0.0,<3.0.0`` while the registry held only 1.0.0, so
+  following the documentation produced ``No solution found``; ``check`` now
+  queries the registry and refuses when the documented pin is absent or no
+  published version satisfies the declared range. That check spans two
+  repositories, which is the kind a person reliably skips. Other gates: the four
+  version declarations must agree (``linkerbot_hand_gui`` is versioned
+  independently and excluded), both changelogs need a dated section and an empty
+  ``Unreleased``, the range quoted in the documentation must be the one
+  ``setup.py`` declares, no Markdown document may name a version that is neither
+  this release nor the pinned hand or transport version, the tag must be unused,
+  and ``ruff`` and ``pytest`` must pass. Historical version references belong in
+  ``CHANGELOG.rst``, which the documentation scan excludes. CI runs
+  ``verify-tag`` on a ``v*`` push — the same script, so there is one set of gates
+  rather than one in CI and another on a developer machine — confirming the tag
+  matches the versions declared by the commit it points at. It uploads nothing.
+  With no Gitea runner online the workflow only queues, so the local script is
+  the part that takes effect today.
+
+* ``test_python_and_ros_package_versions_match`` no longer asserts the literal
+  ``"2.0.0"``. The invariant is that the four version declarations agree, not
+  that they hold a particular value; the literal meant editing this test every
+  release, and ``scripts/release.py`` reads the version and gates on it instead.
+
 * Point the install and build instructions at 2.0.0. Seven documents still
   pinned 1.0.0 in 31 places: the virtualenv directory name, the
   ``'linkerbot-hand==1.0.0'`` pin, the ``linkerbot-hand>=1.0.0,<2.0.0`` range,

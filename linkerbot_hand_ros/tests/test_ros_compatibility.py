@@ -266,7 +266,10 @@ def test_python_and_ros_package_versions_match() -> None:
         == messages_package_version.group(1)
         == module_version.group(1)
     )
-    assert setup_version.group(1) == "2.0.0"
+    # The invariant is that the four declarations agree, not that they hold a
+    # particular value. Asserting the literal here meant editing this test every
+    # release; ``scripts/release.py`` reads the version and gates the release on
+    # it instead.
 
 
 def test_each_ros_package_maintains_an_unreleased_changelog() -> None:
