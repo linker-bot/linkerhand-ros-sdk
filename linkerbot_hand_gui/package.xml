@@ -13,7 +13,7 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>joint_state_publisher_gui</exec_depend>
   <exec_depend>launch_ros</exec_depend>
-  <exec_depend version_gte="1.0.0" version_lt="2.0.0">linkerbot_hand_msgs</exec_depend>
+  <exec_depend version_gte="2.0.0" version_lt="3.0.0">linkerbot_hand_msgs</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>robot_state_publisher</exec_depend>

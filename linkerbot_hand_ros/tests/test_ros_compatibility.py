@@ -142,10 +142,10 @@ def test_old_adapter_and_configuration_implementations_are_removed() -> None:
     assert not (PACKAGE_ROOT / "linkerbot_hand_ros/configuration.py").exists()
 
 
-def test_package_depends_on_hand_sdk_1_x() -> None:
+def test_package_depends_on_hand_sdk_2_x() -> None:
     setup_source = (PACKAGE_ROOT / "setup.py").read_text(encoding="utf-8")
 
-    assert '"linkerbot-hand>=1.0.0,<2.0.0"' in setup_source
+    assert '"linkerbot-hand>=2.0.0,<3.0.0"' in setup_source
     assert '"linkerbot>=' not in setup_source
     assert '"linkerbot-transport' not in setup_source
 
@@ -191,7 +191,7 @@ def test_package_declares_direct_runtime_dependencies() -> None:
     assert "<exec_depend>std_msgs</exec_depend>" not in package_source
     assert "<exec_depend>std_srvs</exec_depend>" not in package_source
     assert (
-        '<exec_depend version_gte="1.0.0" version_lt="2.0.0">'
+        '<exec_depend version_gte="2.0.0" version_lt="3.0.0">'
         "linkerbot_hand_msgs</exec_depend>"
     ) in package_source
 
@@ -266,7 +266,7 @@ def test_python_and_ros_package_versions_match() -> None:
         == messages_package_version.group(1)
         == module_version.group(1)
     )
-    assert setup_version.group(1) == "1.0.0"
+    assert setup_version.group(1) == "2.0.0"
 
 
 def test_each_ros_package_maintains_an_unreleased_changelog() -> None:

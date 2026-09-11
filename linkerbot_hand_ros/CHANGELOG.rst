@@ -11,6 +11,29 @@ section.
 Unreleased
 ----------
 
+2.0.0 (2026-09-11)
+------------------
+
+This release is not source or wire compatible with 1.0.0. The two changes that
+require action:
+
+* **Requires Hand SDK 2.0.0.** ``setup.py`` now declares
+  ``linkerbot-hand>=2.0.0,<3.0.0``. The driver needs the SDK's
+  ``payload_projection`` and ``decoded_statuses`` capability fields; against
+  1.0.0 the node cannot start. Note that the 1.0.0 declaration
+  (``>=1.0.0,<2.0.0``) was wrong in both directions and should not be relied on.
+
+* **``linkerbot_hand_msgs`` message hash changed**, so nodes built against msgs
+  1.0.0 cannot exchange ``~/capabilities`` with nodes built against 2.0.0.
+  Rebuild every package that uses these messages. Details in that package's
+  changelog.
+
+Two model-facing renames also landed: the public hand model ``L25/l25`` became
+``L20/l20``, and on L20Lite/L20 the driver now publishes
+``~/state/measured_speeds`` instead of ``~/state/configured_speeds`` (the
+protocol returns the live speed, not a configured one).
+
+
 * Open O30 on a CAN FD bus running any data bitrate; 5 Mbit/s is recommended.
   In 1.0.0 O30 could not be opened from the driver at all: O30 runs BRS off, so
   its data phase equals the nominal rate and the SDK reports

@@ -10,6 +10,22 @@ a dated version section and create a new empty ``Unreleased`` section.
 Unreleased
 ----------
 
+2.0.0 (2026-09-11)
+------------------
+
+Every definition change in this release is additive: no existing message field
+was removed, renamed or retyped, so source-level use of the 1.0.0 messages keeps
+compiling.
+
+**It is still a major release.** ``TelemetryCapability`` gained a field, and
+that message is embedded in ``HandCapabilities``
+(``TelemetryCapability[] telemetry``), so the ``HandCapabilities`` message hash
+changed. A node built against msgs 1.0.0 therefore cannot exchange
+``~/capabilities`` with a node built against 2.0.0.
+Rebuild every package that uses these messages; a partial upgrade leaves that
+topic silently unconnected.
+
+
 * Add ``HandFaultStatusState`` and ``HandJointFaultStatus`` for the decoded
   per-joint fault bits a protocol profile documents. ``HandJointFaultStatus``
   keeps the exact protocol byte in ``raw`` next to the named flags
