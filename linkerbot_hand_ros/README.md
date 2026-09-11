@@ -28,7 +28,7 @@ submitted through the capability-gated `save_parameters` service.
 - Ubuntu 24.04 and ROS 2 Jazzy
 - Python 3.10 or newer
 - `linkerbot-transport>=1.0.0,<2.0.0`
-- `linkerbot-hand>=1.0.0,<2.0.0`
+- `linkerbot-hand>=2.0.0,<3.0.0`
 - a configured SocketCAN/CAN FD interface or supported vendor adapter
 
 First-time users can run the repository
@@ -38,13 +38,13 @@ install both Transport and Hand:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-python3 -m venv --system-site-packages ~/venvs/linkerbot-hand-ros-1.0.0
-source ~/venvs/linkerbot-hand-ros-1.0.0/bin/activate
+python3 -m venv --system-site-packages ~/venvs/linkerbot-hand-ros-2.0.0
+source ~/venvs/linkerbot-hand-ros-2.0.0/bin/activate
 python -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
   'linkerbot-transport[all]==1.0.0' \
-  'linkerbot-hand==1.0.0'
+  'linkerbot-hand==2.0.0'
 ```
 
 For unreleased 1.x development, install the independent source repositories
@@ -62,12 +62,12 @@ python -c 'import linkerbot_hand; print(linkerbot_hand.__file__)'
 `linkerbot_hand_msgs` contains ROSIDL interfaces and must be generated for the
 installed ROS distribution; it is therefore delivered in the tagged ROS source
 release rather than inside the platform-independent driver wheel. Build both
-ROS packages from the same `v1.0.0` tag:
+ROS packages from the same `v2.0.0` tag:
 
 ```bash
 mkdir -p ~/linkerbot_ws/src
 cd ~/linkerbot_ws/src
-git clone --branch v1.0.0 --depth 1 \
+git clone --branch v2.0.0 --depth 1 \
   https://gitea.linkerhub.work/zhuzhixiang/linkerbot-hand-ros.git
 cd ~/linkerbot_ws
 source /opt/ros/jazzy/setup.bash

@@ -12,8 +12,8 @@ sudo apt install -y git can-utils python3-venv python3-rosdep \
   python3-colcon-common-extensions
 
 source /opt/ros/jazzy/setup.bash
-python3 -m venv --system-site-packages ~/venvs/linkerbot-hand-ros-1.0.0
-source ~/venvs/linkerbot-hand-ros-1.0.0/bin/activate
+python3 -m venv --system-site-packages ~/venvs/linkerbot-hand-ros-2.0.0
+source ~/venvs/linkerbot-hand-ros-2.0.0/bin/activate
 ```
 
 显式安装已发布的 Transport 和 Hand：
@@ -23,7 +23,7 @@ python -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
   'linkerbot-transport[all]==1.0.0' \
-  'linkerbot-hand==1.0.0'
+  'linkerbot-hand==2.0.0'
 ```
 
 测试尚未发行的源码时，在同一个 Python 环境安装：
@@ -61,12 +61,12 @@ ip -details -statistics link show can0
 ## 3. 构建 ROS 工作空间
 
 `linkerbot_hand_msgs` 是需要由 Jazzy 生成的 ROSIDL package，不包含在驱动 Python
-wheel 中。必须从同一个 `v1.0.0` 标签构建消息和驱动两个 package：
+wheel 中。必须从同一个 `v2.0.0` 标签构建消息和驱动两个 package：
 
 ```bash
 mkdir -p ~/linkerbot_ws/src
 cd ~/linkerbot_ws/src
-git clone --branch v1.0.0 --depth 1 \
+git clone --branch v2.0.0 --depth 1 \
   https://gitea.linkerhub.work/zhuzhixiang/linkerbot-hand-ros.git
 cd ~/linkerbot_ws
 source /opt/ros/jazzy/setup.bash

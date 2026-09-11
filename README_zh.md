@@ -9,7 +9,7 @@
 
 完整依赖链为
 `linkerbot-transport -> linkerbot-hand -> linkerbot_hand_msgs/linkerbot_hand_ros`。
-Transport 和 Hand 使用已发布 Python 包；两个 ROS package 从同一个签名 `v1.0.0` tag
+Transport 和 Hand 使用已发布 Python 包；两个 ROS package 从同一个签名 `v2.0.0` tag
 通过 `colcon` 构建。以下命令适用于已经配置 ROS 2 apt 软件源的 Ubuntu 24.04：
 
 ```bash
@@ -24,18 +24,18 @@ fi
 rosdep update
 
 source /opt/ros/jazzy/setup.bash
-python3 -m venv --system-site-packages ~/venvs/linkerbot-hand-ros-1.0.0
-source ~/venvs/linkerbot-hand-ros-1.0.0/bin/activate
+python3 -m venv --system-site-packages ~/venvs/linkerbot-hand-ros-2.0.0
+source ~/venvs/linkerbot-hand-ros-2.0.0/bin/activate
 python -m pip install --upgrade pip
 python -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
   'linkerbot-transport[all]==1.0.0' \
-  'linkerbot-hand==1.0.0'
+  'linkerbot-hand==2.0.0'
 
 mkdir -p ~/linkerbot_ws/src
 cd ~/linkerbot_ws/src
-git clone --branch v1.0.0 --depth 1 \
+git clone --branch v2.0.0 --depth 1 \
   https://gitea.linkerhub.work/zhuzhixiang/linkerbot-hand-ros.git
 
 cd ~/linkerbot_ws
@@ -59,12 +59,12 @@ ros2 interface show linkerbot_hand_msgs/msg/HandJointCommand >/dev/null
 ros2 pkg executables linkerbot_hand_ros
 ```
 
-验证应显示两个 Python 包均为 `1.0.0`、两个 ROS package 的工作空间安装前缀，以及
+验证应显示 transport `1.0.0`、hand `2.0.0`、两个 ROS package 的工作空间安装前缀，以及
 `hand_node` 等可执行程序。该步骤不连接设备，也不会发送 CAN 帧。每个新终端依次执行：
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-source ~/venvs/linkerbot-hand-ros-1.0.0/bin/activate
+source ~/venvs/linkerbot-hand-ros-2.0.0/bin/activate
 source ~/linkerbot_ws/install/setup.bash
 ```
 

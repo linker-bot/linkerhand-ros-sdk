@@ -39,7 +39,7 @@ SDK polling / scheduler -> linkerbot-transport -> 设备
 - Ubuntu 24.04 + ROS 2 Jazzy
 - Python 3.10 或更新版本
 - `linkerbot-transport>=1.0.0,<2.0.0`
-- `linkerbot-hand>=1.0.0,<2.0.0`
+- `linkerbot-hand>=2.0.0,<3.0.0`
 - 已配置的 SocketCAN/CAN FD 接口或受支持厂商适配器
 
 首次安装可以直接执行[仓库快速启动](../README_zh.md#快速启动)。手工分步安装时，在能够
@@ -47,13 +47,13 @@ SDK polling / scheduler -> linkerbot-transport -> 设备
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-python3 -m venv --system-site-packages ~/venvs/linkerbot-hand-ros-1.0.0
-source ~/venvs/linkerbot-hand-ros-1.0.0/bin/activate
+python3 -m venv --system-site-packages ~/venvs/linkerbot-hand-ros-2.0.0
+source ~/venvs/linkerbot-hand-ros-2.0.0/bin/activate
 python -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
   'linkerbot-transport[all]==1.0.0' \
-  'linkerbot-hand==1.0.0'
+  'linkerbot-hand==2.0.0'
 ```
 
 测试尚未发行的 1.x 源码时，在 ROS 使用的同一个 Python 环境安装独立仓库：
@@ -68,13 +68,13 @@ python -c 'import linkerbot_hand; print(linkerbot_hand.__file__)'
 ## 构建
 
 `linkerbot_hand_msgs` 包含 ROSIDL 接口，必须针对当前 ROS 发行版生成，不能放入
-与平台无关的驱动 wheel。因此 ROS 的正式交付以同一个 `v1.0.0` 标签下的两个源码
+与平台无关的驱动 wheel。因此 ROS 的正式交付以同一个 `v2.0.0` 标签下的两个源码
 package 为准：
 
 ```bash
 mkdir -p ~/linkerbot_ws/src
 cd ~/linkerbot_ws/src
-git clone --branch v1.0.0 --depth 1 \
+git clone --branch v2.0.0 --depth 1 \
   https://gitea.linkerhub.work/zhuzhixiang/linkerbot-hand-ros.git
 cd ~/linkerbot_ws
 source /opt/ros/jazzy/setup.bash

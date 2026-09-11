@@ -11,6 +11,15 @@ section.
 Unreleased
 ----------
 
+* Point the install and build instructions at 2.0.0. Seven documents still
+  pinned 1.0.0 in 31 places: the virtualenv directory name, the
+  ``'linkerbot-hand==1.0.0'`` pin, the ``linkerbot-hand>=1.0.0,<2.0.0`` range,
+  two "both Python packages at 1.0.0" verification notes, and
+  ``git clone --branch v1.0.0``. The last one mattered most: the documented
+  delivery is two source packages from one tag, so following it produced a 1.0.0
+  workspace whose ``setup.py`` cannot use hand 2.0.0. References to
+  ``linkerbot-transport`` stay at 1.0.0, which is still its released version.
+
 2.0.0 (2026-09-11)
 ------------------
 

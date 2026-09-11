@@ -28,7 +28,7 @@ python3 -c 'import sys, linkerbot_hand; print(sys.executable); print(linkerbot_h
 python3 -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
-  'linkerbot-hand==1.0.0'
+  'linkerbot-hand==2.0.0'
 ```
 
 开发源码：

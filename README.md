@@ -10,7 +10,7 @@ This repository contains two independently discoverable ROS 2 packages:
 The complete dependency chain is
 `linkerbot-transport -> linkerbot-hand -> linkerbot_hand_msgs/linkerbot_hand_ros`.
 Transport and Hand use published Python packages, while both ROS packages are
-built with `colcon` from the same signed `v1.0.0` tag. On Ubuntu 24.04 with the
+built with `colcon` from the same signed `v2.0.0` tag. On Ubuntu 24.04 with the
 ROS 2 apt repository configured, run:
 
 ```bash
@@ -25,18 +25,18 @@ fi
 rosdep update
 
 source /opt/ros/jazzy/setup.bash
-python3 -m venv --system-site-packages ~/venvs/linkerbot-hand-ros-1.0.0
-source ~/venvs/linkerbot-hand-ros-1.0.0/bin/activate
+python3 -m venv --system-site-packages ~/venvs/linkerbot-hand-ros-2.0.0
+source ~/venvs/linkerbot-hand-ros-2.0.0/bin/activate
 python -m pip install --upgrade pip
 python -m pip install \
   --index-url https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi/simple \
   --extra-index-url https://pypi.org/simple \
   'linkerbot-transport[all]==1.0.0' \
-  'linkerbot-hand==1.0.0'
+  'linkerbot-hand==2.0.0'
 
 mkdir -p ~/linkerbot_ws/src
 cd ~/linkerbot_ws/src
-git clone --branch v1.0.0 --depth 1 \
+git clone --branch v2.0.0 --depth 1 \
   https://gitea.linkerhub.work/zhuzhixiang/linkerbot-hand-ros.git
 
 cd ~/linkerbot_ws
@@ -60,14 +60,14 @@ ros2 interface show linkerbot_hand_msgs/msg/HandJointCommand >/dev/null
 ros2 pkg executables linkerbot_hand_ros
 ```
 
-Verification should report both Python packages at `1.0.0`, workspace prefixes
+Verification should report transport `1.0.0` and hand `2.0.0`, workspace prefixes
 for both ROS packages, and executables including `hand_node`. It does not open
 a device or send CAN frames. In each new terminal, source the environments in
 this order:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-source ~/venvs/linkerbot-hand-ros-1.0.0/bin/activate
+source ~/venvs/linkerbot-hand-ros-2.0.0/bin/activate
 source ~/linkerbot_ws/install/setup.bash
 ```
 
