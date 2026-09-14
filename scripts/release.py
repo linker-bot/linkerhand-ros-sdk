@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
 """Release gate and tagger for linkerbot-hand-ros.
 
-This repository is **not** published to a package registry. The documented
-install path is ``git clone --branch v<version>`` followed by ``colcon build``,
-and ``linkerbot_hand_msgs`` is a ROSIDL interface with no platform-independent
-wheel, so a pip install cannot work here. Releasing therefore means one thing:
-pushing a correct tag.
+A release here is a signed tag plus a Gitea Release. **Nothing is uploaded** —
+not to the Release and not to the package registry. The documented install path
+is ``git clone --branch v<version>`` followed by ``colcon build``, because
+``linkerbot_hand_msgs`` is a ROSIDL interface with no platform-independent wheel.
 
-Two things went wrong in the 2.0.0 release and both are checked here:
+Six versions of the driver do sit in the registry, and ``v1.0.0``'s Release
+attached a wheel and sdist, so this is a deliberate departure from that history:
+the artifact is inert. Installing ``linkerbot-hand-ros==2.0.0`` from the registry
+into a clean virtualenv succeeds, and ``import linkerbot_hand_ros.node`` then
+raises ``ModuleNotFoundError: No module named 'rclpy'``; the wheel contains no
+``linkerbot_hand_msgs`` either. No document installs it, and nothing was found
+that consumes it. Publishing a package that cannot run is worse than not
+publishing one.
+
+Three things went wrong in the 2.0.0 release and all three are checked here:
 
 * The tag was pushed while the documentation fix was still unmerged, so it
   pointed at a commit whose docs said 1.0.0. The remote tag had to be deleted
@@ -16,22 +24,24 @@ Two things went wrong in the 2.0.0 release and both are checked here:
   held 1.0.0, so ``pip install`` failed outright with ``No solution found``. The
   version number was right; nobody checked the range could resolve. That check
   spans two repositories, which is exactly the kind a person will skip.
+* The Gitea Release was never created, leaving ``v2.0.0`` as the only tag in this
+  repository without one — no other gate made that visible.
 
 Usage::
 
     python3 scripts/release.py check              # read-only; changes nothing
-    python3 scripts/release.py tag                # check, then sign and push
+    python3 scripts/release.py tag                # check, sign, push, Release
+    python3 scripts/release.py release            # Release only, for a tag missing one
     python3 scripts/release.py verify-tag --tag v2.0.0   # what CI runs on a tag
 
-Requires ``packaging`` for the version-range comparison. Credentials are only
-needed to query a private registry:
-
-    GITEA_USERNAME, GITEA_TOKEN
+Requires ``packaging`` for the version-range comparison. ``GITEA_TOKEN`` is
+needed to read the registry (for the dependency check) and to create the Release.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -45,7 +55,15 @@ from packaging.requirements import Requirement
 from packaging.version import Version
 
 ROOT = Path(__file__).resolve().parent.parent
-REGISTRY = "https://gitea.linkerhub.work/api/packages/zhuzhixiang/pypi"
+HOST = "https://gitea.linkerhub.work"
+OWNER = "zhuzhixiang"
+REGISTRY = f"{HOST}/api/packages/{OWNER}/pypi"
+REPOSITORY = "linkerbot-hand-ros"
+API = f"{HOST}/api/v1/repos/{OWNER}/{REPOSITORY}"
+
+# Shown in the Gitea Release title. Nothing is uploaded, so there is no
+# distribution name or wheel stem to track.
+DIST = "linkerbot-hand-ros"
 
 # The four places this repository states its own version. ``linkerbot_hand_gui``
 # is versioned independently and deliberately absent.
@@ -152,11 +170,19 @@ def registry_versions(package: str) -> set[str] | None:
     return set(re.findall(rf"{stem}-([0-9][^-]*)-py3", body))
 
 
-def check_working_tree() -> None:
-    # Only tracked modifications block a release; scratch files in a working
-    # checkout are normal and nothing is packaged from this repository.
+def check_working_tree(*, require_main: bool) -> None:
+    """Reject a dirty tree, and on the tagging path an unsynced branch.
+
+    ``require_main`` is False when back-filling a Release: that runs from a
+    detached tag checkout, so "on main" cannot hold. The tracked-file half still
+    applies — the release notes are generated from the working tree, and
+    uncommitted edits would put text in a Release that is in no commit.
+    """
+
     if run("git", "status", "--porcelain", "--untracked-files=no"):
         raise Failure("tracked files are modified; commit or stash first")
+    if not require_main:
+        return
     branch = run("git", "rev-parse", "--abbrev-ref", "HEAD")
     if branch != "main":
         raise Failure(f"releases are cut from main, not {branch!r}")
@@ -319,6 +345,168 @@ def check_tag_absent(version: str) -> None:
         raise Failure(f"tag {tag} already exists on origin")
 
 
+def check_tag_points_at_head(version: str) -> None:
+    """Require ``v<version>`` to exist and to be the commit checked out.
+
+    Used by ``release`` when back-filling a Release for a tag that already has
+    one missing. The body is generated from the changelogs in the working tree, so
+    creating it from any other commit would publish notes that do not describe the
+    tagged source — and for this repository the tag is exactly what users clone.
+    """
+
+    tag = f"v{version}"
+    if not run("git", "tag", "--list", tag):
+        raise Failure(f"tag {tag} does not exist; run 'release.py tag' first")
+    tagged = run("git", "rev-list", "-n1", tag)
+    head = run("git", "rev-parse", "HEAD")
+    if tagged != head:
+        raise Failure(
+            f"HEAD is {head[:9]} but {tag} points at {tagged[:9]}; the release "
+            f"notes come from the working tree — run 'git checkout {tag}' first"
+        )
+
+
+def api_token() -> str:
+    """Return the Gitea token. Nothing is uploaded, so no username is needed."""
+
+    token = os.environ.get("GITEA_TOKEN")
+    if not token:
+        raise Failure("set GITEA_TOKEN to create a Gitea Release")
+    return token
+
+
+def api_request(
+    path: str,
+    *,
+    method: str = "GET",
+    payload: dict[str, object] | None = None,
+) -> tuple[int, object]:
+    """Call the Gitea API, returning the status and decoded body.
+
+    A 404 is returned rather than raised: callers use it to decide whether a
+    Release already exists, which is how creating one stays idempotent.
+    """
+
+    body = None if payload is None else json.dumps(payload).encode()
+    request = urllib.request.Request(f"{API}{path}", data=body, method=method)
+    request.add_header("Authorization", f"token {api_token()}")
+    if body is not None:
+        request.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            text = response.read().decode("utf-8", "replace")
+            return response.status, (json.loads(text) if text else None)
+    except urllib.error.HTTPError as error:
+        text = error.read().decode("utf-8", "replace")
+        if error.code == 404:
+            return 404, None
+        raise Failure(f"{method} {path} returned {error.code}: {text[:300]}") from error
+    except (urllib.error.URLError, TimeoutError) as error:
+        raise Failure(f"{method} {path} failed: {error}") from error
+
+
+def release_notes(version: str) -> str:
+    """Build the Gitea Release body.
+
+    The changelogs are reStructuredText and the Release body is Markdown, so the
+    two idioms these files actually use are converted (``literal`` and ``*``
+    bullets) and the authoritative text is linked rather than reproduced
+    verbatim.
+    """
+
+    tag = f"v{version}"
+    source = f"{HOST}/{OWNER}/{REPOSITORY}/src/tag/{tag}"
+    sections: list[str] = []
+    for relative in CHANGELOGS:
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        match = re.search(
+            rf"^{re.escape(version)} \(\d{{4}}-\d{{2}}-\d{{2}}\)\n-+\n(.*?)"
+            r"(?=^\d+\.\d+\.\d+ \(|\Z)",
+            text,
+            re.MULTILINE | re.DOTALL,
+        )
+        if match is None:
+            raise Failure(f"{relative} has no section for {version}")
+        body = match.group(1).strip()
+        body = re.sub(r"``([^`]+)``", r"`\1`", body)
+        body = re.sub(r"^\* ", "- ", body, flags=re.MULTILINE)
+        package = relative.split("/")[0]
+        sections.append(f"## {package}\n\n{body}")
+    install = (
+        "## 安装\n\n"
+        "本 package 只从源码安装，请从本 tag 构建：\n\n"
+        "```bash\n"
+        f"git clone --branch {tag} --depth 1 \\\n"
+        f"  ssh://git@git.linkerhub.work:12222/{OWNER}/{REPOSITORY}.git\n"
+        "colcon build\n"
+        "```\n\n"
+        "**本 Release 不附产物，registry 里也不再上传本 package。** "
+        "`linkerbot_hand_msgs` 是 ROSIDL 接口、没有平台无关 wheel，"
+        "所以 pip 装本 package 得不到可用环境：装得上，但 `import "
+        "linkerbot_hand_ros.node` 会因缺少 `rclpy` 与消息类型而失败。\n\n"
+        f"Python 侧依赖的安装步骤见 [README_zh.md]({source}/README_zh.md)。"
+        f"完整条目见 [linkerbot_hand_ros/CHANGELOG.rst]({source}/linkerbot_hand_ros/CHANGELOG.rst)"
+        f" 与 [linkerbot_hand_msgs/CHANGELOG.rst]({source}/linkerbot_hand_msgs/CHANGELOG.rst)。"
+    )
+    return "\n\n".join([*sections, install])
+
+
+def create_release(version: str) -> None:
+    """Create the Gitea Release, deliberately without artifacts.
+
+    Nothing is uploaded for this repository — not to the Release and not to the
+    package registry. Historical releases did both: ``v1.0.0`` attached the driver
+    wheel and sdist, and six versions sit in the registry. Both are dropped
+    because the artifact is inert. Verified: installing
+    ``linkerbot-hand-ros==2.0.0`` from the registry into a clean virtualenv
+    succeeds, and then ``import linkerbot_hand_ros.node`` raises
+    ``ModuleNotFoundError: No module named 'rclpy'``; the wheel also contains no
+    ``linkerbot_hand_msgs`` at all, because that is a ROSIDL package with no
+    platform-independent wheel. Nothing in the documentation installs it either.
+    So the Release points at the source, which is the only thing that works.
+    """
+
+    tag = f"v{version}"
+    status, existing = api_request(f"/releases/tags/{tag}")
+    if status == 200 and isinstance(existing, dict):
+        print(f"  skip Release {tag} already exists")
+        return
+    _, created = api_request(
+        "/releases",
+        method="POST",
+        payload={
+            "tag_name": tag,
+            "name": f"{DIST} {version}",
+            "body": release_notes(version),
+            "draft": False,
+            "prerelease": False,
+        },
+    )
+    if not isinstance(created, dict) or "id" not in created:
+        raise Failure(f"creating Release {tag} returned no id: {created!r}")
+    print(f"  ok   Release {tag} created with no attached artifact")
+
+    tag = f"v{version}"
+    status, existing = api_request(f"/releases/tags/{tag}")
+    if status == 200 and isinstance(existing, dict):
+        print(f"  skip Release {tag} already exists")
+        return
+    _, created = api_request(
+        "/releases",
+        method="POST",
+        payload={
+            "tag_name": tag,
+            "name": f"{DIST} {version}",
+            "body": release_notes(version),
+            "draft": False,
+            "prerelease": False,
+        },
+    )
+    if not isinstance(created, dict) or "id" not in created:
+        raise Failure(f"creating Release {tag} returned no id: {created!r}")
+    print(f"  ok   Release {tag} created with no attached artifact")
+
+
 def check_quality() -> None:
     if shutil.which("ruff") is None:
         raise Failure("ruff is not on PATH")
@@ -339,18 +527,22 @@ def check_quality() -> None:
         raise Failure(f"pytest failed:\n{completed.stdout.strip()}")
 
 
-def command_check(version: str) -> None:
+def command_check(version: str, *, tag_exists: bool = False) -> None:
     """Run every gate in order, stopping at the first failure.
 
     Written as straight-line code rather than a table because each gate feeds the
     next: the documented requirement is needed to interpret the version tokens,
     and both are needed to query the registry.
+
+    ``tag_exists`` is set by ``release`` when back-filling: the tag is already
+    pushed, so the gate becomes "it exists and is what is checked out" and the
+    branch cannot be ``main``.
     """
 
     print(f"linkerbot-hand-ros {version}")
     print(f"  ok   four version declarations agree on {version}")
 
-    check_working_tree()
+    check_working_tree(require_main=not tag_exists)
     print("  ok   working tree")
 
     check_changelogs(version)
@@ -365,21 +557,44 @@ def command_check(version: str) -> None:
     check_dependencies_are_installable(requirement, hand, transport)
     print("  ok   dependencies installable")
 
-    check_tag_absent(version)
-    print(f"  ok   tag v{version} unused")
+    if tag_exists:
+        check_tag_points_at_head(version)
+        print(f"  ok   tag v{version} points at HEAD")
+    else:
+        check_tag_absent(version)
+        print(f"  ok   tag v{version} unused")
 
     check_quality()
     print("  ok   quality")
 
 
 def command_tag(version: str) -> None:
+    """Push the signed tag and create the Release.
+
+    Both in one command because there is nothing to build in between, and because
+    HEAD is the commit being tagged, so the release notes generated from the
+    working tree describe exactly the tagged source.
+    """
+
     command_check(version)
     tag = f"v{version}"
     run("git", "tag", "-s", tag, "-m", f"linkerbot-hand-ros {version}")
     run("git", "verify-tag", tag)
     run("git", "push", "origin", tag)
     print(f"  ok   pushed signed tag {tag}")
-    print("  note nothing is uploaded; this repository is installed from source")
+    create_release(version)
+
+
+def command_release(version: str) -> None:
+    """Create the Release for a tag that already has none.
+
+    This is the recovery path, and it is not hypothetical: ``v2.0.0`` was tagged
+    and left without a Release, which had to be created by hand. Requires the tag
+    to be checked out so the notes match the tagged source.
+    """
+
+    command_check(version, tag_exists=True)
+    create_release(version)
 
 
 def command_verify_tag(version: str, tag: str) -> None:
@@ -401,12 +616,11 @@ def command_verify_tag(version: str, tag: str) -> None:
     requirement = check_documented_requirement()
     hand, transport = check_documented_versions(version, requirement)
     print(f"  ok   documentation pins hand {hand}, transport {transport}")
-    print("  note nothing is uploaded; this repository is installed from source")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("command", choices=("check", "tag", "verify-tag"))
+    parser.add_argument("command", choices=("check", "tag", "release", "verify-tag"))
     parser.add_argument(
         "--tag", help="the tag to validate; required by verify-tag, ignored otherwise"
     )
@@ -417,6 +631,8 @@ def main() -> int:
             command_check(version)
         elif arguments.command == "tag":
             command_tag(version)
+        elif arguments.command == "release":
+            command_release(version)
         else:
             if not arguments.tag:
                 raise Failure("verify-tag needs --tag")

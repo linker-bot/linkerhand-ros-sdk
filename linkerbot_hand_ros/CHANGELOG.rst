@@ -11,12 +11,48 @@ section.
 Unreleased
 ----------
 
-* Add a release flow: ``scripts/release.py`` (``check`` / ``tag`` /
+* ``tag`` now creates the Gitea Release as well, so a release is a signed tag
+  plus a Release and nothing else. Creating it was the step ``v2.0.0`` missed
+  even after everything else was repaired, leaving it the only tag in this
+  repository without a Release, because no other gate made it visible. Both go in
+  one command because there is nothing to build in between and HEAD is the commit
+  being tagged, so the body — generated from the two ``CHANGELOG.rst`` sections,
+  with the reStructuredText idioms these files use (inline literals and ``*``
+  bullets) converted to Markdown and the authoritative text linked — describes
+  exactly the tagged source.
+
+* **This repository no longer publishes to the package registry, and the Release
+  carries no artifact.** That is a deliberate departure from its own history: six
+  versions of the driver sit in the registry (``0.3.1`` through ``2.0.0``) and
+  ``v1.0.0``'s Release attached a wheel and sdist. The artifact is inert.
+  Installing ``linkerbot-hand-ros==2.0.0`` from the registry into a clean
+  virtualenv succeeds, and ``import linkerbot_hand_ros.node`` then raises
+  ``ModuleNotFoundError: No module named 'rclpy'``; the wheel contains no
+  ``linkerbot_hand_msgs`` at all, because that is a ROSIDL package with no
+  platform-independent wheel, and ``setup.py`` declares no ``rclpy`` because ROS
+  dependencies live in ``package.xml``. No document installs it and no consumer
+  was found. Publishing a package that cannot run is worse than not publishing
+  one. The documented install path is unchanged: ``git clone --branch v<version>``
+  plus ``colcon build``.
+
+* Add a ``release`` subcommand for the recovery case — a tag that exists with no
+  Release, which is exactly what happened to ``v2.0.0``. It requires
+  ``v<version>`` to exist **and to point at HEAD**, because the body comes from
+  the changelogs in the working tree and would otherwise describe a different
+  commit. ``check_working_tree`` takes ``require_main`` so that path can run from
+  a detached tag checkout while still rejecting modified tracked files.
+
+* Both ``tag`` and ``release`` run locally only; CI keeps just ``verify-tag``.
+  Their gates include this repository's pytest suite, which needs ROS jazzy and
+  colcon-built messages, while the available runners are plain ubuntu images with
+  no ROS — a job needing them would not queue for capacity, it would fail.
+
+* Add a release flow: ``scripts/release.py`` (``check`` / ``tag`` / ``release`` /
   ``verify-tag``) and ``.gitea/workflows/release.yml``, documented in
-  ``scripts/README.md``. This repository publishes no artifact — the documented
-  install path is ``git clone --branch v<version>`` plus ``colcon build``, and
+  ``scripts/README.md``. The documented install path is
+  ``git clone --branch v<version>`` plus ``colcon build``, because
   ``linkerbot_hand_msgs`` is a ROSIDL interface with no platform-independent
-  wheel — so a release is just a tag. Two things still went wrong in 2.0.0 and
+  wheel — so a release centres on the tag. Two things went wrong in 2.0.0 and
   both are now gated. The tag was pushed while the documentation fix was
   unmerged, so it pointed at a commit whose docs said 1.0.0 and had to be
   deleted from the remote and redone; ``check`` therefore requires a clean
@@ -36,9 +72,9 @@ Unreleased
   ``CHANGELOG.rst``, which the documentation scan excludes. CI runs
   ``verify-tag`` on a ``v*`` push — the same script, so there is one set of gates
   rather than one in CI and another on a developer machine — confirming the tag
-  matches the versions declared by the commit it points at. It uploads nothing.
-  With no Gitea runner online the workflow only queues, so the local script is
-  the part that takes effect today.
+  matches the versions declared by the commit it points at. With no Gitea runner
+  online the workflow only queues, so the local script is the part that takes
+  effect today.
 
 * ``test_python_and_ros_package_versions_match`` no longer asserts the literal
   ``"2.0.0"``. The invariant is that the four version declarations agree, not
